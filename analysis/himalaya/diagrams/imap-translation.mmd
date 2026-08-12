@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant User as Usuario
+    participant Router as EmailClient
+    participant ImapAdapt as IMAP Backend Adapter
+
+    User->>Router: search_envelopes("from alice and after 2026-01-01")
+    Router->>ImapAdapt: search_envelopes(mailbox, SearchEmailsQuery)
+    
+    Note over ImapAdapt: Traducción del DSL
+    Note over ImapAdapt: SearchEmailsQuery.filter →<br/>SearchKey::And(<br/>  SearchKey::From("alice"),<br/>  SearchKey::SentSince(2026-01-02)<br/>)
+
+    ImapAdapt->>ImapAdapt: Detecta si server soporta SORT
+    
+    alt Servidor soporta RFC 5256 SORT
+        ImapAdapt->>ImapAdapt: UID SORT (REVERSE DATE) CHARSET UTF-8 ALL criteria
+    else Fallback: Sort local en RAM
+        ImapAdapt->>ImapAdapt: UID SEARCH criteria
+        ImapAdapt->>ImapAdapt: Ordena UIDs localmente (Vec sort)
+    end
+    
+    ImapAdapt->>ImapAdapt: Pagina slice de UIDs
+    ImapAdapt->>ImapAdapt: UID FETCH [uid_slice] (UID FLAGS ENVELOPE)
+    ImapAdapt->>ImapAdapt: reorder_envelopes() — restaura orden SORT
+    ImapAdapt-->>Router: Vec[Envelope]
+    Router-->>User: Tabla de resultados

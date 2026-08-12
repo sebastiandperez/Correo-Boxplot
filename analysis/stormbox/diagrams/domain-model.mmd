@@ -1,0 +1,52 @@
+classDiagram
+    class Account {
+        +Integer id
+        +String remote_id
+        +String primary_email
+    }
+
+    class Mailbox {
+        +Integer id
+        +String remote_id
+        +String name
+        +String role (e.g., inbox)
+        +Integer total_emails
+        +Boolean is_subscribed
+    }
+
+    class Email {
+        +Integer id
+        +String remote_id
+        +String subject
+        +String fromText
+        +String toText
+        +Date receivedAt
+        +List keywords (e.g., $seen)
+        +Boolean isSeen
+    }
+
+    class Thread {
+        +Integer id
+        +String remote_id
+    }
+
+    class Identity {
+        +Integer id
+        +String remote_id
+        +String name
+        +String email
+    }
+
+    class PendingMutation {
+        +Integer id
+        +String mutation_type
+        +JSON request_json
+        +String local_status (pending, in_flight)
+    }
+
+    Account "1" -- "*" Mailbox
+    Account "1" -- "*" Identity
+    Account "1" -- "*" PendingMutation
+    Mailbox "1" -- "*" Mailbox : parent_id
+    Thread "1" -- "*" Email
+    Email "*" -- "*" Mailbox : folder_messages (membership)

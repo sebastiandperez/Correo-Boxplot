@@ -1,0 +1,30 @@
+graph TD
+    User([Usuario])
+
+    subgraph "Hilo Principal (Browser Main Thread)"
+        UI["UI (Vue 3 / Components)"]
+        State["Application State (Pinia)"]
+        RPCClient["Repository RPC Client"]
+    end
+
+    subgraph "SharedWorker (Background)"
+        SyncHost["Sync Host & Orchestrator"]
+        SQLite[(Local Storage / wa-sqlite)]
+        Outbox["Outbox Runner"]
+        JMAPAdapter["JMAP Backend / Transport"]
+    end
+
+    Server((Servidor JMAP))
+
+    User -->|Interactúa| UI
+    UI -->|Lee/Mutaciones| State
+    State -->|Mensajes RPC| RPCClient
+    RPCClient -- "MessagePort (async)" --> SyncHost
+    SyncHost -->|Lee/Escribe| SQLite
+    SQLite -. "BroadcastChannel (TABLES_TOUCHED)" .-> State
+    
+    SyncHost -->|Inicia tareas| Outbox
+    SyncHost -->|Delega llamadas red| JMAPAdapter
+    Outbox -->|Procesa pendientes| JMAPAdapter
+    
+    JMAPAdapter -- "HTTPS / WebSocket" --> Server

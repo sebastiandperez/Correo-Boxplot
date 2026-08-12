@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant User as Usuario
+    participant UI as Compose Store (Pinia)
+    participant SQLite as Local Storage (Mutations)
+    participant Runner as Outbox Runner (Worker)
+    participant Server as Servidor JMAP
+
+    User->>UI: Clic en "Enviar"
+    UI->>SQLite: insertPendingMutation(type: SEND, data: JSON)
+    SQLite-->>UI: OK (mutación encolada)
+    UI-->>User: Cierra composer (Enviado optimista)
+    
+    SQLite-->>Runner: Notifica nueva mutación
+    Runner->>Runner: Extrae imágenes inline (data: URL)
+    
+    opt Imágenes Inline
+        Runner->>Server: Blob/upload
+        Server-->>Runner: Blob IDs
+        Runner->>Runner: Reemplaza src por cid: en HTML
+    end
+    
+    Runner->>Server: JMAP Batch Call
+    Note right of Runner: 1. Email/set (Create #c1 en Outbox)<br/>2. EmailSubmission/set (Send #c1)<br/>3. onSuccessUpdateEmail (Mover a Sent, quitar $draft)
+    
+    Server-->>Runner: OK (Id del email real)
+    Runner->>SQLite: Borrar mutación pendiente
+    Runner->>SQLite: Sincronizar carpeta Sent (Reflejar cambio)

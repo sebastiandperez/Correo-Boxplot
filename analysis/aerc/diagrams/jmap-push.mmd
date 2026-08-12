@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant UI as App UI
+    participant JWorker as JMAP Worker (Goroutine)
+    participant Push as JMAP Push Monitor (Sub-Goroutine)
+    participant Cache as LevelDB Cache
+    participant Server as Servidor JMAP
+
+    Push->>Server: GET /events (SSE stream abierto)
+    Note over Push,Server: Conexión HTTP de larga duración
+
+    Server-->>Push: data: StateChange{Email: "newState"}
+    Push->>Cache: GetEmailState() → "oldState"
+    Push->>Server: JMAP Batch Request
+    Note right of Push: Email/changes(sinceState:"oldState")<br/>+ Email/get(#changes/created)<br/>+ Email/queryChanges(sinceQueryState)
+    Server-->>Push: Batch Response
+    Push->>Cache: PutEmailState("newState")
+    Push->>Cache: PutEmail(id, metadata)
+    Push->>UI: PostMessage(MessageInfo{nuevo correo})
+    UI-->>UI: Inserta en lista en posición index

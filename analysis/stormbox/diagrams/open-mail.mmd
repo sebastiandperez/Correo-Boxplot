@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant User as Usuario
+    participant UI as Pinia Store (UI)
+    participant Worker as Sync Host
+    participant SQLite as Local Storage
+    participant Server as Servidor JMAP
+
+    User->>UI: Selecciona correo (id_1)
+    UI->>Worker: getMessageBodyForDisplay(id_1)
+    Worker->>SQLite: ¿Existe body de id_1?
+    
+    alt Cache Miss (Body no descargado)
+        SQLite-->>Worker: NULL
+        Worker->>Server: Email/get (ids: [id_1], properties: bodyValues...)
+        Server-->>Worker: Body HTML y Text
+        Worker->>SQLite: Guarda Body
+    else Cache Hit (Body ya existe)
+        SQLite-->>Worker: Body Data
+    end
+    
+    Worker-->>UI: Devuelve HTML/Text
+    UI-->>User: Renderiza correo (DOMPurify)
+    
+    par Marcar como Leído (Optimista)
+        UI->>Worker: Quitar estado Unread
+        Worker->>SQLite: Marca leído localmente y encola mutación
+        SQLite-->>UI: TABLES_TOUCHED (Actualiza bold en la lista)
+        Worker->>Server: Email/set (update keywords: \$seen)
+    end

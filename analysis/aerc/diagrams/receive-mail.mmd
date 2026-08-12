@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant UI as App UI (Hilo Principal)
+    participant Worker as IMAP Worker (Goroutine)
+    participant Idler as IMAP Idler (Sub-Goroutine)
+    participant Server as Servidor IMAP
+
+    UI->>Worker: PostAction(FetchDirectoryContents)
+    Worker->>Idler: Stop() — libera conexión
+    Worker->>Server: UID FETCH 1:* (FLAGS ENVELOPE)
+    Server-->>Worker: Lista de mensajes
+    Worker->>UI: PostMessage(DirectoryContents{uids})
+    Worker->>UI: PostMessage(MessageInfo{...}) x N
+    Worker->>UI: PostMessage(Done)
+    Worker->>Idler: Start() — vuelve a IDLE con debounce
+
+    Idler->>Server: IDLE (blocking)
+    Note over Idler,Server: Conexión TCP bloqueada esperando...
+
+    Server-->>Idler: * 101 EXISTS (nuevo mensaje)
+    Idler->>Worker: updates chan ← MailboxUpdate
+    Worker->>UI: PostMessage(CheckMail → MessageInfo nuevo)
+    UI-->>UI: Redibuja lista con nuevo correo

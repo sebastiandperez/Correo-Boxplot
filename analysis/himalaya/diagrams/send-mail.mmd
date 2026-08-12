@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant User as Usuario (Terminal)
+    participant CLI as CLI (clap)
+    participant Router as EmailClient (Router)
+    participant ImapAdapt as IMAP Backend
+    participant SmtpTransport as SMTP Transport
+    participant ImapServer as Servidor IMAP
+    participant SmtpServer as Servidor SMTP
+
+    User->>CLI: himalaya message send < msg.eml
+    CLI->>Router: send_message(raw_bytes)
+    Note over Router: Backend es IMAP (no sabe enviar)
+    Router->>SmtpTransport: smtp_client_mut() (lazy connect)
+    SmtpTransport->>SmtpServer: Handshake TLS + SASL
+    SmtpServer-->>SmtpTransport: OK
+    Router->>SmtpTransport: send_message(raw_bytes)
+    SmtpTransport->>SmtpServer: DATA + mensaje crudo
+    SmtpServer-->>SmtpTransport: OK (Aceptado)
+
+    Note over Router: SMTP no guarda en Enviados. IMAP debe hacerlo.
+    Router->>ImapAdapt: add_message("Sent", flags, raw_bytes)
+    ImapAdapt->>ImapServer: APPEND "Sent" {flags} <mensaje>
+    ImapServer-->>ImapAdapt: OK (APPENDUID ...)
+    ImapAdapt-->>Router: uid
+    Router-->>CLI: OK
+    CLI-->>User: Mensaje enviado (stdout)

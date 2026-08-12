@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant User as Usuario
+    participant UI as Pinia Store
+    participant Worker as Sync Host
+    participant SQLite as Local Storage
+    participant Server as Servidor JMAP
+
+    User->>UI: Abre carpeta "Inbox" (1ra vez)
+    UI->>Worker: ensureFolderWindow(Inbox)
+    Worker->>SQLite: ¿Tenemos vista de Inbox?
+    SQLite-->>Worker: NO
+    
+    Worker->>Server: Email/query (filter: Inbox) + Email/get (refs to query)
+    Note right of Worker: Petición JMAP batch (Back-reference)
+    
+    Server-->>Worker: queryState: "abc", ids: [1,2,3], lista de correos
+    
+    Worker->>SQLite: Guarda queryState "abc"
+    Worker->>SQLite: Inserta correos 1, 2 y 3
+    SQLite-->>Worker: OK
+    Worker-->>UI: OK
+    UI->>SQLite: Lee correos para renderizar
+    SQLite-->>UI: Correos
+    UI-->>User: Muestra Inbox

@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant UI as Pinia Store
+    participant Worker as Sync Host
+    participant SQLite as Local Storage
+    participant Server as Servidor JMAP
+
+    Server->>Worker: WS: StateChange (Email: "new123")
+    
+    Worker->>SQLite: Lee último State local
+    SQLite-->>Worker: sinceState: "old456"
+    
+    Worker->>Server: Email/changes (sinceState: "old456")
+    Server-->>Worker: updated: [id_2], destroyed: [id_3], newState: "new123"
+    
+    opt Si hay correos nuevos/actualizados
+        Worker->>Server: Email/get (ids: [id_2])
+        Server-->>Worker: Propiedades de id_2
+        Worker->>SQLite: Actualiza id_2 en caché
+    end
+    
+    opt Si hay borrados
+        Worker->>SQLite: Borra id_3 (Cascade delete)
+    end
+    
+    Worker->>SQLite: Guarda nuevo State "new123"
+    Worker-->>UI: TABLES_TOUCHED
+    UI->>SQLite: Recarga vista

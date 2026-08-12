@@ -1,0 +1,45 @@
+flowchart TD
+    subgraph "Hilo Principal (main.go)"
+        EventLoop["Bucle de Eventos<br/>'select' de Go"]
+        UI["Capa UI<br/>app/aerc.go"]
+        Commands["Comandos<br/>commands/"]
+    end
+
+    subgraph "Goroutine IMAP Worker"
+        ImapRun["worker/imap/worker.go<br/>Run()"]
+        ImapIdler["Idler<br/>worker/imap/idler.go"]
+        ImapLib["go-imap client"]
+    end
+
+    subgraph "Goroutine JMAP Worker"
+        JmapRun["worker/jmap/worker.go<br/>Run()"]
+        JmapPush["Monitor de Push<br/>worker/jmap/push.go"]
+        JmapCache["Caché LevelDB"]
+        JmapLib["go-jmap client"]
+    end
+
+    subgraph "Servidor de Correo"
+        IMAP["Servidor IMAP<br/>+ IDLE"]
+        JMAP["Servidor JMAP<br/>+ EventSource"]
+    end
+
+    User(("Usuario<br/>Teclado")) -->|Tecla pulsada| EventLoop
+    EventLoop -->|HandleEvent| UI
+    UI -->|"PostAction<br/>a chan WorkerMessage"| ImapRun
+    UI -->|"PostAction<br/>a chan WorkerMessage"| JmapRun
+
+    ImapRun -->|IMAP FETCH/STORE| ImapLib
+    ImapLib <-->|TCP+TLS| IMAP
+    ImapIdler <-->|IDLE blocking| IMAP
+    ImapIdler -->|updates chan| ImapRun
+    ImapRun -->|"PostMessage<br/>a chan WorkerMessage"| EventLoop
+
+    JmapRun -->|HTTP POST Request| JmapLib
+    JmapLib <-->|HTTPS| JMAP
+    JmapPush <-->|SSE EventSource| JMAP
+    JmapPush -->|handleChange| JmapRun
+    JmapRun <-->|Get/Put| JmapCache
+    JmapRun -->|"PostMessage<br/>a chan WorkerMessage"| EventLoop
+
+    EventLoop -->|HandleMessage| UI
+    UI -->|Render| Screen["Terminal Screen"]

@@ -1,0 +1,55 @@
+classDiagram
+    class Config {
+        +String display_name
+        +String signature
+    }
+
+    class AccountConfig {
+        +ImapConfig imap
+        +JmapConfig jmap
+        +SmtpConfig smtp
+        +MaildirConfig maildir
+    }
+
+    class EmailClient {
+        +BackendClient storage
+        +SmtpTransport smtp
+        +list_envelopes()
+        +search_envelopes()
+        +send_message()
+    }
+
+    class BackendClient {
+        <<Enum>>
+        +ImapClient
+        +JmapClient
+        +MaildirClient
+    }
+
+    class Envelope {
+        +String id
+        +String message_id
+        +List flags
+        +String subject
+        +List from (Address)
+        +Date date
+    }
+
+    class Mailbox {
+        +String id
+        +String name
+        +Integer total
+        +Integer unread
+    }
+
+    class SearchEmailsQuery {
+        +Filter filter
+        +Sorter sort
+    }
+
+    Config "1" -- "*" AccountConfig
+    AccountConfig --> EmailClient
+    EmailClient --> "1" BackendClient
+    BackendClient ..> Envelope : returns
+    BackendClient ..> Mailbox : returns
+    BackendClient ..> SearchEmailsQuery : consumes

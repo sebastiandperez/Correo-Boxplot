@@ -1,0 +1,39 @@
+flowchart TD
+    subgraph "CLI Layer"
+        CLI["Dispatcher (src/cli.rs)"]
+    end
+
+    subgraph "Shared API Layer (src/shared/)"
+        EmailClient["EmailClient<br/>(Router)"]
+        Models("Domain Models:<br/>Envelope, Mailbox, SearchEmailsQuery")
+    end
+
+    subgraph "Backend Adapters"
+        ImapAdapter["IMAP Backend<br/>(src/imap/backend.rs)"]
+        JmapAdapter["JMAP Backend<br/>(src/jmap/)"]
+        GmailAdapter["Gmail Backend<br/>(src/gmail/)"]
+        MaildirAdapter["Maildir Backend<br/>(src/maildir/)"]
+        SmtpAdapter["SMTP Transport<br/>(src/smtp/)"]
+    end
+
+    subgraph "Network / Local Drivers"
+        io_imap["io-imap (Rust Crate)"]
+        reqwest["HTTP Client (JMAP/REST)"]
+        fs["File System (Maildir)"]
+        lettre["lettre (SMTP Crate)"]
+    end
+
+    CLI -->|"Commands (mailbox list)"| EmailClient
+    EmailClient <-.-> Models
+    
+    EmailClient -->|Translates to| ImapAdapter
+    EmailClient -->|Translates to| JmapAdapter
+    EmailClient -->|Translates to| GmailAdapter
+    EmailClient -->|Translates to| MaildirAdapter
+    EmailClient -->|Sends via| SmtpAdapter
+    
+    ImapAdapter -->|IMAP Commands| io_imap
+    JmapAdapter -->|JSON POST| reqwest
+    GmailAdapter -->|JSON POST| reqwest
+    MaildirAdapter -->|Read/Write Files| fs
+    SmtpAdapter -->|SMTP Protocol| lettre

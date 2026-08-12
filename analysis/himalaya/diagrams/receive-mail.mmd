@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant User as Usuario (Terminal)
+    participant CLI as CLI (clap)
+    participant Router as EmailClient (Router)
+    participant ImapAdapt as IMAP Backend Adapter
+    participant ImapLib as io-imap (Librería)
+    participant Server as Servidor IMAP
+
+    User->>CLI: himalaya envelope list
+    CLI->>Router: list_envelopes("INBOX", page=1)
+    Router->>ImapAdapt: list_envelopes(...)
+    ImapAdapt->>Server: SELECT "INBOX"
+    Server-->>ImapAdapt: OK (EXISTS=100)
+    Note over ImapAdapt: Calcula ventana local: 91:100
+    ImapAdapt->>Server: FETCH 91:100 (UID FLAGS ENVELOPE RFC822.SIZE)
+    Server-->>ImapAdapt: Raw IMAP responses
+    ImapAdapt->>ImapAdapt: envelope_from() → Vec[Envelope]
+    ImapAdapt-->>Router: Vec[Envelope]
+    Router-->>CLI: Vec[Envelope]
+    CLI-->>User: Tabla en consola (stdout)
+    Note over User,Server: Conexión cerrada. Proceso termina.

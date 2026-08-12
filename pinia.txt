@@ -1,0 +1,8 @@
+Vue 3 es un framework de JavaScript para construir interfaces web. 
+
+Es una librería de estados para Vue JS. Actualización de Vuex.
+
+* Sin Mutations: Modificación simple de estados.
+* Distintos archivos (stores): En vez de un archivo general para Stores, 
+importando únicamente las que se usarán en los componentes.
+* Soporte con TypeScript.

@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant Server as Servidor JMAP
+    participant WS as Transport (WebSocket)
+    participant SyncHost as JMAP Backend (SharedWorker)
+    participant SQLite as Local Storage (wa-sqlite)
+    participant Pinia as Mail Store (UI Thread)
+
+    Server->>WS: Push Frame (StateChange)
+    WS->>SyncHost: _onStateChange()
+    SyncHost->>SQLite: Get old Email sync_state
+    SQLite-->>SyncHost: state = 'A'
+    SyncHost->>Server: Email/changes (sinceState: 'A')
+    Server-->>SyncHost: created: [id_1]
+    SyncHost->>Server: Email/get (ids: [id_1], properties: metadata)
+    Server-->>SyncHost: { id_1: { subject, from, mailboxIds... } }
+    SyncHost->>SQLite: upsertMessages(id_1)
+    SyncHost->>SQLite: Actualizar vistas de carpeta
+    SQLite-->>SyncHost: OK
+    SyncHost-->>Pinia: BroadcastChannel (TABLES_TOUCHED)
+    Pinia->>SQLite: listMessagesForView(currentFolder)
+    SQLite-->>Pinia: Array con nuevo mensaje
+    Pinia-->>Pinia: Vue Reactivity actualiza DOM
