@@ -1,0 +1,85 @@
+flowchart TD
+    User(["Usuario"])
+
+    subgraph Application["Application compartida"]
+        UI["Presentación segura<br/>Vue 3 + DOMPurify<br/>iframe sandbox + CSP"]
+        State["Estado efímero<br/>Pinia"]
+        ReadRepo["ReadRepository<br/>solo lecturas y comandos locales"]
+    end
+
+    Split{"BIFURCACIÓN DE ADAPTADOR"}
+
+    subgraph TauriMVP["Tauri v2 — MVP ACTUAL"]
+        TauriAdapter["Adaptador Tauri<br/>invoke validado"]
+        Rust["Motor Tauri / Rust<br/>capabilities default-deny<br/>SQLCipher + migraciones"]
+        DB[("SQLite local cifrado<br/>fuente de verdad para UI")]
+        Secret["Secure store del SO"]
+        DEK["DEK aleatoria 32 bytes<br/>solo Rust"]
+
+        TauriAdapter --> Rust
+        Secret --> DEK
+        DEK --> Rust
+        Rust --> DB
+    end
+
+    subgraph WebFuture["Web/PWA — FUTURE ITERATION / DEFERRED"]
+        WebEngine["Motor Web futuro<br/>wa-sqlite + OPFS<br/>SharedWorker + BroadcastChannel"]
+        WebOpen["Cifrado · credenciales · multi-tab<br/>no resueltos en el MVP Tauri"]
+        WebEngine --- WebOpen
+    end
+
+    Merge{{"CONVERGENCIA LÓGICA<br/>mismos ReadRepository + SyncPort + onChange"}}
+
+    subgraph Background["Worker TypeScript — Tauri MVP"]
+        Coordinator["Coordinador de sincronización"]
+        Outbox["Procesador PendingMutation"]
+        JMAP["Cliente JMAP<br/>fetch + WebSocket"]
+        Token["Token JMAP<br/>solo memoria"]
+
+        Coordinator --> JMAP
+        Outbox --> JMAP
+        Token --> JMAP
+    end
+
+    SyncPort["SyncPort<br/>lotes/cursor y Outbox"]
+    Events["Cambios locales<br/>eventos Tauri → onChange"]
+    Browser["Navegador del sistema<br/>Passkey/WebAuthn"]
+    Server[("Servidor propio JMAP<br/>FUERA DE ALCANCE")]
+
+    User --> UI
+    UI --> State
+    State --> ReadRepo
+    ReadRepo --> Split
+
+    Split -->|"MVP desktop"| TauriAdapter
+    Split -.->|"iteración futura"| WebEngine
+
+    TauriAdapter --> Merge
+    WebEngine -.-> Merge
+    Merge --> Events
+    Events -->|"releer SQLite"| State
+
+    ReadRepo -.->|"ensure no bloqueante"| Coordinator
+    Coordinator --> SyncPort
+    Outbox --> SyncPort
+    SyncPort -->|"invoke en MVP"| Rust
+    SyncPort -.->|"adaptador futuro"| WebEngine
+
+    Browser -->|"auth remota"| Token
+    JMAP <-->|"JMAP HTTPS"| Server
+    Server -.->|"push StateChange"| JMAP
+
+    LocalNote["LocalReady + RemoteAnonymous es válido<br/>Passkey auth ≠ clave SQLCipher"]
+    DB --- LocalNote
+    Token --- LocalNote
+
+    classDef current fill:#eef7ff,stroke:#336b99,color:#222;
+    classDef secure fill:#eaf7ea,stroke:#2f7d32,color:#222;
+    classDef deferred fill:#f4f4f4,stroke:#777,stroke-dasharray:5 5,color:#444;
+    classDef boundary fill:#fff4cc,stroke:#8a6d00,color:#222;
+    classDef external fill:#fafafa,stroke:#666,stroke-dasharray:5 5,color:#222;
+    class UI,State,ReadRepo,Coordinator,Outbox,JMAP,SyncPort current;
+    class TauriAdapter,Rust,DB,Secret,DEK,Token secure;
+    class WebEngine,WebOpen deferred;
+    class Split,Merge,LocalNote boundary;
+    class Server external;

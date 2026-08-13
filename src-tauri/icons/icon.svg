@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Correo Boxplot">
+  <rect width="512" height="512" rx="112" fill="#17324d" />
+  <path
+    d="M112 154h288c17.7 0 32 14.3 32 32v140c0 17.7-14.3 32-32 32H112c-17.7 0-32-14.3-32-32V186c0-17.7 14.3-32 32-32Z"
+    fill="#f4efe6"
+  />
+  <path
+    d="m101 178 155 116 155-116"
+    fill="none"
+    stroke="#c85a36"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="28"
+  />
+</svg>

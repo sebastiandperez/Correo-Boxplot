@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Correo Boxplot",
+  "version": "0.1.0",
+  "identifier": "com.editorialhuellas.correoboxplot",
+  "build": {
+    "beforeDevCommand": "pnpm dev:frontend",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build:frontend",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Correo Boxplot",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 520,
+        "backgroundThrottling": "throttle"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

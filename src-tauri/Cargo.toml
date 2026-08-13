@@ -1,0 +1,19 @@
+[package]
+name = "correo-boxplot"
+version = "0.1.0"
+description = "Local-first desktop mail client"
+edition = "2024"
+rust-version = "1.97.1"
+
+[lib]
+name = "correo_boxplot_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+tauri = "=2.11.5"
+rusqlite = { version = "=0.40.2", features = ["sqlcipher"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+thiserror = "=2.0.20"
+
+[build-dependencies]
+tauri-build = "=2.6.3"

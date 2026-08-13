@@ -10,45 +10,54 @@ Si este es tu primer paso y el repositorio está vacío o casi vacío, tu tarea 
 
 Estos documentos son autoritativos, con prioridad sobre cualquier inferencia que hagas del código existente — el proyecto está en etapa temprana y el código todavía no refleja todas las decisiones:
 
-- `cliente-01-overview.md` — filosofía y decisiones de arquitectura del cliente.
-- `security.md` — modelo de amenazas y capas de defensa obligatorias.
-- `capas-componentes-diagrama.mmd`, `dominio.md`, `componentes.md` — si ya existen, son el detalle de capas, dominio y componentes especificado; genera código que los implemente, no que los reinterprete.
+- `docs/architecture/overview.md` — filosofía y decisiones de arquitectura del cliente.
+- `docs/architecture/security.md` — modelo de amenazas y capas de defensa obligatorias.
+- `docs/diagrams/layers-components.mmd`, `docs/architecture/domain.md`, `docs/architecture/components.md` — detalle de capas, dominio y componentes; genera código que los implemente, no que los reinterprete.
+- `docs/planning/roadmap.md` — secuencia de implementación vigente y estado formal de Gates.
+- `docs/development/stack.md` — baseline exacta de versiones, dependencias y PoCs abiertos; deriva de `docs/research/secure-compatible-version-baseline.md`.
 
 Si encuentras una decisión que no está en ninguno de estos documentos, márcala como pregunta abierta en tu respuesta — no la resuelvas inventando algo nuevo.
 
 ## Alcance
 
 - Solo cliente. Sin lógica de servidor.
+- El MVP actual es **Tauri-only**. Web/PWA está diferido: conserva su arquitectura futura, pero no se implementa ni bloquea la aceptación actual.
 - La Fase 2 (compute-at-the-edge: clasificación de spam, embeddings de búsqueda) queda fuera de alcance salvo que se pida explícitamente en la tarea puntual — no la implementes "por si acaso" ni dejes stubs sin que se solicite.
 
 ## Stack tecnológico ya decidido
 
-- **UI y estado:** Vue 3, Composition API, TypeScript, Pinia. Compartido íntegramente entre las dos formas de entrega.
-- **Entrega 1 — Tauri:** backend en Rust, acceso nativo a SQLite (sin WASM, sin OPFS).
-- **Entrega 2 — Web/PWA:** `wa-sqlite` sobre OPFS, instalable.
-- **Abstracción de storage:** ambas entregas quedan detrás de una interfaz común tipo Repository (ej. `listMessagesForView`, `ensureFolderWindow`). El código de UI/Pinia nunca importa directamente el motor de storage — siempre pasa por esa interfaz.
+- **UI y estado:** Vue 3, Composition API, TypeScript y Pinia.
+- **Entrega del MVP — Tauri v2:** backend en Rust, acceso nativo a SQLite + SQLCipher (sin WASM ni OPFS).
+- **Entrega futura — Web/PWA:** conserva la dirección `wa-sqlite`/OPFS, pero sus decisiones de cifrado, credenciales, multi-tab y `SharedWorker` están diferidas.
+- **Abstracción de storage:** `ReadRepository` sirve a Pinia/UI y `SyncPort` a Coordinador/Outbox. El código Vue/Pinia nunca importa directamente el motor.
 - **Protocolo hacia el servidor:** JMAP real sobre HTTPS + WebSocket para push. No implementes un RPC propio ni asumas otro protocolo.
+- **Runtime de red/sync:** Cliente JMAP, Coordinador y Outbox son TypeScript en un Worker normal del webview Tauri; hablan JMAP directo. Rust solo administra SQLite, SQLCipher y secretos locales.
 
 ## Seguridad — invariantes que no se negocian
 
-- Todo HTML de correo se sanitiza con DOMPurify antes de insertarse en el DOM, sin excepción.
+- Todo HTML de correo se sanitiza con DOMPurify en cada render y se muestra dentro de un `iframe sandbox` bajo CSP restrictiva; no se persiste HTML sanitizado ni se habilitan recursos remotos.
 - Las ventanas de Tauri se configuran con el mínimo de capabilities necesario — nunca agregues un permiso "por si se necesita después".
-- Las credenciales usan el mecanismo definido en `security.md` (keychain nativo en Tauri, passkeys/WebAuthn para login) — nunca en texto plano ni en `localStorage`.
-- Antes de cerrar cualquier tarea que toque autenticación, storage local o renderizado de contenido externo, revisa que siga cumpliendo `security.md`.
+- La DEK SQLCipher es aleatoria, reside en el secure store del SO y solo la usa Rust; no se deriva del Passkey ni cruza IPC.
+- Passkeys/WebAuthn autentican remotamente desde el navegador del sistema. El token JMAP vive solo en memoria del Worker, nunca en Pinia, SQLite, `localStorage`, archivos o logs.
+- No existe fallback a SQLite en texto plano.
+- Antes de cerrar cualquier tarea que toque autenticación, storage local o renderizado de contenido externo, revisa que siga cumpliendo `docs/architecture/security.md`.
 
 ## Convenciones de código
 
 - TypeScript estricto en toda la capa Vue/Pinia.
-- Los métodos de la interfaz Repository se mantienen consistentes entre ambas entregas — si agregas uno nuevo, impleméntalo en los dos motores (Tauri/Rust y Web/OPFS), no en uno solo.
-- `[PENDIENTE]` Linter, formatter y reglas de estilo específicas aún no se han decidido. Si el repo ya tiene configuración de ESLint/Prettier/Clippy, esta línea queda obsoleta: sigue lo que el repositorio ya define, no lo que dice aquí.
+- Los métodos de `ReadRepository`/`SyncPort` se mantienen compatibles con la suite de conformidad. En el MVP se implementan en Tauri; cualquier cambio debe seguir siendo expresable por el futuro adaptador Web sin obligar a implementarlo ahora.
+- TypeScript/Vue usa ESLint flat config y Prettier; Rust usa rustfmt y Clippy con warnings como error.
+- Las dependencias directas se fijan exactamente y los lockfiles se versionan. No autorices scripts de instalación ni debilites protecciones de pnpm globalmente.
+- SQLCipher es externo `4.17.0` mediante el feature `rusqlite/sqlcipher`; no uses `bundled-sqlcipher` ni SQLite plaintext.
+- `jmap-jam 0.13.3` es candidato de PoC, no dependencia autorizada hasta completar conformance contra Stalwart.
 
 ## Entorno de desarrollo y comandos
 
-`[PENDIENTE]` — se completa cuando exista el primer `package.json` / `src-tauri/Cargo.toml`. Si te toca crearlos, documenta aquí mismo los comandos reales (`dev`, `build`, `test`) una vez existan, para que la siguiente sesión de agente no tenga que redescubrirlos.
+Usa `docs/development/setup.md`. La interfaz humana principal es `pnpm check`; desarrollo completo usa `pnpm dev` y frontend aislado `pnpm dev:frontend`.
 
 ## Pruebas
 
-`[PENDIENTE]`. Mínimo no negociable una vez exista infraestructura de build: cualquier cambio debe compilar correctamente en **ambas** entregas (Tauri y Web/PWA) antes de darse por terminado — no es válido que funcione en una y quede roto en la otra.
+Ejecuta `pnpm check`. Incluye formato, typecheck, lint, Vitest, rustfmt, Clippy y Cargo tests. Mientras el PoC de provisioning SQLCipher esté abierto, reporta los comandos nativos bloqueados; nunca los sustituyas por un backend plaintext. La futura entrega Web definirá su propia matriz cuando entre en alcance.
 
 ## Nota operativa de modelo
 

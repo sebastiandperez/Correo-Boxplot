@@ -1,0 +1,16 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/schemas/
+coverage/
+analysis/
+analisis/
+repos/
+_stormbox_repo/
+_stormbox_sparse/
+**/*.md
+**/*.mmd
+**/*.txt
+pnpm-lock.yaml
+Cargo.lock

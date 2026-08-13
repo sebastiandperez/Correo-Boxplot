@@ -1,0 +1,34 @@
+# Documentación
+
+## Arquitectura vigente
+
+* [Overview](architecture/overview.md)
+* [Componentes](architecture/components.md)
+* [Dominio local](architecture/domain.md)
+* [Estado de Application](architecture/application-state.md)
+* [Seguridad](architecture/security.md)
+* [Diagrama de capas y componentes](diagrams/layers-components.mmd)
+
+## Planificación
+
+* [Roadmap del MVP Tauri](planning/roadmap.md)
+
+## Desarrollo
+
+* [Stack canónico](development/stack.md)
+* [Setup](development/setup.md)
+* [Testing](development/testing.md)
+* [Git workflow](development/git-workflow.md)
+
+## Decisiones
+
+* [Índice de decisiones](decisions/README.md)
+* `decisions/architecture/` — seguridad, autenticación, drafts, adjuntos y HTML.
+* `decisions/development/` — baseline exacta, SQLCipher externo e interfaz JMAP.
+
+## Investigación fuente
+
+Los informes conservan el razonamiento y la evidencia histórica. Las decisiones operativas vigentes se leen en arquitectura, roadmap y stack.
+
+* [Cierre técnico de Gate 0-C/0-D](research/gate-0-c-0-d-research.md)
+* [Secure compatible version baseline](research/secure-compatible-version-baseline.md)
