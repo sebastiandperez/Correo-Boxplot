@@ -7,6 +7,7 @@ coverage/
 analysis/
 analisis/
 repos/
+docs/design/mockups/
 _stormbox_repo/
 _stormbox_sparse/
 **/*.md

@@ -20,6 +20,10 @@
 * [Testing](development/testing.md)
 * [Git workflow](development/git-workflow.md)
 
+## Diseño
+
+* [Mockup de referencia del cliente de correo](design/mockups/mail-client-reference.html)
+
 ## Decisiones
 
 * [Índice de decisiones](decisions/README.md)
@@ -32,3 +36,4 @@ Los informes conservan el razonamiento y la evidencia histórica. Las decisiones
 
 * [Cierre técnico de Gate 0-C/0-D](research/gate-0-c-0-d-research.md)
 * [Secure compatible version baseline](research/secure-compatible-version-baseline.md)
+* [Initial SQLite schema research](research/minimal-secure-compatible-initial-sql-schema.md)

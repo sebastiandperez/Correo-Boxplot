@@ -14,6 +14,8 @@ Las actualizaciones firmadas siguen siendo una defensa obligatoria, pero no se a
 
 ## 2. Presentación segura (Vue 3)
 
+El shell visual desktop de tres columnas ya está materializado en `src/components/`. Es estructura estática únicamente: la lógica de Application, Pinia, Repository y JMAP todavía no está implementada en estos componentes.
+
 * **Responsabilidad:** Renderizar lista, lector y compositor con Vue 3 Composition API; capturar intenciones; presentar estados locales, remotos y de conectividad; sanitizar el HTML crudo con DOMPurify en cada render y mostrarlo en un contexto `iframe sandbox` aislado bajo CSP restrictiva.
 * **Qué NO hace:** No ejecuta SQL, no llama JMAP, no usa `fetch` para obtener correo, no recibe HTML como confiable, no navega el webview principal desde enlaces de un correo y no conserva secretos. No descarga, guarda, sube ni envía adjuntos en el MVP.
 * **Dependencias:** Stores de Pinia, DOMPurify, política de sanitización, sandbox de render y CSP de Tauri.
@@ -63,7 +65,7 @@ Las actualizaciones firmadas siguen siendo una defensa obligatoria, pero no se a
 * **Datos de entrada:** Consultas y comandos semánticos validados, lotes normalizados y transiciones de mutaciones. La autenticación remota no entrega la clave local.
 * **Datos de salida:** Resultados locales tipados, comprobantes atómicos, pendientes/cursores y eventos de cambio.
 * **Estado:** Handle SQLCipher abierto, transacciones y suscripciones de eventos. La proyección local distingue apertura correcta de `encryption_locked` y demás errores. El modelo exacto de tareas/hilos internos se decide durante la implementación del motor.
-* **Persistencia:** Base siempre cifrada. Primera ejecución crea una DEK y DB; reinicios recuperan la DEK. Si el secreto falta, falla cerrado. El reset de caché requiere aprobación y puede perder `PendingMutation`. Esquema físico, índices, migraciones y ubicación del archivo se fijan en la fase del motor.
+* **Persistencia:** Base siempre cifrada. Primera ejecución crea una DEK y DB; reinicios recuperan la DEK. Si el secreto falta, falla cerrado. El reset de caché requiere aprobación y puede perder `PendingMutation`. El schema físico inicial ya está adoptado en `src-tauri/src/db/migrations/0001_initial.sql`; migration runner, queries, repositories, ubicación e inicialización runtime siguen pendientes de la fase del motor.
 * **Networking:** Ninguno para correo. Tauri usa la política `backgroundThrottling: "throttle"`; el riesgo acotado de throttling del Worker es aceptado.
 
 ---

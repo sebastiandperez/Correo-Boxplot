@@ -15,7 +15,7 @@ Se usan cuatro marcas de autoridad:
 *   **`[SOLO LOCAL]`:** dato operativo del cliente que no se publica como entidad del servidor.
 *   **`[DERIVADO]`:** dato reconstruible a partir de otras filas locales.
 
-Los nombres de campos descritos aquí son semánticos, no un esquema SQL físico. Columnas, tipos SQL, claves sustitutas, índices, nombres físicos, ubicación del archivo y detalles de migración corresponden al Motor Tauri/Rust durante su fase de implementación; no se deciden en este documento. La futura implementación Web deberá conservar este modelo lógico y entrar en la misma suite de conformidad, pero está fuera del MVP actual.
+Los nombres de campos descritos aquí son semánticos. El schema físico inicial adoptado está en `src-tauri/src/db/migrations/0001_initial.sql`, con la justificación en `docs/research/minimal-secure-compatible-initial-sql-schema.md`. Sus ocho tablas son el mínimo durable, no una materialización uno-a-uno de todas las entidades y proyecciones lógicas de este documento: `Identity`, `MailboxView` y `MailboxViewItem`, entre otras, no tienen tabla en `0001`. Todavía no existen migration runner, Local Engine, repositories, queries ni inicialización runtime de la DB. La futura implementación Web deberá conservar este modelo lógico y entrar en la misma suite de conformidad, pero está fuera del MVP actual.
 
 ### 1.1 Contratos de acceso al dominio
 

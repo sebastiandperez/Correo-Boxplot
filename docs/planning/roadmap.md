@@ -146,7 +146,7 @@ Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri c
 
 #### 0-B — dominio y Repository
 
-`ReadRepository` sirve a Application y `SyncPort` a sync/outbox. `ensure…` es no bloqueante; errores, paginación, `MailboxView`, `SyncCursor`, `PendingMutation`, cuerpo `{ text, html }` y las dos invariantes transaccionales están congelados. Los tipos físicos SQL siguen perteneciendo a la implementación del motor.
+`ReadRepository` sirve a Application y `SyncPort` a sync/outbox. `ensure…` es no bloqueante; errores, paginación, `MailboxView`, `SyncCursor`, `PendingMutation`, cuerpo `{ text, html }` y las dos invariantes transaccionales están congelados. El schema físico mínimo se materializó después en `0001_initial.sql`; no forma parte del cierre lógico de 0-B ni implica que el motor esté implementado.
 
 #### 0-C — seguridad para Tauri
 
@@ -186,7 +186,7 @@ Construir lista, lector y compositor contra la API pública del store. Implement
 
 #### 1-D — Motor Tauri/Rust
 
-Implementar SQLite + SQLCipher con `rusqlite 0.40.2` + feature `sqlcipher` y SQLCipher externo `4.17.0`, migración inicial, DEK/secure store, comandos mínimos, transacciones y eventos. Pasar la suite Repository sin exponer clave, SQL, shell o filesystem genéricos. Probar cifrado real, versiones runtime, clave incorrecta y fallo cerrado. **OPEN:** provisioning/packaging reproducible en Windows, macOS y Linux; no se permite `bundled-sqlcipher` ni plaintext como atajo.
+Partir del schema declarativo ya adoptado en `src-tauri/src/db/migrations/0001_initial.sql` e implementar SQLite + SQLCipher con `rusqlite 0.40.2` + feature `sqlcipher`, migration runner, DEK/secure store, queries, repositories, comandos mínimos, transacciones, inicialización runtime y eventos. La presencia de `0001` no implementa ni cierra el Motor Tauri. Pasar la suite Repository sin exponer clave, SQL, shell o filesystem genéricos. Probar cifrado real, versiones runtime, clave incorrecta y fallo cerrado. **OPEN:** provisioning/packaging reproducible en Windows, macOS y Linux; no se permite `bundled-sqlcipher` ni plaintext como atajo.
 
 #### 1-E — Cliente JMAP TypeScript
 
@@ -285,7 +285,7 @@ Validar `LocalReady + RemoteAnonymous`, logout/token expirado sin cerrar DB, aus
 | C-04 | **RESOLVED · 0-D** | Draft memory-only; sin autosave/JMAP/persistencia. |
 | C-05 | **RESOLVED · 0-B** | Puertos, errores, paginación y `ensure…`; mock/suite se implementan en 1-A. |
 | C-06 | **SPLIT** | Lifecycle local resuelto en 0-C; modelo de tareas/hilos es detalle de implementación 1-D. |
-| C-07 | **MOVED TO 1-D** | Esquema físico, índices, migraciones y ubicación no son Gate 0. |
+| C-07 | **PARTIALLY MATERIALIZED · 1-D** | `0001_initial.sql` fija tablas, relaciones e índices iniciales; runner, ubicación y ejecución runtime siguen en 1-D. |
 | C-08 | **RESOLVED · 0-A** | JMAP Tauri corre en Worker TS directo. |
 | C-09 | **MOVED TO FUTURE WEB ITERATION** | Coordinación Web/multi-tab no bloquea MVP. |
 | C-10 | **MOVED TO FUTURE WEB ITERATION** | SQLCipher/OPFS, cuotas y corrupción Web diferidos. |
@@ -299,7 +299,7 @@ Validar `LocalReady + RemoteAnonymous`, logout/token expirado sin cerrar DB, aus
 
 | ID | Estado actual | Resultado / destino |
 | --- | --- | --- |
-| D-01 | **MOVED TO 1-D** | Tipos físicos, índices, migraciones y serialización Tauri. |
+| D-01 | **PARTIALLY MATERIALIZED · 1-D** | Tipos, relaciones e índices de `0001` adoptados; runner, evolución y serialización Tauri siguen en 1-D. |
 | D-02–D-06 | **RESOLVED · 0-B** | Account, Identity, rights, threads y marcas derivadas. |
 | D-07 | **RESOLVED · 0-D** | Send pendiente solo como `PendingMutation`; no fake `Email`. |
 | D-08 | **RESOLVED · 0-B** | Cuerpo `{ text, html }`; sin árbol MIME crudo. |

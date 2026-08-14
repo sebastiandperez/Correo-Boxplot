@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Correo — mockup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #111111;
+        --paper: #ffffff;
+        --graphite: #6e6e6e;
+        --rule: #e3e3e1;
+        --mist: #f5f5f4;
+        --reverse: #ffffff;
+        --marker: #111111;
+        --sidebar-w: 212px;
+        --list-w: 344px;
+        --sp-1: 4px;
+        --sp-2: 8px;
+        --sp-3: 12px;
+        --sp-4: 16px;
+        --sp-5: 24px;
+        --sp-6: 32px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: 'IBM Plex Sans', sans-serif;
+        font-weight: 400;
+        color: var(--ink);
+        background: var(--paper);
+        -webkit-font-smoothing: antialiased;
+      }
+      .mono {
+        font-family: 'IBM Plex Mono', monospace;
+      }
+
+      button {
+        font-family: inherit;
+      }
+      :focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: var(--sidebar-w) var(--list-w) 1fr;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* ---------- Sidebar ---------- */
+      .sidebar {
+        border-right: 1px solid var(--rule);
+        display: flex;
+        flex-direction: column;
+        padding: var(--sp-5) var(--sp-4) var(--sp-4);
+      }
+      .brand {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-weight: 500;
+        color: var(--ink);
+        margin-bottom: var(--sp-6);
+      }
+      .compose {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--ink);
+        color: var(--reverse);
+        border: none;
+        border-radius: 2px;
+        padding: 10px 14px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        margin-bottom: var(--sp-5);
+        transition: opacity 0.15s ease;
+      }
+      .compose:hover {
+        opacity: 0.82;
+      }
+      .compose svg {
+        width: 13px;
+        height: 13px;
+      }
+
+      .folders {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .folder {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: none;
+        border: none;
+        text-align: left;
+        font-size: 13px;
+        color: var(--ink);
+        padding: 9px 10px;
+        border-radius: 2px;
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+      }
+      .folder:hover {
+        background: var(--mist);
+      }
+      .folder.active {
+        background: var(--ink);
+        color: var(--reverse);
+      }
+      .folder .count {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--graphite);
+      }
+      .folder.active .count {
+        color: var(--reverse);
+        opacity: 0.7;
+      }
+
+      .account {
+        margin-top: auto;
+        padding-top: var(--sp-5);
+        border-top: 1px solid var(--rule);
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--graphite);
+        word-break: break-all;
+      }
+
+      /* ---------- Message list ---------- */
+      .message-list {
+        border-right: 1px solid var(--rule);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .list-header {
+        padding: var(--sp-5) var(--sp-4) var(--sp-3);
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--rule);
+      }
+      .list-header h1 {
+        font-size: 19px;
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: -0.01em;
+      }
+      .list-meta {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--graphite);
+      }
+
+      .messages {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .message {
+        display: flex;
+        gap: 10px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--rule);
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+      }
+      .message:hover {
+        background: var(--mist);
+      }
+      .message.selected {
+        background: var(--ink);
+      }
+      .message.selected .sender,
+      .message.selected .subject {
+        color: var(--reverse);
+      }
+      .message.selected .preview,
+      .message.selected .time {
+        color: #c7c7c5;
+      }
+      .message.selected .marker {
+        background: var(--reverse);
+      }
+
+      .marker {
+        width: 6px;
+        height: 6px;
+        margin-top: 6px;
+        background: var(--marker);
+        flex-shrink: 0;
+        opacity: 0;
+      }
+      .message.unread .marker {
+        opacity: 1;
+      }
+
+      .message-main {
+        min-width: 0;
+        flex: 1;
+      }
+      .message-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 3px;
+      }
+      .sender {
+        font-size: 13.5px;
+        font-weight: 400;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .message.unread .sender {
+        font-weight: 600;
+      }
+      .time {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: var(--graphite);
+        flex-shrink: 0;
+      }
+      .subject {
+        font-size: 13.5px;
+        font-weight: 400;
+        margin-bottom: 3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .message.unread .subject {
+        font-weight: 500;
+      }
+      .preview {
+        font-size: 12.5px;
+        font-weight: 300;
+        color: var(--graphite);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ---------- Reading pane ---------- */
+      .reading-pane {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+      .reading-header {
+        padding: var(--sp-6) var(--sp-6) var(--sp-4);
+        border-bottom: 1px solid var(--rule);
+      }
+      .back-btn {
+        display: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--graphite);
+        padding: 0 0 var(--sp-4);
+        align-items: center;
+        gap: 6px;
+      }
+      .reading-subject {
+        font-size: 23px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 0 0 var(--sp-3);
+      }
+      .reading-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+      }
+      .reading-sender-name {
+        font-weight: 500;
+      }
+      .reading-sender-email {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11.5px;
+        color: var(--graphite);
+      }
+      .reading-time {
+        margin-left: auto;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11.5px;
+        color: var(--graphite);
+      }
+      .reading-body {
+        padding: var(--sp-6);
+        font-size: 15.5px;
+        font-weight: 300;
+        line-height: 1.68;
+        max-width: 64ch;
+      }
+      .reading-body p {
+        margin: 0 0 1.1em;
+      }
+      .reading-body p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* ---------- Mobile ---------- */
+      .menu-btn {
+        display: none;
+      }
+
+      @media (max-width: 860px) {
+        .app {
+          grid-template-columns: 1fr;
+          position: relative;
+        }
+        .sidebar {
+          position: fixed;
+          inset: 0 40% 0 0;
+          z-index: 20;
+          background: var(--paper);
+          transform: translateX(-100%);
+          transition: transform 0.18s ease;
+          width: auto;
+        }
+        .app.sidebar-open .sidebar {
+          transform: translateX(0);
+        }
+        .app.sidebar-open::after {
+          content: '';
+          position: fixed;
+          inset: 0;
+          left: 60%;
+          background: rgba(0, 0, 0, 0.25);
+          z-index: 10;
+        }
+        .menu-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          margin-right: 8px;
+          background: none;
+          border: 1px solid var(--rule);
+          border-radius: 2px;
+          cursor: pointer;
+        }
+        .message-list,
+        .reading-pane {
+          display: none;
+          border-right: none;
+        }
+        .app.view-list .message-list {
+          display: flex;
+        }
+        .app.view-reading .reading-pane {
+          display: flex;
+        }
+        .back-btn {
+          display: flex;
+        }
+        .reading-body {
+          max-width: none;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app view-list" id="app">
+      <aside class="sidebar">
+        <div class="brand">— correo</div>
+        <button class="compose" type="button">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+          >
+            <path d="M8 1v14M1 8h14" />
+          </svg>
+          Redactar
+        </button>
+        <nav class="folders">
+          <button class="folder active" data-folder="inbox">
+            Bandeja de entrada <span class="count">3</span>
+          </button>
+          <button class="folder" data-folder="drafts">
+            Borradores <span class="count">1</span>
+          </button>
+          <button class="folder" data-folder="sent">Enviados</button>
+          <button class="folder" data-folder="junk">
+            Spam <span class="count">2</span>
+          </button>
+          <button class="folder" data-folder="trash">Papelera</button>
+        </nav>
+        <div class="account mono">sebastian@servidor.local</div>
+      </aside>
+
+      <section class="message-list">
+        <header class="list-header">
+          <button class="menu-btn" id="menuBtn" aria-label="Abrir carpetas">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+            >
+              <path d="M1 4h14M1 8h14M1 12h14" />
+            </svg>
+          </button>
+          <h1>Bandeja de entrada</h1>
+          <span class="list-meta mono">3 sin leer</span>
+        </header>
+
+        <ul class="messages" id="messages">
+          <li class="message unread selected" data-id="1">
+            <span class="marker"></span>
+            <div class="message-main">
+              <div class="message-top">
+                <span class="sender">Equipo Stalwart</span
+                ><span class="time mono">9:41</span>
+              </div>
+              <div class="subject">Actualización de seguridad disponible</div>
+              <div class="preview">
+                Se publicó un parche para el módulo IMAP que corrige...
+              </div>
+            </div>
+          </li>
+          <li class="message unread" data-id="2">
+            <span class="marker"></span>
+            <div class="message-main">
+              <div class="message-top">
+                <span class="sender">Camila Rodríguez</span
+                ><span class="time mono">8:15</span>
+              </div>
+              <div class="subject">Revisión de dominio.md</div>
+              <div class="preview">
+                Dejé comentarios sobre PendingMutation, en particular...
+              </div>
+            </div>
+          </li>
+          <li class="message" data-id="3">
+            <span class="marker"></span>
+            <div class="message-main">
+              <div class="message-top">
+                <span class="sender">GitHub</span
+                ><span class="time mono">Ayer</span>
+              </div>
+              <div class="subject">
+                [cliente-correo] Nuevo PR: feat/jmap-session
+              </div>
+              <div class="preview">
+                Camila abrió un pull request contra main. 3 archivos...
+              </div>
+            </div>
+          </li>
+          <li class="message" data-id="4">
+            <span class="marker"></span>
+            <div class="message-main">
+              <div class="message-top">
+                <span class="sender">Notificaciones JMAP</span
+                ><span class="time mono">Ayer</span>
+              </div>
+              <div class="subject">
+                Tu cuenta alcanzó el 80% del límite de adjuntos
+              </div>
+              <div class="preview">
+                Considera liberar espacio antes de enviar archivos...
+              </div>
+            </div>
+          </li>
+          <li class="message unread" data-id="5">
+            <span class="marker"></span>
+            <div class="message-main">
+              <div class="message-top">
+                <span class="sender">Andrés Gómez</span
+                ><span class="time mono">Lun</span>
+              </div>
+              <div class="subject">¿Café el jueves?</div>
+              <div class="preview">
+                Quería preguntarte por el estado del Sprint 1 antes...
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <section class="reading-pane" id="readingPane">
+        <header class="reading-header">
+          <button class="back-btn" id="backBtn">
+            &larr; Bandeja de entrada
+          </button>
+          <h2 class="reading-subject" id="rSubject">
+            Actualización de seguridad disponible
+          </h2>
+          <div class="reading-meta">
+            <span class="reading-sender-name" id="rSender"
+              >Equipo Stalwart</span
+            >
+            <span class="reading-sender-email mono" id="rEmail"
+              >&lt;seguridad@stalwart.dev&gt;</span
+            >
+            <span class="reading-time mono" id="rTime">9:41</span>
+          </div>
+        </header>
+        <div class="reading-body" id="rBody">
+          <p>
+            Se publicó un parche para el módulo de compatibilidad IMAP que
+            corrige un caso de reconexión donde el cursor de sincronización
+            podía quedar desalineado tras una desconexión prolongada.
+          </p>
+          <p>
+            Recomendamos actualizar antes del próximo ciclo de sincronización.
+            El proceso no requiere reautenticación ni afecta las claves
+            derivadas por passkey.
+          </p>
+          <p>— Equipo Stalwart</p>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const app = document.getElementById('app')
+      const messages = document.querySelectorAll('.message')
+      const folders = document.querySelectorAll('.folder')
+      const menuBtn = document.getElementById('menuBtn')
+      const backBtn = document.getElementById('backBtn')
+
+      const content = {
+        1: {
+          subject: 'Actualización de seguridad disponible',
+          sender: 'Equipo Stalwart',
+          email: '<seguridad@stalwart.dev>',
+          time: '9:41',
+          body: [
+            'Se publicó un parche para el módulo de compatibilidad IMAP que corrige un caso de reconexión donde el cursor de sincronización podía quedar desalineado tras una desconexión prolongada.',
+            'Recomendamos actualizar antes del próximo ciclo de sincronización. El proceso no requiere reautenticación ni afecta las claves derivadas por passkey.',
+            '— Equipo Stalwart',
+          ],
+        },
+        2: {
+          subject: 'Revisión de dominio.md',
+          sender: 'Camila Rodríguez',
+          email: '<camila@equipo.dev>',
+          time: '8:15',
+          body: [
+            'Dejé comentarios sobre PendingMutation, en particular sobre el estado retrying y cómo se relaciona con el backoff de Outbox.',
+            '¿Alcanzas a revisarlo antes del stand-up? Quiero cerrarlo hoy si es posible.',
+          ],
+        },
+        3: {
+          subject: '[cliente-correo] Nuevo PR: feat/jmap-session',
+          sender: 'GitHub',
+          email: '<notifications@github.com>',
+          time: 'Ayer',
+          body: [
+            'Camila abrió un pull request contra main. 3 archivos modificados, 2 aprobaciones pendientes.',
+            'feat(jmap): implement session discovery',
+          ],
+        },
+        4: {
+          subject: 'Tu cuenta alcanzó el 80% del límite de adjuntos',
+          sender: 'Notificaciones JMAP',
+          email: '<system@servidor.local>',
+          time: 'Ayer',
+          body: [
+            'Considera liberar espacio antes de enviar archivos adjuntos grandes.',
+            'Este aviso es informativo y no bloquea el envío de correos nuevos.',
+          ],
+        },
+        5: {
+          subject: '¿Café el jueves?',
+          sender: 'Andrés Gómez',
+          email: '<andres@equipo.dev>',
+          time: 'Lun',
+          body: [
+            'Quería preguntarte por el estado del Sprint 1 antes de la reunión del jueves.',
+            '¿Nos vemos a las 10 en el café de siempre?',
+          ],
+        },
+      }
+
+      function selectMessage(li) {
+        messages.forEach((m) => m.classList.remove('selected'))
+        li.classList.add('selected')
+        li.classList.remove('unread')
+
+        const c = content[li.dataset.id]
+        document.getElementById('rSubject').textContent = c.subject
+        document.getElementById('rSender').textContent = c.sender
+        document.getElementById('rEmail').textContent = c.email
+        document.getElementById('rTime').textContent = c.time
+        document.getElementById('rBody').innerHTML = c.body
+          .map((p) => `<p>${p}</p>`)
+          .join('')
+
+        if (window.innerWidth <= 860) {
+          app.classList.remove('view-list')
+          app.classList.add('view-reading')
+        }
+      }
+
+      messages.forEach((li) =>
+        li.addEventListener('click', () => selectMessage(li)),
+      )
+
+      folders.forEach((f) =>
+        f.addEventListener('click', () => {
+          folders.forEach((x) => x.classList.remove('active'))
+          f.classList.add('active')
+          app.classList.remove('sidebar-open')
+        }),
+      )
+
+      menuBtn.addEventListener('click', () =>
+        app.classList.toggle('sidebar-open'),
+      )
+
+      backBtn.addEventListener('click', () => {
+        app.classList.remove('view-reading')
+        app.classList.add('view-list')
+      })
+    </script>
+  </body>
+</html>
