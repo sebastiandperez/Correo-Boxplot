@@ -10,10 +10,10 @@ name = "correo_boxplot_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-tauri = "=2.11.5"
+tauri = { version = "=2.11.5", features = [] }
 rusqlite = { version = "=0.40.2", features = ["sqlcipher"] }
 serde = { version = "=1.0.228", features = ["derive"] }
 thiserror = "=2.0.20"
 
 [build-dependencies]
-tauri-build = "=2.6.3"
+tauri-build = { version = "=2.6.3", features = [] }
