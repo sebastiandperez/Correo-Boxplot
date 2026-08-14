@@ -1,0 +1,215 @@
+:root {
+  --shell-ink: #151515;
+  --shell-muted: #737373;
+  --shell-border: #e5e5e5;
+  --shell-surface: #ffffff;
+  --shell-subtle: #f5f5f4;
+  --shell-sidebar-width: 212px;
+  --shell-list-width: 344px;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns:
+    var(--shell-sidebar-width) var(--shell-list-width)
+    minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--shell-ink);
+  background: var(--shell-surface);
+}
+
+.mailbox-sidebar,
+.message-list,
+.message-viewer {
+  min-width: 0;
+  min-height: 0;
+}
+
+.mailbox-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px 16px;
+  border-right: 1px solid var(--shell-border);
+}
+
+.mailbox-sidebar__brand {
+  margin-bottom: 32px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.mailbox-sidebar__compose {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 24px;
+  padding: 10px 14px;
+  border: 1px solid var(--shell-ink);
+  border-radius: 2px;
+  color: #ffffff;
+  background: var(--shell-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.mailbox-sidebar__compose:disabled,
+.mailbox-sidebar__folder:disabled,
+.composer :disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.mailbox-sidebar__folders {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mailbox-sidebar__folder {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 2px;
+  color: var(--shell-ink);
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+}
+
+.mailbox-sidebar__folder--current {
+  background: var(--shell-subtle);
+  font-weight: 600;
+}
+
+.mailbox-sidebar__account {
+  margin: auto 0 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--shell-border);
+}
+
+.message-list__header {
+  padding: 24px 16px 16px;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.message-list__header h1,
+.composer__header h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.message-list__header p {
+  margin: 5px 0 0;
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+
+.message-list .empty-state,
+.message-viewer .empty-state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.empty-state p {
+  max-width: 30ch;
+  margin: 7px 0 0;
+  color: var(--shell-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.message-viewer {
+  display: flex;
+  min-width: 0;
+  background: var(--shell-surface);
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  min-height: 420px;
+  border: 1px solid var(--shell-border);
+  background: var(--shell-surface);
+}
+
+.composer__header,
+.composer__field,
+.composer__footer {
+  padding: 16px;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.composer__field {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.composer__field label {
+  color: var(--shell-muted);
+  font-size: 12px;
+}
+
+.composer__field input,
+.composer__field textarea {
+  width: 100%;
+  border: 0;
+  color: var(--shell-ink);
+  background: transparent;
+}
+
+.composer__field--body {
+  flex: 1;
+  align-items: start;
+}
+
+.composer__field textarea {
+  min-height: 220px;
+  resize: none;
+}
+
+.composer__footer {
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 0;
+}
+
+.composer__footer button {
+  padding: 9px 18px;
+  border: 1px solid var(--shell-ink);
+  border-radius: 2px;
+  color: #ffffff;
+  background: var(--shell-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
