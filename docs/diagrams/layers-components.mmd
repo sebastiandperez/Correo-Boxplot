@@ -1,39 +1,49 @@
 flowchart TD
     User(["Usuario"])
 
-    subgraph Application["Application compartida"]
-        UI["Presentación segura<br/>Vue 3 + DOMPurify<br/>iframe sandbox + CSP"]
-        State["Estado efímero<br/>Pinia"]
-        ReadRepo["ReadRepository<br/>solo lecturas y comandos locales"]
+    subgraph Presentation["Presentation · src/components"]
+        UI["Vue 3<br/>render seguro<br/>DOMPurify + iframe sandbox + CSP"]
     end
 
-    Split{"BIFURCACIÓN DE ADAPTADOR"}
+    subgraph Application["Application · src/app"]
+        State["Pinia<br/>estado efímero y proyecciones"]
+    end
 
-    subgraph TauriMVP["Tauri v2 — MVP ACTUAL"]
-        TauriAdapter["Adaptador Tauri<br/>invoke validado"]
-        Rust["Motor Tauri / Rust<br/>capabilities default-deny<br/>SQLCipher + migraciones"]
-        DB[("SQLite local cifrado<br/>fuente de verdad para UI")]
+    subgraph Core["Domain + Ports"]
+        Domain["Domain<br/>tipos y semántica<br/>sin infraestructura"]
+        ReadRepo["ReadRepository<br/>contrato TypeScript<br/>Application"]
+        SyncPort["SyncPort<br/>contrato TypeScript<br/>Coordinator / Outbox"]
+
+        ReadRepo -.->|"tipos"| Domain
+        SyncPort -.->|"tipos"| Domain
+    end
+
+    subgraph TauriAdapters["Adapters TypeScript · src/adapters/tauri"]
+        ReadAdapter["TauriReadRepository<br/>satisface ReadRepository"]
+        SyncAdapter["TauriSyncPort<br/>satisface SyncPort"]
+    end
+
+    subgraph Native["Tauri / Rust Local Engine · MVP ACTUAL"]
+        IPC{{"Tauri IPC boundary<br/>capabilities default-deny<br/>Isolation Pattern"}}
+        Commands["Comandos Rust<br/>semánticos y validados"]
+        Rust["Local Engine Rust<br/>queries · transacciones · migraciones"]
+        DB[("SQLite + SQLCipher<br/>fuente local de verdad para UI")]
         Secret["Secure store del SO"]
         DEK["DEK aleatoria 32 bytes<br/>solo Rust"]
+        Events["Eventos Tauri<br/>cambio local"]
 
-        TauriAdapter --> Rust
+        IPC --> Commands
+        Commands --> Rust
         Secret --> DEK
         DEK --> Rust
         Rust --> DB
+        Rust --> Events
     end
 
-    subgraph WebFuture["Web/PWA — FUTURE ITERATION / DEFERRED"]
-        WebEngine["Motor Web futuro<br/>wa-sqlite + OPFS<br/>SharedWorker + BroadcastChannel"]
-        WebOpen["Cifrado · credenciales · multi-tab<br/>no resueltos en el MVP Tauri"]
-        WebEngine --- WebOpen
-    end
-
-    Merge{{"CONVERGENCIA LÓGICA<br/>mismos ReadRepository + SyncPort + onChange"}}
-
-    subgraph Background["Worker TypeScript — Tauri MVP"]
-        Coordinator["Coordinador de sincronización"]
-        Outbox["Procesador PendingMutation"]
-        JMAP["Cliente JMAP<br/>fetch + WebSocket"]
+    subgraph Background["Worker TypeScript · Tauri MVP"]
+        Coordinator["Coordinator<br/>src/sync"]
+        Outbox["Outbox<br/>src/sync"]
+        JMAP["JMAP Client<br/>src/jmap<br/>fetch + WebSocket"]
         Token["Token JMAP<br/>solo memoria"]
 
         Coordinator --> JMAP
@@ -41,45 +51,53 @@ flowchart TD
         Token --> JMAP
     end
 
-    SyncPort["SyncPort<br/>lotes/cursor y Outbox"]
-    Events["Cambios locales<br/>eventos Tauri → onChange"]
     Browser["Navegador del sistema<br/>Passkey/WebAuthn"]
-    Server[("Servidor propio JMAP<br/>FUERA DE ALCANCE")]
+    Server[("Servidor propio JMAP<br/>autoridad remota<br/>FUERA DE ALCANCE")]
+    WebFuture["Adapters Web/PWA futuros<br/>DEFERRED<br/>fuera del MVP actual"]
+    LocalNote["LocalReady + RemoteAnonymous es válido<br/>Passkey auth ≠ clave SQLCipher"]
 
     User --> UI
     UI --> State
     State --> ReadRepo
-    ReadRepo --> Split
+    ReadRepo --> ReadAdapter
+    ReadAdapter -->|"invoke() semántico"| IPC
 
-    Split -->|"MVP desktop"| TauriAdapter
-    Split -.->|"iteración futura"| WebEngine
-
-    TauriAdapter --> Merge
-    WebEngine -.-> Merge
-    Merge --> Events
-    Events -->|"releer SQLite"| State
+    Events -->|"onChange"| ReadAdapter
+    ReadAdapter -.->|"Application relee"| State
 
     ReadRepo -.->|"ensure no bloqueante"| Coordinator
     Coordinator --> SyncPort
     Outbox --> SyncPort
-    SyncPort -->|"invoke en MVP"| Rust
-    SyncPort -.->|"adaptador futuro"| WebEngine
+    SyncPort --> SyncAdapter
+    SyncAdapter -->|"invoke() semántico"| IPC
 
     Browser -->|"auth remota"| Token
     JMAP <-->|"JMAP HTTPS"| Server
     Server -.->|"push StateChange"| JMAP
 
-    LocalNote["LocalReady + RemoteAnonymous es válido<br/>Passkey auth ≠ clave SQLCipher"]
+    ReadRepo -.->|"mismo port"| WebFuture
+    SyncPort -.->|"mismo port"| WebFuture
+
     DB --- LocalNote
     Token --- LocalNote
 
-    classDef current fill:#eef7ff,stroke:#336b99,color:#222;
+    classDef presentation fill:#fff7e6,stroke:#9a6700,color:#222;
+    classDef application fill:#eef7ff,stroke:#336b99,color:#222;
+    classDef core fill:#f2efff,stroke:#6554a4,color:#222;
+    classDef adapter fill:#e8f4ff,stroke:#246b91,color:#222;
+    classDef sync fill:#eef7ff,stroke:#336b99,color:#222;
+    classDef remote fill:#e8f4ff,stroke:#1b7698,color:#222;
     classDef secure fill:#eaf7ea,stroke:#2f7d32,color:#222;
     classDef deferred fill:#f4f4f4,stroke:#777,stroke-dasharray:5 5,color:#444;
     classDef boundary fill:#fff4cc,stroke:#8a6d00,color:#222;
     classDef external fill:#fafafa,stroke:#666,stroke-dasharray:5 5,color:#222;
-    class UI,State,ReadRepo,Coordinator,Outbox,JMAP,SyncPort current;
-    class TauriAdapter,Rust,DB,Secret,DEK,Token secure;
-    class WebEngine,WebOpen deferred;
-    class Split,Merge,LocalNote boundary;
+    class UI presentation;
+    class State application;
+    class Coordinator,Outbox sync;
+    class JMAP remote;
+    class Domain,ReadRepo,SyncPort core;
+    class ReadAdapter,SyncAdapter adapter;
+    class Commands,Rust,DB,Secret,DEK,Token secure;
+    class WebFuture deferred;
+    class IPC,LocalNote boundary;
     class Server external;

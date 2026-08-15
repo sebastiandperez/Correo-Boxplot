@@ -1,0 +1,124 @@
+flowchart LR
+
+    User["Usuario<br/><br/>Input:<br/>clics, selección, redacción<br/><br/>Output:<br/>intenciones"]
+
+    subgraph A["Persona A · Application / Presentation"]
+
+        UI["Vue UI Shell<br/><br/>Responsabilidad:<br/>render + intenciones<br/><br/>Input:<br/>proyección Pinia<br/><br/>Output:<br/>acciones del usuario"]
+
+        Components["Componentes<br/>MailboxSidebar<br/>MessageList<br/>MessageViewer<br/>Composer"]
+
+        SafeRender["Safe Email Renderer<br/><br/>DOMPurify<br/>iframe sandbox<br/>CSP<br/><br/>Input:<br/>HTML raw no confiable<br/><br/>Output:<br/>render aislado"]
+
+        Stores["Pinia Application State<br/><br/>runtime<br/>mail<br/>composer<br/><br/>Responsabilidad:<br/>estado efímero + orchestration<br/><br/>Input:<br/>UI + repository changes<br/><br/>Output:<br/>proyección reactiva"]
+
+        AppContext["Application Composition Root<br/><br/>Responsabilidad:<br/>inyectar ports<br/>gestionar subscriptions"]
+    end
+
+    subgraph Contracts["Contratos compartidos · se congelan al final de Sprint 1"]
+
+        RR["ReadRepository<br/><br/>Consumers:<br/>Application<br/><br/>Input:<br/>queries locales / intents<br/><br/>Output:<br/>proyecciones + receipts + onChange"]
+
+        SP["SyncPort<br/><br/>Consumers futuros:<br/>Coordinator / Outbox<br/><br/>Input:<br/>remote batches / transitions<br/><br/>Output:<br/>atomic receipts / cursors"]
+
+        JC["JmapClient<br/><br/>Consumers futuros:<br/>Coordinator / Outbox<br/><br/>Input:<br/>JMAP intents<br/><br/>Output:<br/>normalized domain data"]
+    end
+
+    subgraph B["Persona B · Domain / Ports / Local Engine"]
+
+        Domain["Domain Types<br/><br/>Account · Mailbox · Email<br/>EmailBody · AttachmentRef<br/>PendingMutation · SyncCursor"]
+
+        MemRead["MemoryReadRepository<br/><br/>Uso:<br/>tests + conformance"]
+
+        MemSync["MemorySyncPort<br/><br/>Uso:<br/>tests + conformance"]
+
+        TauriRead["TauriReadRepository<br/><br/>Responsabilidad:<br/>RR → semantic IPC"]
+
+        TauriSync["TauriSyncPort<br/><br/>Responsabilidad:<br/>SP → semantic IPC"]
+
+        ChangeBridge["Tauri Event Bridge<br/><br/>Input:<br/>native change event<br/><br/>Output:<br/>ReadRepository.onChange"]
+
+        IPC["Semantic Tauri Commands<br/><br/>JSON serializable<br/>validated<br/>default-deny"]
+
+        Rust["Rust Local Engine<br/><br/>Responsabilidad:<br/>queries · transactions<br/>migrations · lifecycle"]
+
+        Security["Native Security<br/><br/>Secure Store<br/>32-byte DEK<br/>Rust only"]
+
+        DB["SQLite + SQLCipher<br/><br/>Local UI source of truth<br/>0001_initial.sql"]
+    end
+
+    subgraph C["Persona C · JMAP Client"]
+
+        Worker["Worker Bootstrap<br/><br/>Responsabilidad:<br/>runtime JMAP<br/>token memory-only"]
+
+        Session["Session / Capabilities<br/><br/>Input:<br/>session URL + auth<br/><br/>Output:<br/>JMAP Session"]
+
+        MailAPI["Mail API<br/><br/>Mailbox/get<br/>Email/query + get<br/>changes + queryChanges"]
+
+        Body["Body Normalizer<br/><br/>Input:<br/>JMAP body parts<br/><br/>Output:<br/>{text, html}<br/>AttachmentRef metadata"]
+
+        Mutations["Remote Mutations<br/><br/>Email/set<br/>EmailSubmission"]
+
+        Push["WebSocket Push<br/><br/>Input:<br/>StateChange<br/><br/>Output:<br/>typed change notification"]
+
+        HTTP["HTTPS / fetch"]
+        WS["WebSocket / RFC 8887"]
+    end
+
+    Server["Stalwart JMAP Server"]
+
+    FutureCoord["Sprint 2<br/>Coordinator"]
+    FutureOutbox["Sprint 2<br/>Outbox"]
+
+    User --> UI
+    UI --> Components
+    Components --> Stores
+    Stores --> AppContext
+    AppContext --> RR
+
+    Components --> SafeRender
+    Stores --> SafeRender
+
+    RR -.conformance.-> MemRead
+    SP -.conformance.-> MemSync
+
+    RR --> TauriRead
+    SP --> TauriSync
+
+    TauriRead --> IPC
+    TauriSync --> IPC
+    IPC --> Rust
+
+    Rust --> DB
+    Security --> Rust
+    Rust --> ChangeBridge
+    ChangeBridge --> TauriRead
+    TauriRead --> RR
+    RR --> Stores
+
+    Domain --> RR
+    Domain --> SP
+    Domain --> JC
+
+    Worker --> JC
+    JC --> Session
+    JC --> MailAPI
+    JC --> Body
+    JC --> Mutations
+    JC --> Push
+
+    Session --> HTTP
+    MailAPI --> HTTP
+    Mutations --> HTTP
+    Push --> WS
+
+    HTTP --> Server
+    WS --> Server
+
+    FutureCoord -.Sprint 2.-> JC
+    FutureCoord -.Sprint 2.-> SP
+    FutureOutbox -.Sprint 2.-> JC
+    FutureOutbox -.Sprint 2.-> SP
+
+    classDef future stroke-dasharray: 5 5,fill:#f5f5f5;
+    class FutureCoord,FutureOutbox future;

@@ -4,9 +4,11 @@
 
 Este bloque sostiene cuatro recorridos: recibir cambios, abrir un correo, redactar y encolar un envío, y reconciliar SQLite con el servidor. El MVP actual se acepta únicamente en **Tauri v2**. Web/PWA conserva su lugar como adaptador futuro, pero OPFS, wa-sqlite, `SharedWorker`, multi-tab y credenciales Web están fuera del camino crítico actual.
 
+Este documento define responsabilidades de componentes. Las reglas normativas sobre ubicación, imports y dirección de dependencias viven en [layers.md](layers.md).
+
 La regla central es local-first: Vue y Pinia solo obtienen correo mediante `ReadRepository`, que responde desde SQLite local. Una operación `ensure…` registra o deduplica una necesidad y resuelve su `Promise` sin esperar a la red; los datos llegan después mediante `onChange`.
 
-La frontera Repository se divide en `ReadRepository`, consumido por Pinia/UI, y `SyncPort`, consumido por Coordinador/Outbox. Cliente JMAP, Coordinador y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y usa `invoke()` únicamente para cruzar a la persistencia Rust.
+La frontera Repository se divide en `ReadRepository`, consumido por Application/Pinia, y `SyncPort`, consumido por Coordinador/Outbox. Cliente JMAP, Coordinador y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y cruza a la persistencia exclusivamente mediante `SyncPort`; su adaptador Tauri concentra `invoke()`.
 
 El ciclo local y el remoto son independientes. `LocalReady + RemoteAnonymous` es válido: la DEK del SQLite local procede del secure store del sistema operativo, mientras el token JMAP solo vive en memoria del Worker. Passkey/WebAuthn autentica al servidor y no deriva la clave SQLCipher.
 
@@ -46,22 +48,22 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 
 * **Responsabilidad:** Separar consumidores sin exponer el motor. `ReadRepository` ofrece lecturas locales, registro atómico de cambios optimistas y envíos, `ensureFolderWindow`/`ensureMessageBody` y `onChange`. `SyncPort` permite al Coordinador/Outbox aplicar lotes, avanzar cursores y transicionar `PendingMutation`.
 * **Qué NO hace:** No expone SQL, tablas, `invoke()`, rutas de archivo ni tipos de transporte JMAP. `ensure…` nunca promete que los datos remotos ya llegaron.
-* **Dependencias:** Una implementación de persistencia; Motor Tauri/Rust en el MVP.
-* **Consumidores:** Pinia/UI consume solo `ReadRepository`; Coordinador y Outbox consumen solo `SyncPort`.
+* **Dependencias:** Tipos del dominio y errores propios del contrato. En el MVP, adaptadores TypeScript Tauri satisfacen estos contratos y cruzan por IPC hacia el Motor Rust.
+* **Consumidores:** Application/Pinia consume solo `ReadRepository`; Coordinador y Outbox consumen solo `SyncPort`.
 * **Datos de entrada:** IDs de cuenta/mailbox/vista/email, `position + limit`, filtro/orden, parches semánticos, intención de envío, lotes normalizados, cursores y transiciones.
 * **Datos de salida:** Entidades/proyecciones locales, comprobantes transaccionales, `onChange` y errores `not_found | conflict | storage_unavailable | encryption_locked | migration_failed`.
 * **Estado:** El contrato no posee autoridad de dominio. Una implementación puede mantener suscripciones y solicitudes `ensure…` en vuelo.
 * **Persistencia:** Ninguna por sí misma. Debe preservar `cambio optimista + PendingMutation` y `cambios remotos + nuevo cursor` como transacciones atómicas.
-* **Networking:** Ninguno. El kit de contrato por implementar incluye mock en memoria de ambos puertos y suite de conformidad reutilizable contra mock y Motor Tauri; Motor Web se añadirá a esa misma suite en su iteración futura.
+* **Networking:** Ninguno. El kit de contrato por implementar incluye mock en memoria de ambos puertos y suite de conformidad reutilizable contra el mock y los adaptadores Tauri respaldados por el Motor Rust; Motor Web se añadirá a esa misma suite en su iteración futura.
 
 ---
 
 ## 5. Motor Tauri/Rust
 
-* **Responsabilidad:** Implementar `ReadRepository` y `SyncPort` sobre SQLite nativo + SQLCipher; ejecutar consultas, transacciones y migraciones; generar/recuperar la DEK aleatoria de 32 bytes mediante el secure store del sistema operativo; exponer comandos `invoke()` explícitos y validados; emitir cambios mediante eventos Tauri.
+* **Responsabilidad:** Implementar en Rust la semántica y persistencia que los adaptadores TypeScript exponen mediante `ReadRepository` y `SyncPort`; ejecutar consultas, transacciones y migraciones sobre SQLite nativo + SQLCipher; generar/recuperar la DEK aleatoria de 32 bytes mediante el secure store del sistema operativo; exponer comandos `invoke()` explícitos y validados; emitir cambios mediante eventos Tauri. Rust no implementa literalmente interfaces TypeScript: IPC conecta ambas fronteras.
 * **Qué NO hace:** No renderiza, no aloja Cliente JMAP/Coordinador/Outbox, no retransmite `fetch`/WebSocket, no expone SQL, shell, filesystem ni secure store genéricos, no usa WASM/OPFS y no recibe la DEK desde TypeScript.
 * **Dependencias:** Backend Rust, SQLite nativo, SQLCipher, secure store del SO, Tauri v2 Capabilities System default-deny e Isolation Pattern.
-* **Consumidores:** Adaptadores Tauri de `ReadRepository`/`SyncPort`; el Worker TypeScript usa el segundo mediante `invoke()`.
+* **Consumidores:** Adaptadores Tauri de `ReadRepository`/`SyncPort`; el Worker TypeScript consume el segundo a través de `TauriSyncPort`, que concentra `invoke()`.
 * **Datos de entrada:** Consultas y comandos semánticos validados, lotes normalizados y transiciones de mutaciones. La autenticación remota no entrega la clave local.
 * **Datos de salida:** Resultados locales tipados, comprobantes atómicos, pendientes/cursores y eventos de cambio.
 * **Estado:** Handle SQLCipher abierto, transacciones y suscripciones de eventos. La proyección local distingue apertura correcta de `encryption_locked` y demás errores. El modelo exacto de tareas/hilos internos se decide durante la implementación del motor.
@@ -135,7 +137,7 @@ Imagina que arrancas la aplicación sin conexión. Rust recupera la DEK del secu
 5. **Completar la ventana no bloquea la pantalla.** `ensureFolderWindow` registra o deduplica la necesidad y resuelve. Si no hay sesión remota, el trabajo espera sin impedir la lectura local.
 6. **Cuando te autenticas, empieza el ciclo remoto.** El Passkey se ejecuta en el navegador del sistema. El token resultante entra solo en la memoria del Worker; no desbloquea la DB ni pasa por Pinia.
 7. **El Worker habla JMAP directamente.** El Coordinador lee el cursor por `SyncPort`; Cliente JMAP usa `fetch`/WebSocket contra el servidor. `StateChange` solo dispara la consulta incremental.
-8. **Los cambios se vuelven locales antes de ser visibles.** El Worker envía el lote normalizado por `SyncPort`/`invoke()`; Rust confirma datos y nuevo cursor en una transacción SQLCipher y emite un evento Tauri.
+8. **Los cambios se vuelven locales antes de ser visibles.** El Worker entrega el lote normalizado a `SyncPort`; `TauriSyncPort` concentra `invoke()` y Rust confirma datos y nuevo cursor en una transacción SQLCipher antes de emitir un evento Tauri.
 9. **Pinia vuelve a leer.** `ReadRepository.onChange` recibe el evento, Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
 10. **Al abrir un mensaje se repite la regla.** Si falta el cuerpo, `ensureMessageBody` lo agenda. Cuando llega, el Cliente JMAP entrega `{ text, html }`, Rust lo cifra y el evento provoca otra lectura.
 11. **El HTML se trata como hostil.** Vue sanitiza el raw en cada render, elimina contenido activo y remoto y lo muestra dentro del sandbox bajo CSP; no persiste el resultado sanitizado.

@@ -4,6 +4,8 @@
 
 Este documento describe el cliente de correo que vamos a construir: una aplicación **local-first** basada en **Vue 3**. El MVP actual se entrega únicamente como aplicación de escritorio **Tauri v2**, con TypeScript en el webview y Worker, Rust en la frontera nativa y SQLite + SQLCipher como base local. La entrega **Web/PWA se conserva como dirección futura**, pero está diferida y no forma parte del camino crítico ni de la aceptación del MVP.
 
+Las reglas canónicas de capas, imports y dirección de dependencias se encuentran en [layers.md](layers.md).
+
 El cliente habla **JMAP real** (HTTP + WebSocket) contra nuestro propio servidor, y es explícitamente opcional: el servidor también expone IMAP y SMTP estándar, así que Apple Mail, apps de Android o cualquier cliente de terceros pueden usar la misma cuenta sin pasar por esta app.
 
 Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc) y adaptar lo mejor de cada una a un contexto distinto: single-node, embebido, para un máximo de 30 personas.
@@ -21,10 +23,10 @@ Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc
 *   **Lenguaje principal:** TypeScript para Vue/Pinia y para Cliente JMAP, Coordinador y Outbox; Rust queda limitado a persistencia, cifrado y secure store de Tauri.
 *   **Framework UI:** Vue 3 (Composition API), Vite como bundler — igual que Stormbox, por continuidad de patrones ya probados.
 *   **Entrega del MVP:** Tauri v2, con Vue dentro del webview y backend Rust. No depende de WASM, OPFS ni políticas de almacenamiento del navegador.
-*   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository`, consumido por Pinia/UI, y `SyncPort`, consumido por Coordinador/Outbox. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
+*   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository`, consumido por Application/Pinia, y `SyncPort`, consumido por Coordinador/Outbox. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
 *   **Orquestador de sincronización y concurrencia:**
     *   Cliente JMAP, Coordinador de sincronización y Outbox tienen una única implementación en TypeScript.
-    *   En Tauri corre en un Worker normal dentro del webview: habla JMAP directamente mediante `fetch`/WebSocket y cruza por `invoke()` únicamente para persistir a través de Rust. Los cambios se notifican mediante el sistema de eventos de Tauri.
+    *   En Tauri corre en un Worker normal dentro del webview: habla JMAP directamente mediante `fetch`/WebSocket y cruza por los adaptadores Tauri/`invoke()` únicamente para persistir a través de Rust. Los cambios se notifican mediante el sistema de eventos de Tauri.
     *   Rust no aloja ni es dueño del cliente JMAP. Su responsabilidad en esta ruta se limita a SQLite nativo, SQLCipher y secure store del sistema operativo.
     *   Tauri configura la política `backgroundThrottling: "throttle"`. El throttling del webview en background es un riesgo aceptado para el MVP.
 *   **Protocolo hacia el servidor:** el Worker TypeScript habla JMAP estándar directamente sobre HTTPS, con push por WebSocket. No pasa la red por Rust. Extensiones propias de UI (si hacen falta) se declaran bajo un namespace propio, sin dejar de ser JMAP válido.

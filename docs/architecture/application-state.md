@@ -1,5 +1,7 @@
 Pinia es la capa de estado efímero de Application para Vue 3; no es una segunda base de datos.
 
+Pinia pertenece a Application; sus dependencias permitidas y prohibidas están definidas en [layers.md](layers.md).
+
 Stores mínimos del MVP Tauri:
 
 runtime

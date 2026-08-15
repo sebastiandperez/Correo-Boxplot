@@ -11,6 +11,7 @@ Si este es tu primer paso y el repositorio está vacío o casi vacío, tu tarea 
 Estos documentos son autoritativos, con prioridad sobre cualquier inferencia que hagas del código existente — el proyecto está en etapa temprana y el código todavía no refleja todas las decisiones:
 
 - `docs/architecture/overview.md` — filosofía y decisiones de arquitectura del cliente.
+- `docs/architecture/layers.md` — reglas canónicas de capas, imports, fronteras y mapeo de carpetas.
 - `docs/architecture/security.md` — modelo de amenazas y capas de defensa obligatorias.
 - `docs/diagrams/layers-components.mmd`, `docs/architecture/domain.md`, `docs/architecture/components.md` — detalle de capas, dominio y componentes; genera código que los implemente, no que los reinterprete.
 - `docs/planning/roadmap.md` — secuencia de implementación vigente y estado formal de Gates.
@@ -29,7 +30,7 @@ Si encuentras una decisión que no está en ninguno de estos documentos, márcal
 - **UI y estado:** Vue 3, Composition API, TypeScript y Pinia.
 - **Entrega del MVP — Tauri v2:** backend en Rust, acceso nativo a SQLite + SQLCipher (sin WASM ni OPFS).
 - **Entrega futura — Web/PWA:** conserva la dirección `wa-sqlite`/OPFS, pero sus decisiones de cifrado, credenciales, multi-tab y `SharedWorker` están diferidas.
-- **Abstracción de storage:** `ReadRepository` sirve a Pinia/UI y `SyncPort` a Coordinador/Outbox. El código Vue/Pinia nunca importa directamente el motor.
+- **Abstracción de storage:** `ReadRepository` sirve a Application/Pinia y `SyncPort` a Coordinador/Outbox. El código Vue/Pinia nunca importa directamente el motor.
 - **Protocolo hacia el servidor:** JMAP real sobre HTTPS + WebSocket para push. No implementes un RPC propio ni asumas otro protocolo.
 - **Runtime de red/sync:** Cliente JMAP, Coordinador y Outbox son TypeScript en un Worker normal del webview Tauri; hablan JMAP directo. Rust solo administra SQLite, SQLCipher y secretos locales.
 
@@ -44,8 +45,12 @@ Si encuentras una decisión que no está en ninguno de estos documentos, márcal
 
 ## Convenciones de código
 
+- Antes de crear imports entre módulos, respeta las reglas de dependencia de `docs/architecture/layers.md`.
+- `src/components/` no importa JMAP ni llama directamente IPC de persistencia; Domain no importa infraestructura.
+- Coordinator y Outbox persisten solo mediante `SyncPort`; JMAP Client no conoce Pinia/UI.
+- Los adaptadores TypeScript Tauri satisfacen `ReadRepository`/`SyncPort` y concentran `invoke()`; Rust implementa su semántica de persistencia y nunca habla JMAP.
 - TypeScript estricto en toda la capa Vue/Pinia.
-- Los métodos de `ReadRepository`/`SyncPort` se mantienen compatibles con la suite de conformidad. En el MVP se implementan en Tauri; cualquier cambio debe seguir siendo expresable por el futuro adaptador Web sin obligar a implementarlo ahora.
+- Los métodos de `ReadRepository`/`SyncPort` se mantienen compatibles con la suite de conformidad. En el MVP los satisfacen adaptadores TypeScript Tauri respaldados por el Motor Rust; cualquier cambio debe seguir siendo expresable por el futuro adaptador Web sin obligar a implementarlo ahora.
 - TypeScript/Vue usa ESLint flat config y Prettier; Rust usa rustfmt y Clippy con warnings como error.
 - Las dependencias directas se fijan exactamente y los lockfiles se versionan. No autorices scripts de instalación ni debilites protecciones de pnpm globalmente.
 - SQLCipher es externo `4.17.0` mediante el feature `rusqlite/sqlcipher`; no uses `bundled-sqlcipher` ni SQLite plaintext.

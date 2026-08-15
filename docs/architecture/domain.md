@@ -4,6 +4,8 @@
 
 Este documento define el modelo que vive en el SQLite local del cliente. No modela el servidor, su base de datos, su acceso al proveedor real ni sus interfaces IMAP/SMTP.
 
+Domain es independiente de infraestructura. Sus reglas de ubicación e imports se definen en [layers.md](layers.md); este documento conserva únicamente la semántica, relaciones e invariantes del modelo.
+
 El modelo sigue la semántica de JMAP porque JMAP es el único protocolo entre este cliente y el servidor propio. La compatibilidad IMAP existe detrás del servidor y no introduce UIDs, carpetas IMAP ni reglas de traducción en el cliente.
 
 La fuente de verdad para cada lectura de la interfaz es el SQLite local cifrado con SQLCipher. El servidor sigue siendo la autoridad remota: sus cambios se proyectan en SQLite mediante sincronización, mientras que las acciones del usuario se representan primero de forma local y se sincronizan después. Una ausencia local nunca autoriza a la UI a consultar la red directamente.
@@ -21,14 +23,14 @@ Los nombres de campos descritos aquí son semánticos. El schema físico inicial
 
 La antigua frontera genérica Repository queda dividida en dos contratos:
 
-*   **`ReadRepository`:** lo consume exclusivamente Pinia/UI. Expone lecturas locales, registro de mutaciones optimistas y envíos, `ensureFolderWindow`, `ensureMessageBody` y `onChange`.
+*   **`ReadRepository`:** lo consume exclusivamente Application/Pinia. Expone lecturas locales, registro de mutaciones optimistas y envíos, `ensureFolderWindow`, `ensureMessageBody` y `onChange`.
 *   **`SyncPort`:** lo consumen exclusivamente el Coordinador de sincronización y Outbox. Expone cursores, vistas, lotes normalizados y el ciclo durable de `PendingMutation` sin filtrar SQL ni detalles del motor.
 
 Los errores de ambos contratos son tipados: `not_found | conflict | storage_unavailable | encryption_locked | migration_failed`.
 
 `ensureFolderWindow` y `ensureMessageBody` son no bloqueantes respecto de la red: su `Promise` resuelve cuando la solicitud queda registrada o deduplicada. La llegada o actualización de datos se anuncia después mediante `onChange` para que Pinia vuelva a leer.
 
-El entregable de implementación del contrato es un mock en memoria de `ReadRepository` + `SyncPort` y una suite de conformidad reutilizable contra ese mock y Motor Tauri. La futura iteración Web añadirá su motor a la misma suite sin cambiar la semántica congelada.
+El entregable de implementación del contrato es un mock en memoria de `ReadRepository` + `SyncPort` y una suite de conformidad reutilizable contra ese mock y los adaptadores Tauri respaldados por el Motor Rust. La futura iteración Web añadirá su motor a la misma suite sin cambiar la semántica congelada.
 
 ### 1.2 Estado de Application: fuera del modelo durable
 

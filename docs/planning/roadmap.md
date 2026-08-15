@@ -26,14 +26,14 @@ Solo se serializa en estas fronteras:
 3. **Componentes antes de recorridos verticales.** La prueba local Tauri necesita Vue, Pinia y Motor Tauri; sync necesita Cliente JMAP + Coordinador + Motor; send necesita Cliente JMAP + Outbox + Motor.
 4. **Recorridos integrados antes de aceptación.** Offline, recuperación, seguridad y E2E verifican interacciones reales y no pueden cerrarse únicamente con contratos aislados.
 
-No hay dependencia bloqueante entre Vue, Pinia, Motor Tauri, kit Repository y Cliente JMAP durante su construcción inicial. Vue usa un doble de la API pública del store; Pinia usa el mock de `ReadRepository`; Motor Tauri implementa los puertos; JMAP no depende de ninguno de ellos. Coordinador y Outbox pueden avanzar en paralelo una vez existe Cliente JMAP porque la solicitud de reconciliación ya cruza un contrato fijado.
+No hay dependencia bloqueante entre Vue, Pinia, Motor Tauri, kit Repository y Cliente JMAP durante su construcción inicial. Vue usa un doble de la API pública del store; Pinia usa el mock de `ReadRepository`; los adaptadores TypeScript Tauri satisfacen los puertos y delegan la semántica de persistencia al Motor Rust; JMAP no depende de ninguno de ellos. Coordinador y Outbox pueden avanzar en paralelo una vez existe Cliente JMAP porque la solicitud de reconciliación ya cruza un contrato fijado.
 
 ## 3. Topología vigente del MVP
 
 | Elemento | Decisión Tauri MVP |
 | --- | --- |
 | Runtime de JMAP/Coordinator/Outbox | Worker normal TypeScript dentro del webview |
-| Persistencia | `SyncPort`/`ReadRepository` → `invoke()` validado → Rust → SQLite + SQLCipher |
+| Persistencia | `SyncPort`/`ReadRepository` → adaptadores Tauri TypeScript → `invoke()` validado → Rust → SQLite + SQLCipher |
 | Red JMAP | `fetch` + WebSocket directos desde TypeScript; nunca por Rust |
 | Cambios locales | Sistema de eventos de Tauri → `onChange` → relectura local |
 | Clave local | DEK aleatoria 32 bytes, creada/recuperada y usada solo en Rust |
@@ -142,7 +142,7 @@ Fuentes de verdad disponibles y aceptación de que el informe técnico reciente 
 
 #### 0-A — topología
 
-Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri corre en Worker normal, usa JMAP directo y cruza a Rust solo para `ReadRepository`/`SyncPort`. Rust no aloja JMAP.
+Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri corre en Worker normal, usa JMAP directo y cruza a Rust solo mediante los adaptadores Tauri que satisfacen `ReadRepository`/`SyncPort`. Rust no aloja JMAP.
 
 #### 0-B — dominio y Repository
 
@@ -174,7 +174,7 @@ Gate 0 cerrado y contratos versionados a nivel documental.
 
 #### 1-A — Interfaz Repository
 
-Materializar firmas de `ReadRepository`/`SyncPort`, mock en memoria y suite de conformidad. Cubrir errores, paginación, `ensure…`, transiciones legales y las dos atomicidades. La suite se ejecuta primero contra el mock y luego contra Tauri.
+Materializar firmas de `ReadRepository`/`SyncPort`, mock en memoria y suite de conformidad. Cubrir errores, paginación, `ensure…`, transiciones legales y las dos atomicidades. La suite se ejecuta primero contra el mock y luego contra los adaptadores Tauri respaldados por el Motor Rust.
 
 #### 1-B — Estado de aplicación (Pinia)
 
@@ -186,7 +186,7 @@ Construir lista, lector y compositor contra la API pública del store. Implement
 
 #### 1-D — Motor Tauri/Rust
 
-Partir del schema declarativo ya adoptado en `src-tauri/src/db/migrations/0001_initial.sql` e implementar SQLite + SQLCipher con `rusqlite 0.40.2` + feature `sqlcipher`, migration runner, DEK/secure store, queries, repositories, comandos mínimos, transacciones, inicialización runtime y eventos. La presencia de `0001` no implementa ni cierra el Motor Tauri. Pasar la suite Repository sin exponer clave, SQL, shell o filesystem genéricos. Probar cifrado real, versiones runtime, clave incorrecta y fallo cerrado. **OPEN:** provisioning/packaging reproducible en Windows, macOS y Linux; no se permite `bundled-sqlcipher` ni plaintext como atajo.
+Partir del schema declarativo ya adoptado en `src-tauri/src/db/migrations/0001_initial.sql` e implementar SQLite + SQLCipher con `rusqlite 0.40.2` + feature `sqlcipher`, migration runner, DEK/secure store, queries, repositories, comandos mínimos, transacciones, inicialización runtime y eventos. La presencia de `0001` no implementa ni cierra el Motor Tauri. Hacer que los adaptadores Tauri respaldados por el Motor Rust pasen la suite Repository sin exponer clave, SQL, shell o filesystem genéricos. Probar cifrado real, versiones runtime, clave incorrecta y fallo cerrado. **OPEN:** provisioning/packaging reproducible en Windows, macOS y Linux; no se permite `bundled-sqlcipher` ni plaintext como atajo.
 
 #### 1-E — Cliente JMAP TypeScript
 
@@ -194,7 +194,7 @@ Mantener primero una interfaz JMAP propia. `jmap-jam 0.13.3` es el candidato pre
 
 ### Criterio de salida
 
-* Mock y Motor Tauri pasan la misma suite de puertos.
+* Mock y adaptadores Tauri respaldados por el Motor Rust pasan la misma suite de puertos.
 * Pinia/Vue recorren lectura y encolado con dobles, sin red ni persistencia paralela.
 * SQLCipher y secure store fallan cerrados; la DEK no cruza IPC.
 * Cliente JMAP pasa pruebas de transporte/parsing y no deja token en reposo.
@@ -214,7 +214,7 @@ Mantener primero una interfaz JMAP propia. `jmap-jam 0.13.3` es el candidato pre
 
 #### 2-A — corte local-first Tauri
 
-Conectar Vue/Pinia/`ReadRepository`/Rust y demostrar lectura de bandeja/cuerpo, `onChange`, mutaciones optimistas y envío encolado sin red.
+Conectar Vue/Pinia/`ReadRepository`/adaptadores Tauri/Rust y demostrar lectura de bandeja/cuerpo, `onChange`, mutaciones optimistas y envío encolado sin red.
 
 #### 2-B — Coordinador
 

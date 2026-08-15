@@ -67,10 +67,12 @@ Pinia proyecta este ciclo sin custodiar secretos: `runtime.local = opening | rea
 
 Tauri v2 parte de cero capacidades y habilita únicamente comandos Rust explícitos, mínimos y validados por ventana. El **Isolation Pattern** intercepta el puente IPC antes de alcanzar el núcleo nativo.
 
+La ubicación y dirección de esta frontera se rige por [layers.md](layers.md): los adaptadores TypeScript concentran el IPC, SQLCipher/DEK permanecen en Rust y el networking JMAP no cruza el Local Engine.
+
 Reglas:
 
 * No se expone shell genérico, filesystem genérico, SQL arbitrario ni acceso libre al secure store.
-* El webview solo invoca operaciones semánticas de `ReadRepository`/`SyncPort` necesarias para persistencia.
+* Los adaptadores Tauri del webview solo invocan operaciones semánticas de `ReadRepository`/`SyncPort` necesarias para persistencia.
 * SQLCipher, la DEK y el secure store existen únicamente en Rust.
 * La DEK nunca se serializa ni atraviesa IPC hacia TypeScript.
 * Cliente JMAP, Coordinador y Outbox siguen en el Worker TypeScript y usan `fetch`/WebSocket directo; Rust no retransmite ni custodia la sesión JMAP.

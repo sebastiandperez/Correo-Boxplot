@@ -11,9 +11,9 @@ Este documento conserva la decisión operativa del stack; el razonamiento exhaus
 El MVP es **Tauri-only**. Web/PWA, OPFS, wa-sqlite, `SharedWorker` y multi-tab están diferidos y no son requisitos ni dependencias de esta iteración.
 
 ```text
-Vue / Pinia → ReadRepository → Rust → SQLite + SQLCipher
+Vue / Pinia → ReadRepository → Tauri adapter → semantic invoke → Rust → SQLite + SQLCipher
 
-JMAP → Coordinator → SyncPort → Rust → SQLite
+JMAP → Coordinator → SyncPort → Tauri adapter → semantic invoke → Rust → SQLite
 SQLite → onChange → ReadRepository → Pinia → Vue
 
 Composer → PendingMutation → Outbox → JMAP

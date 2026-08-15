@@ -3,6 +3,7 @@
 ## Arquitectura vigente
 
 * [Overview](architecture/overview.md)
+* [Capas y reglas de dependencia](architecture/layers.md)
 * [Componentes](architecture/components.md)
 * [Dominio local](architecture/domain.md)
 * [Estado de Application](architecture/application-state.md)
