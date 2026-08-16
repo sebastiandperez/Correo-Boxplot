@@ -22,7 +22,7 @@ Regla de actualización P-03:
 
 SQLite commit → LocalChangeSource → invalidation → ReadRepository re-read → Pinia refresh → Vue
 
-`LocalChangeSource` P-03 está implementado como contrato, con review pendiente. Es una señal post-commit no durable y puede coalescer o duplicar hints. No transporta la nueva autoridad: Application siempre relee el estado committed mediante `ReadRepository` y no interpreta el orden como estado de negocio.
+`LocalChangeSource` P-03 es un contrato cerrado. Es una señal post-commit no durable y puede coalescer o duplicar hints. Permite subscriptions independientes y no transporta la nueva autoridad: Application siempre relee el estado committed mediante `ReadRepository` y no interpreta el orden como estado de negocio. Un no-op puro exitoso puede no notificar; cualquier invalidación conservadora válida sigue siendo aceptable.
 
 El orden obligatorio de inicialización y reanudación es `subscribe → read current state → render`. Hacer `read → subscribe` abriría una carrera en la que un commit podría ocurrir entre ambas operaciones y perderse su notificación no durable. No existe replay; después de reconnect/resume se vuelve a suscribir y releer.
 

@@ -1,15 +1,27 @@
 # Estrategia de testing
 
+## Contract testing de Ports
+
+TEST-00 está **COMPLETE** y la arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque faltan suites runtime, conformance de `MemoryLocalEngine` y audit final.
+
+La especificación ejecutable se escribe antes de la implementación: contract specification → abstract harness → reusable suites → implementation-under-test. `MemoryLocalEngine` será el primer IUT y no puede redefinir las suites.
+
+Los niveles congelados son:
+
+1. type contracts de Domain y Ports;
+2. runtime contracts reutilizables por Port;
+3. contrato sistémico P-02 commit → P-03 invalidation → P-01 reread;
+4. controles opcionales de faults/races/restart/corruption;
+5. integración adapter/persistencia;
+6. E2E Tauri.
+
+TEST-01 implementará los runners y el harness; TEST-00 no contiene runners, adapters ni Local Engine.
+
 ## TypeScript y Vue
 
 Vitest es el runner unitario. Vue Test Utils se usa para component tests que necesiten el DOM; no se añade jsdom ni otro runtime DOM hasta que exista ese caso concreto.
 
-La suite debe crecer en cuatro niveles:
-
-1. unitarios de dominio, stores, Coordinator y Outbox;
-2. smoke/component tests de Vue + Pinia;
-3. conformance tests reutilizables para `ReadRepository` y `SyncPort`;
-4. integración Tauri cuando exista el adaptador real.
+Además de los seis niveles contractuales, continúan los tests unitarios de Domain, stores, Coordinator y Outbox, y los smoke/component tests de Vue + Pinia cuando exista un consumidor real.
 
 ```bash
 pnpm test

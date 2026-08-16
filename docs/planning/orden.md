@@ -12,11 +12,17 @@ P0 — Ports · EN PROGRESO
 │
 ├── P-01 ReadRepository · CLOSED
 ├── P-02 SyncPort · CLOSED
-└── P-03 LocalChangeSource · IMPLEMENTADO / REVIEW PENDIENTE
+└── P-03 LocalChangeSource · CLOSED
 
-P0 — adapters y conformance doubles
+P0 — Port contract testing · DISEÑO CONGELADO
 │
-└── B-02 Memory adapters + harness
+├── TEST-00 arquitectura de tests · COMPLETE
+├── TEST-01 suites + harness · READY
+└── PORTS global · NOT CLOSED hasta conformance runtime + audit final
+
+P0 — primer IUT y adapters
+│
+└── MemoryLocalEngine después de TEST-01; adapters posteriores
 
 P0 — Local Engine / persistence integration
 │

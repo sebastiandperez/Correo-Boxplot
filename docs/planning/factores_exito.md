@@ -5,7 +5,7 @@ RR-03	ReadRepository	metadata de adjuntos cacheada vacía	readAttachmentRefs()	D
 RR-04	ReadRepository	View existe con coverage parcial	readMailboxView()	Conserva la MailboxView D-06 exacta
 RR-05	ReadRepository	IDs de Email con duplicados	readEmails()	Conserva longitud, orden y duplicados posicionales
 RR-06	ReadRepository	owner ausente	lectura owned	Devuelve ownerAbsent como éxito semántico
-LC-01	LocalChangeSource P-03 implementado/review pendiente	commit local completado	invalidación post-commit	consumer relee con ReadRepository; evento no es autoridad
+LC-01	LocalChangeSource P-03 CLOSED	commit local con cambio observable	invalidación post-commit	cobertura semántica; consumer relee con ReadRepository; evento no es autoridad
 SP-01	SyncPort	cursor A + delta normalizado	applyCollectionSync()	delta y cursor B commit juntos mediante CAS
 SP-02	SyncPort	cannotCalculateChanges ya resuelto	applyCollectionSync(replace)	snapshot completo y nuevo cursor commit juntos
 SP-03	SyncPort	Email sin body cacheado	cacheEmailBody()	body completo visible después del commit

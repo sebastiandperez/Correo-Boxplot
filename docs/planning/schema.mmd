@@ -21,7 +21,7 @@ flowchart LR
 
         SP["SyncPort · P-02 CLOSED<br/><br/>Consumers:<br/>Application / Coordinator / Outbox<br/><br/>Input:<br/>semantic atomic transitions<br/><br/>Output:<br/>committed WriteResult"]
 
-        LCS["LocalChangeSource · P-03 IMPLEMENTED<br/>REVIEW PENDING<br/><br/>Output:<br/>invalidaciones post-commit<br/><br/>No es autoridad"]
+        LCS["LocalChangeSource · P-03 CLOSED<br/><br/>Output:<br/>invalidaciones post-commit<br/><br/>No es autoridad"]
 
         JC["JmapClient<br/><br/>Consumers futuros:<br/>Coordinator / Outbox<br/><br/>Input:<br/>JMAP intents<br/><br/>Output:<br/>normalized domain data"]
     end
@@ -30,9 +30,9 @@ flowchart LR
 
         Domain["Domain Types · D-01…D-10 completos<br/><br/>Account · Identity · Mailbox · Email<br/>EmailAddress · SendIntent · MailboxView<br/>CollectionSyncCursor · PendingMutation<br/>EmailBody · AttachmentRef"]
 
-        MemRead["MemoryReadRepository<br/><br/>Uso:<br/>tests + conformance"]
+        MemRead["MemoryReadRepository<br/><br/>Parte del primer IUT:<br/>MemoryLocalEngine"]
 
-        MemSync["MemorySyncPort<br/><br/>Uso:<br/>tests + conformance"]
+        MemSync["MemorySyncPort<br/><br/>Parte del primer IUT:<br/>MemoryLocalEngine"]
 
         TauriRead["TauriReadRepository<br/><br/>Responsabilidad:<br/>RR → semantic IPC"]
 

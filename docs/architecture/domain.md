@@ -27,7 +27,7 @@ Es deliberadamente posible que el Domain requiera conceptos todavía ausentes de
 
 ### 1.2 Frontera con Ports
 
-`ReadRepository` P-01 está cerrado como port de consultas puras sobre estado local committed. `SyncPort` P-02 está cerrado como frontera de transiciones semánticas atómicas para casos de escritura de Application, Coordinator y Outbox. `LocalChangeSource` P-03 está implementado con review pendiente como fuente separada de invalidaciones post-commit; las necesidades de materialización remota pertenecen a futura orquestación Application → Coordinator.
+`ReadRepository` P-01 está cerrado como port de consultas puras sobre estado local committed. `SyncPort` P-02 está cerrado como frontera de transiciones semánticas atómicas para casos de escritura de Application, Coordinator y Outbox. `LocalChangeSource` P-03 está cerrado como fuente separada de invalidaciones post-commit; las necesidades de materialización remota pertenecen a futura orquestación Application → Coordinator. Los tres contratos están cerrados individualmente, aunque Ports como fase espera conformance runtime y audit final.
 
 ### 1.3 Estado de Application: fuera del modelo durable
 
@@ -490,7 +490,7 @@ La estrategia concreta de generación/encoding durable de IDs y la organización
 
 ## 12. Trabajo deliberadamente abierto después de D-01→D-10
 
-D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo y Domain queda cerrado. P-01 `ReadRepository` y P-02 `SyncPort` también están cerrados; P-03 `LocalChangeSource` está implementado con review pendiente. Los Ports evolucionan fuera del Domain sin reabrirlo y todavía requieren su audit conjunto antes de declararse cerrados. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
+D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo y Domain queda cerrado. P-01 `ReadRepository`, P-02 `SyncPort` y P-03 `LocalChangeSource` también están cerrados individualmente. Los Ports evolucionan fuera del Domain sin reabrirlo y todavía requieren conformance runtime y audit conjunto antes de declarar cerrada la fase. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
 
 ## 13. Nota para el diseño del servidor
 

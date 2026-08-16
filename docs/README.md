@@ -19,6 +19,7 @@
 * [Stack canónico](development/stack.md)
 * [Setup](development/setup.md)
 * [Testing](development/testing.md)
+* [Arquitectura de contract testing de Ports](testing/port-contract-testing.md)
 * [Git workflow](development/git-workflow.md)
 
 ## Diseño
