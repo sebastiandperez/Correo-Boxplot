@@ -1,5 +1,7 @@
 # Modelo de dominio local del cliente
 
+**Estado:** implementación D-01→D-10 completa; freeze final pendiente de Domain Final Audit #2.
+
 ## 1. Alcance y criterio de modelado
 
 Este documento define el **modelo lógico compartido** del cliente. No es un espejo de SQLite ni de una respuesta JMAP y no modela el servidor, su base de datos, su acceso al proveedor real ni sus interfaces IMAP/SMTP.
@@ -66,11 +68,12 @@ La relación `Email`–`Mailbox` es N:M. Un correo JMAP puede pertenecer a varia
 
 `Account` es la representación durable local de una JMAP Account concreta. Es la raíz de pertenencia de mailboxes, identidades, mensajes, cursores y mutaciones incluso durante un arranque offline o después de logout.
 
-**Campos mínimos**
+**Core D-01**
 
-* `AccountKey` — **`[SOLO LOCAL]`**. Identidad estable de la Account dentro de esta instalación y caché.
-* `RemoteAccountRef` — binding remoto formado conceptualmente por `ServiceKey` + JMAP Account ID.
-* `name`, `isPersonal`, `isReadOnly` y las capacidades o límites remotos que el cliente proyecte — **`[SERVIDOR → LOCAL]`**. Son metadata y no participan en la identidad. Ningún DTO o tipo de librería JMAP cruza al Domain.
+* `key: AccountKey` — **`[SOLO LOCAL]`**. Identidad estable de la Account dentro de esta instalación y caché.
+* `remoteRef: RemoteAccountRef` — binding remoto compuesto exclusivamente por `serviceKey: ServiceKey` + `jmapAccountId: JmapAccountId`.
+
+`name`, `isPersonal`, `isReadOnly`, capabilities y límites remotos no forman parte del core `Account` D-01. Si una iteración futura necesita proyectar esa metadata, deberá modelarla sin redefinir la identidad ni filtrar DTOs JMAP al Domain.
 
 `ServiceKey` es la identidad local de una configuración o servicio JMAP conocido por el cliente. No es hostname, URL, username, token ni un identificador que el servidor deba proporcionar. Cambios de endpoint reconocidos como el mismo servicio no cambian por sí solos `ServiceKey` ni `AccountKey`.
 
@@ -157,9 +160,9 @@ La conversación que entrega JMAP no se materializa como entidad `Thread`. Cada 
 
 ### 3.6 EmailAddress y headers de dirección
 
-`EmailAddress` es el value object compartido por las direcciones de correo del Domain. Conserva un `name` nullable y una dirección/email presente. La sintaxis TypeScript y las reglas concretas de validación no se fijan aquí.
+`EmailAddress` es el value object readonly compartido por las direcciones de correo del Domain. Contiene exactamente `name: string | null` y `email: string`. Conserva el valor inbound sin trim, lowercase, parsing ni validación outbound; incluso una dirección vacía o sintácticamente imperfecta es representable.
 
-En Email, `sender`, `from`, `replyTo`, `to`, `cc` y `bcc` conservan conceptualmente `EmailAddress[] | null`:
+En Email, `sender`, `from`, `replyTo`, `to`, `cc` y `bcc` conservan `readonly EmailAddress[] | null`:
 
 * `null` es ausencia conocida o resultado conocido del parsing; nunca significa “todavía no descargado”.
 * Si una propiedad no fue solicitada en un DTO JMAP parcial, no se normaliza artificialmente como `null`.
@@ -230,31 +233,49 @@ La relación es **`[LOCAL → SERVIDOR]`** cuando el usuario mueve, archiva o re
 * Añadir o quitar membership localmente exige una `MailboxMembershipMutation` en la misma transacción.
 * Cambiar membership no duplica ni cambia la identidad de Email.
 
-### 3.9 EmailBody — boundary; D-09 abierto
+### 3.9 D-09 — EmailBody · CLOSED
 
-`EmailBody` es una caché opcional, separada y lazy del contenido descargado bajo demanda. Puede no existir localmente y su ausencia no vuelve incompleto al `Email` de metadata.
+`EmailBody` es la representación visible completa, ya normalizada y cacheada de un Email remoto confirmado. Es un value object readonly con exactamente:
 
-D-09 permanece abierto y decidirá la completitud, representación final, truncation, timestamps de fetch y semántica de las representaciones ausentes. Este freeze no fija esos detalles ni una sintaxis TypeScript.
+* `emailId: ScopedEmailId`.
+* `text: string | null`.
+* `html: string | null`.
 
-Si existe HTML cacheado, sigue siendo contenido remoto raw y no confiable. La sanitización, el sandbox y CSP pertenecen a la frontera de Presentation/Security descrita en [security.md](security.md), no a la identidad ni completitud de Email.
+Su identidad es `ScopedEmailId`; no existe `BodyId`. La ausencia del objeto significa que el cuerpo completo no está cacheado. Su presencia significa que la normalización terminó y la representación completa quedó cacheada. Dentro de un `EmailBody`, `null` significa que esa representación no existe y `""` que existe completa pero vacía. `text = null` y `html = null` simultáneamente es un resultado completo válido sin representación textual o HTML utilizable por el MVP.
 
-### 3.10 AttachmentRef
+No existen `fetchedAt`, `isComplete`, `isTruncated`, `bodyAvailability`, MIME tree, `bodyValues` ni `sanitizedHtml`. Un resultado JMAP truncado permanece en transporte/normalización y no puede producir un `EmailBody`; la factory Domain no puede demostrar esa precondición a partir de strings. Un problema de decoding best-effort sin truncation no crea un estado parcial durable.
 
-Describe un adjunto o una parte inline sin asumir que su contenido binario ya está descargado.
+El HTML cacheado es raw y no confiable. Domain lo conserva exactamente; la sanitización en cada render, el sandbox y CSP pertenecen a la frontera Presentation/Security descrita en [security.md](security.md).
 
-**Campos mínimos**
+### 3.10 D-10 — AttachmentRef · CLOSED
 
-* `ScopedEmailId` — referencia a Email.
-* `partId` — identificador de parte cuyo significado está limitado al Email propietario.
-* `ScopedBlobId` — referencia remota account-scoped cuando exista.
-* `name`, `mediaType`, `size`, `disposition` y `cid` — **`[SERVIDOR → LOCAL]`** cuando existan.
+`AttachmentRef` es un value object readonly de metadata, owned por un Email remoto confirmado, para una parte leaf/no-multipart cuyo binario podría obtenerse después. No es el archivo, un MIME part genérico, una operación de descarga ni un DTO JMAP.
 
-**Invariantes**
+**Shape exacta**
 
-* Los metadatos pueden vivir en SQLite sin que el binario exista localmente.
-* El MVP persiste solo metadata y puede mostrar nombre, tipo y tamaño. No guarda bytes en SQLite ni filesystem.
-* Caché binaria, descarga/guardado, subida, envío con adjuntos, render inline por CID, limpieza y cuotas están fuera del MVP.
-* Una parte inline no se resuelve ni puede eludir DOMPurify, sandbox o CSP en el MVP.
+* `emailId: ScopedEmailId`.
+* `partId: AttachmentPartId`.
+* `blobId: ScopedBlobId`.
+* `name: string | null`.
+* `mediaType: string`.
+* `size: number`.
+* `disposition: string | null`.
+* `cid: string | null`.
+
+`AttachmentPartId` es un string branded, opaco y preservado exactamente. Puede ser `""`, no es un JMAP Id ni es global: solo adquiere scope completo junto con `ScopedEmailId`.
+
+**Identidad e invariantes**
+
+* La identidad es `ScopedEmailId + AttachmentPartId`; `BlobId`, row ID, UUID y `name` no participan.
+* Un mismo Blob puede aparecer en varias parts del mismo Email o en Emails distintos; los refs no se deduplican por `blobId`.
+* `emailId.accountKey == blobId.accountKey`; no existe un `AccountKey` redundante.
+* `name`, `disposition` y `cid` distinguen `null` de `""` y se preservan exactamente.
+* `mediaType` es requerido, no vacío y no puede comenzar por `multipart/` sin importar case; Domain no hace normalización MIME completa.
+* `size` es un safe integer mayor o igual que cero.
+* `disposition` conserva vocabulario abierto; `cid` conserva metadata aunque el renderer CID esté diferido.
+* El objeto no contiene bytes, binary cache, filesystem/localPath, download URL/status, timestamps, MIME tree, `bodyValues`, charset, language, location, headers, subparts ni renderer CID.
+
+`Email.hasAttachment` continúa siendo metadata server-derived y no equivale a contar `AttachmentRef`. La disponibilidad de la colección de refs —no cacheada, cacheada vacía o cacheada con elementos— queda diferida al futuro contrato de lectura/persistencia; no añade flags a `AttachmentRef`.
 
 ## 4. Intención durable de envío
 
@@ -276,15 +297,15 @@ PendingMutation<Send>
 
 `SendIntent` conserva el snapshot exacto e inmutable que el usuario autorizó:
 
-* `AccountKey` y `ScopedIdentityId`.
-* effective From y effective Reply-To.
-* To, Cc y effective Bcc.
-* subject.
-* text body y html body cuando exista.
+* `identityId: ScopedIdentityId`; su `AccountKey` se obtiene del ID scoped y no se duplica.
+* `from: EmailAddress`, derivado exclusivamente de la `Identity` seleccionada.
+* `replyTo`, `to`, `cc` y `bcc` como listas readonly ya resueltas.
+* `subject: string`.
+* `body: SendBody`, con `text: string` y `html: string | null`.
 
-Reply-To y Bcc defaults se resuelven antes de crear `SendIntent`. Outbox no relee la Identity actual para reinterpretar el mensaje. Si la Identity desapareció o ya no autoriza el envío, no se sustituye silenciosamente por otra; la intención falla o requiere una nueva decisión del usuario.
+Reply-To y Bcc defaults se resuelven antes de crear `SendIntent`; Bcc conserva el orden y deduplica únicamente por email exacto durante el merge de user/default. Debe quedar al menos un recipient efectivo. Una Identity wildcard es representable pero no crea un `SendIntent` en el MVP. Outbox no relee la Identity actual para reinterpretar el mensaje. Si la Identity desapareció o ya no autoriza el envío, no se sustituye silenciosamente por otra; la intención falla o requiere una nueva decisión del usuario.
 
-`SendIntent` no contiene `MutationId`, Email ID, EmailSubmission ID, token, SMTP envelope ni attachments outbound. La validación outbound de addresses puede ser más estricta que el parsing inbound, pero sus reglas concretas se definirán durante la materialización correspondiente.
+`SendIntent` no contiene `MutationId`, Email ID, EmailSubmission ID, token, SMTP envelope ni attachments outbound. Su validación outbound mínima exige email no vacío, sin CR/LF/NUL y con contenido a ambos lados de `@`; un display name no puede contener CR/LF/NUL. La autoridad de validación final sigue siendo el servidor.
 
 ## 5. Proyecciones y estado exclusivo del cliente
 
@@ -294,15 +315,14 @@ Reply-To y Bcc defaults se resuelven antes de crear `SendIntent`. Outbox no rele
 
 **Campos mínimos**
 
-* `MailboxViewSpec` o `ViewKey` semántica.
-* `AccountKey` y `ScopedMailboxId`.
-* `FilterSpec` y `SortSpec` canónicos.
+* `spec: MailboxViewSpec`, compuesto por `mailboxId: ScopedMailboxId`, `filter` y `sort`; el Account scope procede de `mailboxId` y no se duplica.
+* En el MVP implementado, `filter` representa `all` y `sort` ordena `receivedAt` ascendente o descendente.
 * `queryState` — token **`[SERVIDOR → LOCAL]`** de esa consulta exacta.
 * `total` — tamaño remoto conocido de la consulta.
 * coverage/window — posiciones materializadas localmente.
 * ordered `MailboxViewItem` — resultados conocidos dentro de la cobertura.
 
-La identidad semántica es `AccountKey + ScopedMailboxId + canonical FilterSpec + canonical SortSpec`. Un `viewId`, `filterHash` o `sortHash` puede existir después como optimización interna, pero nunca es autoridad de igualdad: una colisión no vuelve iguales dos specs distintas. La serialización canónica concreta y la estrategia de hashing quedan abiertas.
+La identidad semántica es `ScopedMailboxId + canonical FilterSpec + canonical SortSpec`; `ScopedMailboxId` ya incorpora `AccountKey`. Un `viewId`, `filterHash` o `sortHash` puede existir después como optimización interna, pero nunca es autoridad de igualdad: una colisión no vuelve iguales dos specs distintas. La serialización canónica concreta y la estrategia de hashing quedan abiertas.
 
 **Invariantes**
 
@@ -318,9 +338,10 @@ Representa la posición y el orden de un Email dentro de una snapshot/view concr
 
 **Campos mínimos**
 
-* referencia a la ViewSpec/ViewKey exacta.
 * `ScopedEmailId`.
 * `position` dentro de la cobertura conocida.
+
+El item no almacena una referencia redundante a la ViewSpec; pertenece a la colección ordered de una `MailboxView` concreta y debe compartir su Account scope.
 
 La estrategia para desplazar posiciones queda abierta para Coordinator.
 
@@ -365,7 +386,7 @@ La estrategia para desplazar posiciones queda abierta para Coordinator.
 2. `KeywordMutation`: target `ScopedEmailId` y cambio semántico de keywords.
 3. `MailboxMembershipMutation`: target `ScopedEmailId` y cambio semántico de membership.
 
-El encoding exacto de los cambios, codec, `payload_version` y representación TypeScript se deciden después.
+El codec durable, `payload_version` y representación física se deciden después; no alteran esta familia Domain ya discriminada.
 
 **Lifecycle**
 
@@ -393,16 +414,16 @@ Al pulsar **Enviar**, los datos se validan, se resuelven los defaults de Identit
 | Categoría | Conceptos |
 | --- | --- |
 | Entidades remotas durables | `Account`, `Mailbox`, `Email`, `Identity` |
-| Values e identidades scoped | `AccountKey`, `ServiceKey`, `RemoteAccountRef`, scoped IDs, `EmailAddress`, `MailboxRole`, `MailboxRights`, `KeywordSet` |
+| Values e identidades scoped | `AccountKey`, `ServiceKey`, `RemoteAccountRef`, scoped IDs, `EmailAddress`, `MailboxRole`, `MailboxRights`, `KeywordSet`, `AttachmentPartId` |
 | Proyecciones locales | `EmailMailbox`, `MailboxView`, `MailboxViewItem` |
-| Estado operativo local durable | `CollectionSyncCursor`, `PendingMutation`, `MutationId`, `SendIntent` |
-| Boundaries separadas/lazy | `EmailBody`, `AttachmentRef` |
+| Estado operativo local durable | `CollectionSyncCursor`, `PendingMutation`, `MutationId`, `SendIntent`, `SendBody` |
+| Proyecciones owned/lazy separadas | `EmailBody`, `AttachmentRef` |
 
 Quedan fuera de Domain: Composer, selección y load state de UI, auth projection, token, DEK, secure-store handles, SQLite row IDs, SQL, Tauri IPC, DTOs o librerías JMAP, HTML sanitization/render policy, Coordinator algorithm y Outbox algorithm.
 
-## 8. Candidate implementation map
+## 8. Implemented Domain map
 
-La siguiente distribución es solo una guía pequeña para la materialización posterior. No crea archivos, no congela nombres finales y no obliga a un archivo por concepto trivial:
+La implementación D-01→D-10 está materializada en módulos pequeños e independientes de infraestructura:
 
 ```text
 src/domain/
@@ -413,12 +434,13 @@ src/domain/
 ├── email.ts
 ├── mailbox.ts
 ├── mailbox-view.ts
-├── mutation.ts
-├── sync.ts
-└── email-content.ts    # D-09 permanece abierto
+├── sync-cursor.ts
+├── pending-mutation.ts
+├── email-body.ts
+└── attachment-ref.ts
 ```
 
-No se deciden aquí branded types, encoding de IDs, UUID/ULID, readonly strategy, factories, runtime validators ni organización exacta de exports.
+La estrategia concreta de generación/encoding durable de IDs y la organización de exports siguen separadas de la semántica ya implementada.
 
 ## 9. Ciclos de vida mínimos
 
@@ -434,7 +456,7 @@ No se deciden aquí branded types, encoding de IDs, UUID/ULID, readonly strategy
 
 1.  `ReadRepository` devuelve `Email` y, si existe, `EmailBody` desde SQLite.
 2.  Si el cuerpo falta, `ensureMessageBody` registra o deduplica el trabajo y su `Promise` resuelve sin convertir la red en dependencia de la UI.
-3.  Cuando llega contenido normalizado conforme a la futura D-09, el motor lo persiste y notifica el cambio mediante `onChange`.
+3.  Cuando llega un body completo y normalizado conforme a D-09, el motor lo persiste y notifica el cambio mediante `onChange`; un resultado truncado no produce `EmailBody`.
 4.  La UI vuelve a leer y aplica la frontera de seguridad a cualquier HTML raw; nunca lo inserta libremente en el DOM privilegiado.
 5.  Marcar como leído actualiza `KeywordSet` y crea su `KeywordMutation` en una transacción independiente del fetch del cuerpo.
 
@@ -466,9 +488,9 @@ No se deciden aquí branded types, encoding de IDs, UUID/ULID, readonly strategy
 *   La entrega Web/PWA durante el MVP actual; permanece como iteración futura, no descartada.
 *   Clasificación de spam y embeddings de búsqueda. Compute-at-the-edge queda únicamente como punto de extensión futuro de Fase 2, apagado por defecto; no altera este modelo.
 
-## 12. Decisiones deliberadamente abiertas
+## 12. Trabajo deliberadamente abierto después de D-01→D-10
 
-Permanecen abiertas D-09 y las decisiones de implementación concretas: representación final de `EmailBody`, branded types, encoding de IDs, readonly strategy, constructors/factories, runtime validation, Result/error model, serialización canónica de `FilterSpec`, estructura exacta de coverage, mutation codec, `payload_version`, IPC DTOs, schema/migration posterior, APIs Repository y algoritmos de Coordinator/Outbox.
+D-01→D-10 están implementadas y cerradas; el freeze final permanece pendiente de Domain Final Audit #2. No son blockers conocidos del Domain las decisiones posteriores sobre generación/encoding durable de IDs, error model de Ports, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, APIs de `ReadRepository`/`SyncPort`, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, disponibilidad de la colección de AttachmentRefs, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
 
 ## 13. Nota para el diseño del servidor
 

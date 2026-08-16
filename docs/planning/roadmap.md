@@ -9,11 +9,11 @@ Este roadmap ordena dependencias reales; no asigna fechas ni confunde una decisi
 | Gate | Estado | Qué quedó cerrado |
 | --- | --- | --- |
 | **0-A** | **CLOSED** | Cliente JMAP + Coordinador + Outbox: una implementación TypeScript en Worker; red directa; Rust solo persistencia/cifrado/secure store. |
-| **0-B** | **CLOSED** | Modelo lógico D-01…D-08: identities scoped, Email completo, addresses, Identity/SendIntent, Mailbox, MailboxView, CollectionSyncCursor y familia PendingMutation. |
+| **0-B** | **CLOSED** | Modelo lógico D-01…D-10: identities scoped, Email completo, addresses, Identity/SendIntent, Mailbox, MailboxView, CollectionSyncCursor, PendingMutation, EmailBody y AttachmentRef. |
 | **0-C** | **CLOSED FOR TAURI MVP** | DEK aleatoria en Rust/secure store, auth Passkey separada, token memory-only, ciclos local/remoto independientes, recuperación por reset/resync y frontera Tauri. |
 | **0-D** | **CLOSED FOR TAURI MVP** | Pinia efímero, drafts memory-only, solo `PendingMutation` para send, metadata de adjuntos y render HTML en defensa en profundidad. |
 
-El Gate 0 arquitectónico está cerrado y el diagnóstico previo a Domain confirmó que puede implementarse aislado. La documentación canónica ya refleja D-01…D-08; D-09 permanece abierta. Domain, Ports, adapters, motores y suites siguen siendo **trabajo de implementación** y no se agrupan en un único paso.
+El Gate 0 arquitectónico está cerrado. La implementación aislada y la documentación de Domain D-01→D-10 están completas, sin blockers conocidos; el **Domain Final Freeze permanece pendiente de Domain Final Audit #2**. Ports no ha empezado y sigue siendo la fase siguiente, separada de adapters, motores e integración remota.
 
 La baseline de toolchains/dependencias del **13 de agosto de 2026** también está congelada en `docs/development/stack.md`. Esto cierra selección y pinning, no los PoCs de provisioning SQLCipher, conformance JMAP ni matriz WebView/OS.
 
@@ -21,11 +21,11 @@ La baseline de toolchains/dependencias del **13 de agosto de 2026** también est
 
 La secuencia obligatoria del core es:
 
-1. Architecture/Domain decisions — completadas.
+1. Architecture/Domain decisions D-01→D-10 — completadas.
 2. Repository diagnostic — completado.
-3. Documentation freeze — completado por esta revisión.
-4. Isolated Domain implementation.
-5. Domain verification/freeze.
+3. Documentation alignment — completado.
+4. Isolated Domain implementation D-01→D-10 — completada.
+5. Domain Final Audit #2 y freeze final — pendiente.
 6. Ports.
 7. Adapters y conformance doubles.
 8. Rust Local Engine y persistence integration.
@@ -51,11 +51,11 @@ Application y Presentation siguen siendo capas consumidoras independientes; este
 
 ```mermaid
 flowchart TD
-    Decisions["Architecture + D-01…D-08<br/>CLOSED"]
+    Decisions["Architecture + D-01…D-10<br/>CLOSED"]
     Diagnostic["Pre-Domain diagnostic<br/>COMPLETE"]
-    Docs["Documentation freeze<br/>COMPLETE"]
-    Domain["Isolated Domain implementation"]
-    DomainGate["Domain verification/freeze"]
+    Docs["Documentation alignment<br/>COMPLETE"]
+    Domain["D-01…D-10 implementation<br/>COMPLETE"]
+    DomainGate["Domain Final Audit #2<br/>PENDING"]
     Ports["Ports"]
     Adapters["Adapters + conformance doubles"]
     Engine["Rust Local Engine<br/>persistence integration"]
@@ -74,8 +74,8 @@ flowchart TD
     classDef closed fill:#e7f7ea,stroke:#297a38,color:#222;
     classDef active fill:#eef7ff,stroke:#336b99,color:#222;
     classDef deferred fill:#f4f4f4,stroke:#777,stroke-dasharray:5 5,color:#444;
-    class Decisions,Diagnostic,Docs closed;
-    class Domain,DomainGate,Ports,Adapters,Engine,Remote,App,Acceptance active;
+    class Decisions,Diagnostic,Docs,Domain closed;
+    class DomainGate,Ports,Adapters,Engine,Remote,App,Acceptance active;
     class FutureWeb deferred;
 ```
 
@@ -93,9 +93,9 @@ Fuentes de verdad disponibles y aceptación de que el informe técnico reciente 
 
 Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri corre en Worker normal, usa JMAP directo y cruza a Rust solo mediante los adaptadores Tauri que satisfacen `ReadRepository`/`SyncPort`. Rust no aloja JMAP.
 
-#### 0-B — Domain D-01…D-08
+#### 0-B — Domain D-01…D-10
 
-Quedaron congelados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor` y la familia discriminada `PendingMutation`. D-09 (`EmailBody`) permanece abierta. Ports y su representación TypeScript se diseñan después del Domain verificado.
+Quedaron congelados e implementados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor`, la familia discriminada `PendingMutation`, `EmailBody` completo/lazy y la metadata `AttachmentRef`. Ports y su representación TypeScript se diseñan después del Domain Final Audit #2.
 
 `0001_initial.sql` es una migración histórica y mínima: sus gaps no redefinen Domain ni implican que el Local Engine esté implementado.
 
@@ -113,34 +113,34 @@ La idempotencia ante respuesta ambigua está **MOVED TO PHASE 2 · OUTBOX**; no 
 
 ### Criterio de salida
 
-Cumplido: los cuatro gates tienen decisiones inequívocas, el diagnóstico del repositorio está completo y la documentación canónica refleja D-01…D-08. Esto no afirma que Domain ni Ports existan como código.
+Cumplido: los cuatro gates tienen decisiones inequívocas, el diagnóstico del repositorio está completo y la documentación canónica refleja D-01→D-10. Domain existe como código aislado; esto no afirma que Ports, adapters o motores estén implementados.
 
 ## 6. Fase 1 — Domain aislado
 
 ### Gate de entrada
 
-Documentation freeze D-01…D-08 completado.
+Implementación y alineación documental D-01→D-10 completadas.
 
 ### 1-A — Materialización de Domain
 
-Implementar exclusivamente `src/domain/` siguiendo `docs/architecture/domain.md`, sin importar Vue, Pinia, Tauri, SQLite, Rust, transporte JMAP ni librerías externas. El orden interno es D-01, primitives D-03, D-02, D-04, D-05, D-06, D-07 y D-08. D-09 no se materializa hasta su decisión.
+**Completado.** `src/domain/` materializa D-01, primitives D-03, D-02, D-04, D-05, D-06, D-07, D-08, D-09 y D-10 sin importar Vue, Pinia, Tauri, SQLite, Rust, transporte JMAP ni librerías externas.
 
 ### 1-B — Verificación y freeze de Domain
 
-Comprobar identidades scoped, ausencia de row IDs, completitud de Email, null semántico de addresses, separación Composer/SendIntent/PendingMutation, rights exactos, ViewKey semántica, separación collection/query state e inFlight con outcome incierto. Solo después de superar este gate Domain queda disponible para consumers.
+Las verificaciones por bloque y el Domain Final Audit #1 comprobaron identidades scoped, ausencia de row IDs, completitud de Email, null semántico, fronteras de envío/mailbox/view/sync/mutations/body y aislamiento de infraestructura. El único blocker hallado —`AttachmentRef` faltante— fue resuelto por D-10. Domain Final Audit #2 debe confirmar el freeze antes de habilitar consumers.
 
 ### Criterio de salida
 
-* Domain compila y se verifica de forma aislada.
-* No contiene infraestructura, DTOs de transporte ni estados Application.
-* No adapta sus invariantes a `0001`.
-* D-09 y las representaciones concretas deliberadamente abiertas permanecen sin improvisar.
+* D-01→D-10 compilan y se verifican de forma aislada.
+* Domain no contiene infraestructura, DTOs de transporte ni estados Application.
+* Domain no adapta sus invariantes a `0001`.
+* Documentación e implementación están alineadas; el freeze final espera exclusivamente Domain Final Audit #2.
 
 ## 7. Fase 2 — Ports y adapters
 
 ### Gate de entrada
 
-Domain implementado y verificado.
+Domain Final Audit #2 aprobado y freeze final declarado. Este gate todavía está pendiente.
 
 ### 2-A — Ports
 
@@ -190,7 +190,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | Componente | Construcción principal | Integración / aceptación |
 | --- | --- | --- |
-| Domain | **Fase 1 · 1-A/1-B** | Base de Ports y todas las integraciones |
+| Domain | **D-01→D-10 implementados; Final Audit #2 pendiente** | Base de Ports y todas las integraciones |
 | `ReadRepository` + `SyncPort` | **Fase 2 · 2-A** | Adapters; Fase 3; aceptación |
 | Memory/Tauri adapters | **Fase 2 · 2-B** | Local Engine y conformance |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
@@ -227,15 +227,16 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | ID | Estado actual | Resultado / destino |
 | --- | --- | --- |
-| D-01 | **FROZEN / DOCUMENTED** | `AccountKey`, `ServiceKey`, `RemoteAccountRef`, scoped IDs y separación de row IDs. |
-| D-02 | **FROZEN / DOCUMENTED** | Email remoto confirmado con metadata mínima completa; partial DTO no es Email. |
-| D-03 | **FROZEN / DOCUMENTED** | `EmailAddress`, listas nullable con ausencia conocida y Message-ID family fuera del core. |
-| D-04 | **FROZEN / DOCUMENTED** | Identity autorizada y flow Composer → SendIntent → SendMutation. |
-| D-05 | **FROZEN / DOCUMENTED** | Mailbox scoped, parent canónico, counts remotos y seis rights MVP. |
-| D-06 | **FROZEN / DOCUMENTED** | ViewSpec semántica, queryState por vista y coverage parcial válida. |
-| D-07 | **FROZEN / DOCUMENTED** | `CollectionSyncCursor = AccountKey + DataType + opaque state`; diagnóstico separado. |
-| D-08 | **FROZEN / DOCUMENTED** | Tres familias PendingMutation, MutationId local e inFlight con outcome incierto. |
-| D-09 | **OPEN** | Completitud y representación final de `EmailBody`; no se materializa todavía. |
+| D-01 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `AccountKey`, `ServiceKey`, `RemoteAccountRef`, scoped IDs y separación de row IDs. |
+| D-02 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Email remoto confirmado con metadata mínima completa; partial DTO no es Email. |
+| D-03 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `EmailAddress`, listas nullable con ausencia conocida y Message-ID family fuera del core. |
+| D-04 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Identity autorizada y flow Composer → SendIntent → SendMutation. |
+| D-05 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Mailbox scoped, parent canónico, counts remotos y seis rights MVP. |
+| D-06 | **CLOSED / IMPLEMENTED / DOCUMENTED** | ViewSpec semántica, queryState por vista y coverage parcial válida. |
+| D-07 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `CollectionSyncCursor = AccountKey + DataType + opaque state`; diagnóstico separado. |
+| D-08 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Tres familias PendingMutation, MutationId local e inFlight con outcome incierto. |
+| D-09 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `EmailBody` completo por existencia, lazy, sin estado parcial y con HTML raw/untrusted. |
+| D-10 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `AttachmentRef` metadata-only; identidad `ScopedEmailId + AttachmentPartId`. |
 
 ### De `docs/architecture/security.md` y overview
 
@@ -249,9 +250,10 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
-| D-09 | **Decisión posterior de Domain** | Completitud y representación final de `EmailBody`. |
+| DOMAIN-FINAL-01 | **Antes de Fase 2-A** | Ejecutar Domain Final Audit #2 y declarar el freeze final si no aparecen blockers. |
 | PORTS-01 | **Fase 2-A** | Firmas, errores, receipts y operaciones concretas de `ReadRepository`/`SyncPort`. |
 | PERSISTENCE-01 | **Fase 3-A** | Mapping físico, migrations posteriores y codecs sin modificar `0001`. |
+| ATTACHMENT-CACHE-01 | **Fase 2-A / 3-A** | Distinguir disponibilidad de la colección de refs en el contrato de lectura/persistencia sin añadir flags a `AttachmentRef`. |
 | OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |
 | COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
 | AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |

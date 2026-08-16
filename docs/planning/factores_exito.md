@@ -13,7 +13,7 @@ SP-04	SyncPort	mutation pending	transition pending→confirmed	conflict
 JM-01	JmapClient	credencial válida	openSession()	capability Mail + account
 JM-02	JmapClient	inbox conocida	query + get	ids y Emails normalizados
 JM-03	JmapClient	state antiguo	getEmailChanges()	created/updated/destroyed + newState
-JM-04	JmapClient	body multipart	getEmailBody()	un HTML preferido o text; no raw tree
+JM-04	JmapClient	body multipart	getEmailBody()	EmailBody completo normalizado; no raw tree ni resultado truncado
 JM-05	JmapClient	send válido	submitEmail()	submissionId + emailId
 JM-06	JmapClient	WS push	StateChange	callback tipado
 ST-01	Stores	local ready, auth anonymous	bootstrap	cache visible

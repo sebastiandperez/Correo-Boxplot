@@ -1,13 +1,12 @@
-P0 — arquitectura y freeze documental · COMPLETO
+P0 — arquitectura, implementación y alineación documental Domain · COMPLETO
 │
-├── decisiones D-01…D-08
+├── decisiones e implementación D-01…D-10
 ├── Pre-Domain repository diagnostic
-└── documentation freeze canónico
+└── documentation alignment canónico
 
-P0 — Domain aislado
+P0 — Domain Final Audit #2 · PENDIENTE
 │
-├── B-00A materializar Domain
-└── B-00B verificar y congelar Domain
+└── B-00B verificar y declarar freeze final
 
 P0 — Ports
 │

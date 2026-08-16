@@ -26,7 +26,7 @@ flowchart LR
 
     subgraph B["Persona B · Domain / Ports / Local Engine"]
 
-        Domain["Domain Types<br/><br/>Account · Identity · Mailbox · Email<br/>EmailAddress · SendIntent · MailboxView<br/>CollectionSyncCursor · PendingMutation<br/>EmailBody boundary · D-09 abierta"]
+        Domain["Domain Types · D-01…D-10 completos<br/><br/>Account · Identity · Mailbox · Email<br/>EmailAddress · SendIntent · MailboxView<br/>CollectionSyncCursor · PendingMutation<br/>EmailBody · AttachmentRef"]
 
         MemRead["MemoryReadRepository<br/><br/>Uso:<br/>tests + conformance"]
 
@@ -55,7 +55,7 @@ flowchart LR
 
         MailAPI["Mail API<br/><br/>Mailbox/get<br/>Email/query + get<br/>changes + queryChanges"]
 
-        Body["Body Normalizer<br/><br/>Input:<br/>JMAP body parts<br/><br/>Output:<br/>contenido según futura D-09<br/>AttachmentRef metadata"]
+        Body["Body Normalizer<br/><br/>Input:<br/>JMAP body parts<br/><br/>Output:<br/>EmailBody completo D-09<br/>AttachmentRef metadata D-10"]
 
         Mutations["Remote Mutations<br/><br/>Email/set<br/>EmailSubmission"]
 

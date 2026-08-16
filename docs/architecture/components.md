@@ -22,7 +22,7 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 * **Qué NO hace:** No ejecuta SQL, no llama JMAP, no usa `fetch` para obtener correo, no recibe HTML como confiable, no navega el webview principal desde enlaces de un correo y no conserva secretos. No descarga, guarda, sube ni envía adjuntos en el MVP.
 * **Dependencias:** Stores de Pinia, DOMPurify, política de sanitización, sandbox de render y CSP de Tauri.
 * **Consumidores:** Usuario final.
-* **Datos de entrada:** Proyecciones reactivas, estados `runtime`, metadatos de adjuntos y cuerpos leídos desde `ReadRepository` a través de Pinia.
+* **Datos de entrada:** Proyecciones reactivas, estados `runtime`, `Email`, `EmailBody` cuando esté cacheado y metadata `AttachmentRef` cuando esté disponible, siempre leídos desde `ReadRepository` a través de Pinia. La ausencia de `EmailBody` no equivale a cuerpo vacío; la disponibilidad de la colección de attachments se definirá en el futuro contrato de lectura/cache sin añadir flags al value object.
 * **Datos de salida:** Intenciones de selección, lectura, cambio de keywords/mailboxes, edición del compositor, confirmación de descarte y encolado de envío.
 * **Estado:** Solo estado visual de vida corta. El HTML sanitizado preparado para un render no es una copia durable.
 * **Persistencia:** Ninguna. No usa `localStorage`; no persiste drafts ni HTML sanitizado.
@@ -116,12 +116,12 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 
 ## 9. Cliente JMAP
 
-* **Responsabilidad:** Implementar en TypeScript JMAP estándar: descubrimiento/sesión, métodos por `fetch`, push `StateChange` por WebSocket, serialización, validación y errores. Mantiene DTOs parciales dentro de la frontera de transporte y los normaliza/mergea antes de producir entidades Domain completas. Normaliza body parts sin exponer un MIME tree crudo; D-09 decidirá la representación final de `EmailBody`.
+* **Responsabilidad:** Implementar en TypeScript JMAP estándar: descubrimiento/sesión, métodos por `fetch`, push `StateChange` por WebSocket, serialización, validación y errores. Mantiene DTOs parciales dentro de la frontera de transporte y los normaliza/mergea antes de producir entidades Domain completas. Normaliza body parts sin exponer un MIME tree crudo y solo produce `EmailBody` cuando dispone de la representación visible completa y no truncada definida por D-09.
 * **Qué NO hace:** No implementa servidor ni proveedor real, no habla IMAP/SMTP, no ejecuta SQL, no entrega modelos de UI, no pasa la red por Rust y no maneja binarios de adjuntos en el MVP.
 * **Dependencias:** HTTPS, WebSocket, capacidades JMAP y token de sesión obtenido por el flujo Passkey en navegador del sistema.
 * **Consumidores:** Coordinador y Outbox.
 * **Datos de entrada:** Invocaciones JMAP, cursores/state, IDs, parches y cuerpo saliente sin adjuntos.
-* **Datos de salida:** Respuestas validadas y normalizadas, metadata `AttachmentRef`, contenido de body conforme a la futura D-09, errores clasificados y `StateChange`.
+* **Datos de salida:** Respuestas validadas y normalizadas, metadata `AttachmentRef` D-10, `EmailBody` completo conforme a D-09, errores clasificados y `StateChange`. La implementación concreta del flattening JMAP y la disponibilidad cacheada de la colección de refs siguen diferidas.
 * **Estado:** JMAP Session, WebSocket, solicitudes y token. El token vive solo en memoria del Worker, nunca en Pinia/SQLite/`localStorage`/logs, y se elimina al logout, expiración o cierre.
 * **Persistencia:** Ninguna directa. Correo, cursores y pendientes pasan por `SyncPort`.
 * **Networking:** Sí; corre en Worker normal dentro del webview Tauri y habla directo con el servidor JMAP. El runtime `SharedWorker` queda para la futura iteración Web.
@@ -139,7 +139,7 @@ Imagina que arrancas la aplicación sin conexión. Rust recupera la DEK del secu
 7. **El Worker habla JMAP directamente.** El Coordinador lee el cursor por `SyncPort`; Cliente JMAP usa `fetch`/WebSocket contra el servidor. `StateChange` solo dispara la consulta incremental.
 8. **Los cambios se vuelven locales antes de ser visibles.** El Worker entrega el lote normalizado a `SyncPort`; `TauriSyncPort` concentra `invoke()` y Rust confirma datos y nuevo cursor en una transacción SQLCipher antes de emitir un evento Tauri.
 9. **Pinia vuelve a leer.** `ReadRepository.onChange` recibe el evento, Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
-10. **Al abrir un mensaje se repite la regla.** Si falta el cuerpo, `ensureMessageBody` lo agenda. Cuando llega contenido normalizado conforme a D-09, Rust lo cifra y el evento provoca otra lectura; la ausencia previa del body nunca volvía incompleto al Email de metadata.
+10. **Al abrir un mensaje se repite la regla.** Si falta el cuerpo, `ensureMessageBody` lo agenda. Cuando llega un `EmailBody` completo y normalizado conforme a D-09, Rust lo cifra y el evento provoca otra lectura; la ausencia previa del body nunca volvía incompleto al Email de metadata y ambos `text`/`html` null siguen siendo un resultado completo válido.
 11. **El HTML se trata como hostil.** Vue sanitiza el raw en cada render, elimina contenido activo y remoto y lo muestra dentro del sandbox bajo CSP; no persiste el resultado sanitizado.
 12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent`; el motor persiste una `SendMutation` con ese snapshot antes de limpiar Composer. Si falla, conserva la edición. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación JMAP.
 
