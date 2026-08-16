@@ -2,7 +2,7 @@
 
 ## Contract testing de Ports
 
-TEST-00 está **COMPLETE** y la arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque faltan suites runtime, conformance de `MemoryLocalEngine` y audit final.
+TEST-00 y TEST-01 están **COMPLETE**. TEST-02 está **IMPLEMENTED**: los 45 escenarios de `ReadRepository` están definidos en la suite reusable, pero todavía no se han ejecutado contra un implementation-under-test. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque faltan las suites restantes, conformance de `MemoryLocalEngine` y audit final.
 
 La especificación ejecutable se escribe antes de la implementación: contract specification → abstract harness → reusable suites → implementation-under-test. `MemoryLocalEngine` será el primer IUT y no puede redefinir las suites.
 
@@ -15,7 +15,7 @@ Los niveles congelados son:
 5. integración adapter/persistencia;
 6. E2E Tauri.
 
-TEST-01 implementará los runners y el harness; TEST-00 no contiene runners, adapters ni Local Engine.
+TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó `defineReadRepositoryContract(...)`. TEST-03A es el siguiente bloque; no existe todavía adapter ni Local Engine y no se afirma conformance de `ReadRepository`.
 
 ## TypeScript y Vue
 

@@ -2,14 +2,16 @@
 
 ## 1. Estado y autoridad
 
-**TEST-00: COMPLETE.** Esta especificación queda congelada antes de implementar `MemoryLocalEngine`, runners o suites runtime.
+**TEST-00: COMPLETE. TEST-01: COMPLETE. TEST-02: IMPLEMENTED.** La arquitectura y la infraestructura reusable están materializadas; la suite runtime de `ReadRepository` está definida pero todavía no se ha ejecutado contra un implementation-under-test.
 
 Estado de los contratos:
 
 * P-01 `ReadRepository`: **CLOSED**.
 * P-02 `SyncPort`: **CLOSED**.
 * P-03 `LocalChangeSource`: **CLOSED**.
-* Port contract tests: **DESIGN FROZEN / IMPLEMENTATION NOT STARTED**.
+* `ReadRepository` runtime contract: **DEFINED — NOT YET EXECUTED AGAINST IUT**.
+* `MemoryLocalEngine` conformance: **NOT STARTED**.
+* Port contract tests: **IMPLEMENTATION IN PROGRESS — TEST-03A NEXT**.
 * Ports como fase completa: **NOT CLOSED — runtime conformance required**.
 
 La prioridad normativa es:
@@ -44,7 +46,7 @@ Los nombres conceptuales congelados para los runners Vitest son:
 * `defineLocalChangeSourceContract(...)`;
 * `defineLocalEngineContract(...)`.
 
-TEST-00 no implementa ninguno.
+TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`; los demás runners permanecen pendientes.
 
 ## 3. Aclaraciones normativas de Ports
 
@@ -143,7 +145,7 @@ interface LocalEngineContractRuntime {
 }
 ```
 
-Es documentación de arquitectura de tests, no código productivo ni una implementación de TEST-00.
+La interfaz está materializada en `src/tests/contracts/harness.ts`; sigue siendo infraestructura de tests, no código productivo ni un Local Engine.
 
 ### `create()`
 
@@ -200,21 +202,25 @@ Para operaciones exitosas que sí cambian estado observable, la cobertura mínim
 
 `emails(account)` también cubre la reevaluación de owner para memberships, body y refs activos. `mailboxes(account)` cubre la reevaluación de owner de views activas. La tabla define subset semántico requerido, no número de batches o hints.
 
-## 10. Grupos obligatorios de ReadRepository
+## 10. Suite runtime de ReadRepository
 
-| ID | Cobertura requerida |
-| --- | --- |
-| RR-ACCOUNT | Account absent/present/list y aislamiento entre Accounts. |
-| RR-MAILBOX | Mailbox `ownerAbsent`, snapshot vacío y present; sin supuestos de orden. |
-| RR-IDENTITY | Identity `ownerAbsent`, snapshot vacío y present; sin supuestos de orden. |
-| RR-EMAIL | Email absent/present; bulk vacío, posicional, preservando duplicados. |
-| RR-MEMBERSHIP | Membership `ownerAbsent`, snapshot vacío y present. |
-| RR-BODY | Body `ownerAbsent`, `notCached`, `cached`, incluido body válido null/null. |
-| RR-ATTACHMENT | Refs `ownerAbsent`, `notCached`, cached vacío y cached con refs. |
-| RR-VIEW | Identidad exacta de `MailboxViewSpec`; preservación de coverage parcial/disjunta. |
-| RR-CURSOR | Cursor `ownerAbsent`, absent y present; state vacío válido y opaco. |
-| RR-MUTATION | PendingMutation `ownerAbsent`, absent, present y list sin orden semántico. |
-| RR-FAILURE | Operaciones bulk/collection no exponen éxito semántico parcial. |
+TEST-02 define 45 escenarios estables. La especificación ejecutable exacta vive en `src/tests/contracts/read-repository.contract.ts`; esta tabla mantiene solo la trazabilidad por grupo para evitar duplicar assertions.
+
+| Grupo | IDs | Cantidad | Cobertura requerida |
+| --- | --- | ---: | --- |
+| Account | RR-A01→RR-A04 | 4 | Absent/present/list y aislamiento entre Accounts. |
+| Mailbox | RR-M01→RR-M04 | 4 | `ownerAbsent`, snapshot vacío y present; sin orden semántico. |
+| Identity | RR-I01→RR-I04 | 4 | `ownerAbsent`, snapshot vacío, present y scope de Account. |
+| Email | RR-E01→RR-E06 | 6 | Absent/present; bulk vacío, posicional y con duplicados; scope de Account. |
+| Membership | RR-EM01→RR-EM03 | 3 | `ownerAbsent`, snapshot vacío y present. |
+| EmailBody | RR-B01→RR-B05 | 5 | `ownerAbsent`, `notCached`, null/null, empty string y reemplazo. |
+| AttachmentRef | RR-AR01→RR-AR05 | 5 | `ownerAbsent`, `notCached`, cached vacío, refs y reemplazo. |
+| MailboxView | RR-V01→RR-V05 | 5 | Spec exacta/alternativa y coverage parcial/disjunta. |
+| CollectionSyncCursor | RR-C01→RR-C04 | 4 | `ownerAbsent`, absent, present y state vacío opaco. |
+| PendingMutation | RR-P01→RR-P05 | 5 | `ownerAbsent`, absent, present y snapshots sin orden semántico. |
+| **Total** |  | **45** | Suite declarada; conformance todavía no ejecutada. |
+
+Los errores `unavailable`, `corruptState` y `unexpected`, así como el éxito parcial imposible ante corrupción, permanecen para controles opcionales y suites posteriores; TEST-02 no fabrica esos estados.
 
 ## 11. Grupos obligatorios de SyncPort
 
@@ -319,4 +325,4 @@ Requerirá las mismas suites de Ports y del Local Engine en PASS, además de sui
 
 ## 18. Próxima secuencia
 
-TEST-01 implementará primero el harness abstracto y las suites reutilizables. Solo después se implementará `MemoryLocalEngine` como primer IUT. El audit final de contratos y la conformance runtime son requisitos para declarar Ports globalmente cerrados.
+TEST-00, TEST-01 y TEST-02 están completos. TEST-03A es el siguiente bloque de especificación ejecutable. Solo después de completar las suites previstas se implementará `MemoryLocalEngine` como primer IUT; el audit final y la conformance runtime siguen siendo requisitos para declarar Ports globalmente cerrados.
