@@ -1,6 +1,6 @@
 # Modelo de dominio local del cliente
 
-**Estado:** implementación D-01→D-10 completa; freeze final pendiente de Domain Final Audit #2.
+**Estado:** D-01→D-10 implementadas y documentadas; Domain Final Audit #2 aprobado; Domain Freeze completo y Domain cerrado. El diseño de Ports está habilitado.
 
 ## 1. Alcance y criterio de modelado
 
@@ -490,7 +490,7 @@ La estrategia concreta de generación/encoding durable de IDs y la organización
 
 ## 12. Trabajo deliberadamente abierto después de D-01→D-10
 
-D-01→D-10 están implementadas y cerradas; el freeze final permanece pendiente de Domain Final Audit #2. No son blockers conocidos del Domain las decisiones posteriores sobre generación/encoding durable de IDs, error model de Ports, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, APIs de `ReadRepository`/`SyncPort`, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, disponibilidad de la colección de AttachmentRefs, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
+D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo, Domain queda cerrado y el diseño de `ReadRepository`/`SyncPort` puede comenzar. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, error model de Ports, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, APIs de `ReadRepository`/`SyncPort`, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, disponibilidad de la colección de AttachmentRefs, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
 
 ## 13. Nota para el diseño del servidor
 

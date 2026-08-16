@@ -13,7 +13,7 @@ Este roadmap ordena dependencias reales; no asigna fechas ni confunde una decisi
 | **0-C** | **CLOSED FOR TAURI MVP** | DEK aleatoria en Rust/secure store, auth Passkey separada, token memory-only, ciclos local/remoto independientes, recuperación por reset/resync y frontera Tauri. |
 | **0-D** | **CLOSED FOR TAURI MVP** | Pinia efímero, drafts memory-only, solo `PendingMutation` para send, metadata de adjuntos y render HTML en defensa en profundidad. |
 
-El Gate 0 arquitectónico está cerrado. La implementación aislada y la documentación de Domain D-01→D-10 están completas, sin blockers conocidos; el **Domain Final Freeze permanece pendiente de Domain Final Audit #2**. Ports no ha empezado y sigue siendo la fase siguiente, separada de adapters, motores e integración remota.
+El Gate 0 arquitectónico está cerrado. La implementación aislada y la documentación de Domain D-01→D-10 están completas. Domain Final Audit #2 concluyó `PASS`: el **Domain Final Freeze está completo**, Domain está cerrado y el diseño de Ports está habilitado como fase siguiente, separada de adapters, motores e integración remota.
 
 La baseline de toolchains/dependencias del **13 de agosto de 2026** también está congelada en `docs/development/stack.md`. Esto cierra selección y pinning, no los PoCs de provisioning SQLCipher, conformance JMAP ni matriz WebView/OS.
 
@@ -25,8 +25,8 @@ La secuencia obligatoria del core es:
 2. Repository diagnostic — completado.
 3. Documentation alignment — completado.
 4. Isolated Domain implementation D-01→D-10 — completada.
-5. Domain Final Audit #2 y freeze final — pendiente.
-6. Ports.
+5. Domain Final Audit #2 y freeze final — completados.
+6. Ports — siguiente fase habilitada.
 7. Adapters y conformance doubles.
 8. Rust Local Engine y persistence integration.
 9. JMAP, Coordinator y Outbox integration.
@@ -55,7 +55,7 @@ flowchart TD
     Diagnostic["Pre-Domain diagnostic<br/>COMPLETE"]
     Docs["Documentation alignment<br/>COMPLETE"]
     Domain["D-01…D-10 implementation<br/>COMPLETE"]
-    DomainGate["Domain Final Audit #2<br/>PENDING"]
+    DomainGate["Domain Final Audit #2<br/>PASS · FREEZE COMPLETE"]
     Ports["Ports"]
     Adapters["Adapters + conformance doubles"]
     Engine["Rust Local Engine<br/>persistence integration"]
@@ -74,8 +74,8 @@ flowchart TD
     classDef closed fill:#e7f7ea,stroke:#297a38,color:#222;
     classDef active fill:#eef7ff,stroke:#336b99,color:#222;
     classDef deferred fill:#f4f4f4,stroke:#777,stroke-dasharray:5 5,color:#444;
-    class Decisions,Diagnostic,Docs,Domain closed;
-    class DomainGate,Ports,Adapters,Engine,Remote,App,Acceptance active;
+    class Decisions,Diagnostic,Docs,Domain,DomainGate closed;
+    class Ports,Adapters,Engine,Remote,App,Acceptance active;
     class FutureWeb deferred;
 ```
 
@@ -95,7 +95,7 @@ Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri c
 
 #### 0-B — Domain D-01…D-10
 
-Quedaron congelados e implementados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor`, la familia discriminada `PendingMutation`, `EmailBody` completo/lazy y la metadata `AttachmentRef`. Ports y su representación TypeScript se diseñan después del Domain Final Audit #2.
+Quedaron congelados e implementados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor`, la familia discriminada `PendingMutation`, `EmailBody` completo/lazy y la metadata `AttachmentRef`. Domain Final Audit #2 aprobó el freeze; Ports y su representación TypeScript son ahora la siguiente fase de diseño.
 
 `0001_initial.sql` es una migración histórica y mínima: sus gaps no redefinen Domain ni implican que el Local Engine esté implementado.
 
@@ -127,20 +127,20 @@ Implementación y alineación documental D-01→D-10 completadas.
 
 ### 1-B — Verificación y freeze de Domain
 
-Las verificaciones por bloque y el Domain Final Audit #1 comprobaron identidades scoped, ausencia de row IDs, completitud de Email, null semántico, fronteras de envío/mailbox/view/sync/mutations/body y aislamiento de infraestructura. El único blocker hallado —`AttachmentRef` faltante— fue resuelto por D-10. Domain Final Audit #2 debe confirmar el freeze antes de habilitar consumers.
+Las verificaciones por bloque y el Domain Final Audit #1 comprobaron identidades scoped, ausencia de row IDs, completitud de Email, null semántico, fronteras de envío/mailbox/view/sync/mutations/body y aislamiento de infraestructura. El único blocker hallado —`AttachmentRef` faltante— fue resuelto por D-10. Domain Final Audit #2 verificó esa corrección, descartó regresiones y declaró `DOMAIN FREEZE: COMPLETE`, `DOMAIN: CLOSED` y `PORT DESIGN: READY`.
 
 ### Criterio de salida
 
 * D-01→D-10 compilan y se verifican de forma aislada.
 * Domain no contiene infraestructura, DTOs de transporte ni estados Application.
 * Domain no adapta sus invariantes a `0001`.
-* Documentación e implementación están alineadas; el freeze final espera exclusivamente Domain Final Audit #2.
+* Documentación e implementación están alineadas y el freeze final fue aprobado por Domain Final Audit #2.
 
 ## 7. Fase 2 — Ports y adapters
 
 ### Gate de entrada
 
-Domain Final Audit #2 aprobado y freeze final declarado. Este gate todavía está pendiente.
+**Cumplido.** Domain Final Audit #2 fue aprobado y el freeze final está declarado. El diseño de Ports puede comenzar sin reabrir Domain.
 
 ### 2-A — Ports
 
@@ -190,7 +190,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | Componente | Construcción principal | Integración / aceptación |
 | --- | --- | --- |
-| Domain | **D-01→D-10 implementados; Final Audit #2 pendiente** | Base de Ports y todas las integraciones |
+| Domain | **D-01→D-10 implementados; Final Audit #2 PASS; CLOSED** | Base congelada de Ports y todas las integraciones |
 | `ReadRepository` + `SyncPort` | **Fase 2 · 2-A** | Adapters; Fase 3; aceptación |
 | Memory/Tauri adapters | **Fase 2 · 2-B** | Local Engine y conformance |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
@@ -211,7 +211,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | C-02 | **RESOLVED · 0-C FOR TAURI MVP** | Ciclos local/remoto independientes y recuperación local definida. |
 | C-03 | **RESOLVED · 0-D** | Vocabulario de `runtime`, `mail` y `composer` fijado. |
 | C-04 | **RESOLVED · 0-D** | Draft memory-only; sin autosave/JMAP/persistencia. |
-| C-05 | **BOUNDARY RESOLVED · PORTS PENDING** | Consumers y dirección de Ports están fijados; firmas, errores y suite se materializan después del Domain freeze. |
+| C-05 | **BOUNDARY RESOLVED · PORT DESIGN READY** | Consumers y dirección de Ports están fijados; firmas, errores y suite son la siguiente fase después del Domain freeze. |
 | C-06 | **SPLIT** | Lifecycle local resuelto en 0-C; modelo de tareas/hilos es detalle de implementación del Local Engine. |
 | C-07 | **PHYSICAL BASELINE PRESENT** | `0001_initial.sql` es histórico y mínimo; migrations futuras, runner y runtime siguen en Fase 3-A. |
 | C-08 | **RESOLVED · 0-A** | JMAP Tauri corre en Worker TS directo. |
@@ -250,7 +250,6 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
-| DOMAIN-FINAL-01 | **Antes de Fase 2-A** | Ejecutar Domain Final Audit #2 y declarar el freeze final si no aparecen blockers. |
 | PORTS-01 | **Fase 2-A** | Firmas, errores, receipts y operaciones concretas de `ReadRepository`/`SyncPort`. |
 | PERSISTENCE-01 | **Fase 3-A** | Mapping físico, migrations posteriores y codecs sin modificar `0001`. |
 | ATTACHMENT-CACHE-01 | **Fase 2-A / 3-A** | Distinguir disponibilidad de la colección de refs en el contrato de lectura/persistencia sin añadir flags a `AttachmentRef`. |

@@ -4,11 +4,11 @@ P0 — arquitectura, implementación y alineación documental Domain · COMPLETO
 ├── Pre-Domain repository diagnostic
 └── documentation alignment canónico
 
-P0 — Domain Final Audit #2 · PENDIENTE
+P0 — Domain Final Audit #2 · COMPLETO / PASS
 │
-└── B-00B verificar y declarar freeze final
+└── B-00B freeze final declarado · DOMAIN CLOSED
 
-P0 — Ports
+P0 — Ports · SIGUIENTE FASE / READY
 │
 └── B-01 ReadRepository + SyncPort sobre Domain frozen
 

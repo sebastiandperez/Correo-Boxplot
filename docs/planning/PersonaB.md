@@ -2,7 +2,7 @@ Persona B, como Integration Architecture Owner, posee Domain, Ports y la fronter
 
 Epic	ID	Pri.	Título	Descripción	Paths previstos	Dep.	SP	Criterios de aceptación	Tests a añadir
 Domain	B-00A	P0	Materializar Domain aislado	COMPLETADO: D-01→D-10 implementados sin infraestructura	src/domain/*	Documentation alignment	5	Identidades scoped, Email completo, EmailBody/AttachmentRef cerrados y cero imports Vue/Tauri/JMAP/SQLite	Type-level/unit Domain tests
-Domain	B-00B	P0	Verificar y congelar Domain	PENDIENTE: ejecutar Domain Final Audit #2 antes de permitir consumers	src/domain/*	B-00A	2	Documentación e implementación D-01→D-10 alineadas; freeze final sin blockers	Domain Final Audit #2
+Domain	B-00B	P0	Verificar y congelar Domain	COMPLETADO: Domain Final Audit #2 PASS; Domain Freeze completo y Domain cerrado	src/domain/*	B-00A	2	Documentación e implementación D-01→D-10 alineadas; Port Design ready	Domain Final Audit #2 PASS
 Contracts	B-01	P0	Materializar Ports sobre Domain frozen	RepositoryError, ReadRepository, SyncPort, eventos/receipts sin redefinir Domain	src/ports/*	B-00B	3	Solo imports Domain/contract errors; API revisada por A/C	Type-level/unit contract tests
 Conformance	B-02	P0	Memory adapters + harness	MemoryReadRepository/MemorySyncPort y suite reutilizable	src/adapters/memory/*, src/tests/contracts/*	B-01	3	Misma suite ejecutable contra memory y Tauri	RR/SP vectors definidos abajo
 SQLCipher	B-03	P0	Lifecycle cifrado y migrations	Abrir DB, recuperar/generar DEK, aplicar key antes de acceso, migration runner, 0001	src-tauri/src/db/*, security/*	Schema existente	8	Reopen misma key; wrong key falla; no plaintext fallback; migration idempotente	Rust: create/reopen/wrong key/integrity/migration

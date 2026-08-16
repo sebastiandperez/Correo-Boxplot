@@ -48,7 +48,7 @@ Puede depender de Domain, Ports y Pinia. No depende directamente de SQLite, SQL,
 
 ### Domain
 
-**Ruta implementada:** `src/domain/`. Los bloques D-01→D-10 están completos; el freeze final espera Domain Final Audit #2.
+**Ruta implementada:** `src/domain/`. Los bloques D-01→D-10 están completos y el Domain Final Audit #2 aprobó el freeze final. Domain está cerrado.
 
 Define conceptos y semántica del cliente —identidades scoped, `Account`, `Mailbox`, `Email`, `Identity`, `SendIntent`, `EmailBody`, `AttachmentRef`, `MailboxView`, `PendingMutation` y `CollectionSyncCursor`— sin decisiones de infraestructura.
 
@@ -58,7 +58,7 @@ Domain no depende de Vue, Pinia, Tauri, `@tauri-apps/api`, SQLite, SQL, Rust, `r
 
 **Ruta esperada al implementarse:** `src/ports/`.
 
-`ReadRepository` será el contrato TypeScript consumido por Application/Pinia para lecturas locales, comandos locales, `ensure…` y `onChange`. `SyncPort` será el contrato TypeScript consumido por Coordinator/Outbox para collection cursors, lotes y `PendingMutation`. Sus firmas se diseñan después de implementar y verificar Domain.
+`ReadRepository` será el contrato TypeScript consumido por Application/Pinia para lecturas locales, comandos locales, `ensure…` y `onChange`. `SyncPort` será el contrato TypeScript consumido por Coordinator/Outbox para collection cursors, lotes y `PendingMutation`. Con Domain cerrado, sus firmas constituyen la siguiente fase de diseño habilitada.
 
 Ports puede depender únicamente de tipos de Domain y errores propios del contrato. No depende de Tauri, `invoke`, SQLite, SQL, Rust, `rusqlite`, JMAP transport ni `jmap-jam`. Un port es un contrato, no almacenamiento.
 
@@ -160,8 +160,8 @@ local source of truth for UI != remote authority
 | `src/components/` | Presentation | UI Shell estático presente |
 | `src/styles/` | Presentation styles | Presente |
 | `src/app/` | Application state/orchestration | Store `runtime` inicial presente; resto se implementará por sprint |
-| `src/domain/` | Domain independiente de infraestructura | D-01→D-10 implementados; final audit #2 pendiente |
-| `src/ports/` | Contratos `ReadRepository` / `SyncPort` | Ubicación esperada cuando se implemente |
+| `src/domain/` | Domain independiente de infraestructura | D-01→D-10 implementados; freeze completo; Domain cerrado |
+| `src/ports/` | Contratos `ReadRepository` / `SyncPort` | Diseño habilitado; implementación todavía no iniciada |
 | `src/adapters/tauri/` | Implementaciones Tauri de ports TypeScript | Ubicación esperada cuando se implemente |
 | `src/adapters/memory/` | Mock/conformance de ports | Ubicación esperada cuando se implemente |
 | `src/jmap/` | Cliente y protocolo JMAP | Ubicación esperada cuando se implemente |
