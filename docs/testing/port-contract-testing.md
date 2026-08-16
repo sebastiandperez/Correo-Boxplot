@@ -2,7 +2,7 @@
 
 ## 1. Estado y autoridad
 
-**TEST-00: COMPLETE. TEST-01: COMPLETE. TEST-02: COMPLETE. TEST-03A: IMPLEMENTED.** La infraestructura reusable y las suites abstractas de `ReadRepository` y del estado de `SyncPort` están materializadas, pero todavía no se han ejecutado contra un implementation-under-test.
+**TEST-00: COMPLETE. TEST-01: COMPLETE. TEST-02: COMPLETE. TEST-03A: COMPLETE. TEST-03B: IMPLEMENTED.** La infraestructura reusable y las suites abstractas de `ReadRepository` y `SyncPort` están materializadas, pero todavía no se han ejecutado contra un implementation-under-test.
 
 Estado de los contratos:
 
@@ -10,9 +10,9 @@ Estado de los contratos:
 * P-02 `SyncPort`: **CLOSED**.
 * P-03 `LocalChangeSource`: **CLOSED**.
 * `ReadRepository` runtime contract: **DEFINED — NOT YET EXECUTED AGAINST IUT**.
-* `SyncPort` runtime contract: **PARTIALLY DEFINED — TEST-03A IMPLEMENTED; TEST-03B NEXT**.
+* `SyncPort` runtime contract: **FULLY DEFINED — 91 SCENARIOS; NOT YET EXECUTED AGAINST IUT**.
 * `MemoryLocalEngine` conformance: **NOT STARTED**.
-* Port contract tests: **IMPLEMENTATION IN PROGRESS — TEST-03B NEXT**.
+* Port contract tests: **IMPLEMENTATION IN PROGRESS — MEM-01 NEXT**.
 * Ports como fase completa: **NOT CLOSED — runtime conformance required**.
 
 La prioridad normativa es:
@@ -47,7 +47,7 @@ Los nombres conceptuales congelados para los runners Vitest son:
 * `defineLocalChangeSourceContract(...)`;
 * `defineLocalEngineContract(...)`.
 
-TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`. TEST-03A implementa la primera suite parcial P-02, `defineSyncPortStateContract(...)`; el runner de mutaciones y el agregador final `defineSyncPortContract(...)` permanecen pendientes de TEST-03B.
+TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`. TEST-03A y TEST-03B implementan `defineSyncPortStateContract(...)` y `defineSyncPortMutationContract(...)`; `defineSyncPortContract(...)` compone ambas suites sin duplicar escenarios.
 
 ## 3. Aclaraciones normativas de Ports
 
@@ -240,7 +240,20 @@ TEST-03A define 48 escenarios estables en `src/tests/contracts/sync-port-state.c
 | Snapshot/alias | SP-SNAP01→SP-SNAP03 | 3 |
 | **Total** |  | **48** |
 
-Estos escenarios están definidos, no ejecutados: no existe todavía un IUT. TEST-03B cubrirá mutaciones/Outbox y compondrá el runner P-02 final; TEST-03A por sí solo no afirma conformance de `SyncPort`.
+TEST-03B completa P-02 con 43 escenarios de mutaciones optimistas, lifecycle, CAS y cleanup:
+
+| Grupo TEST-03B | IDs | Cantidad |
+| --- | --- | ---: |
+| Send | SP-S01→SP-S05 | 5 |
+| Mutation identity | SP-ID01→SP-ID02 | 2 |
+| Keyword | SP-K01→SP-K07 | 7 |
+| Mailbox membership | SP-MM01→SP-MM09 | 9 |
+| Full-snapshot CAS | SP-CAS01→SP-CAS14 | 14 |
+| Confirmed removal | SP-RM01→SP-RM06 | 6 |
+| **Total TEST-03B** |  | **43** |
+| **Total P-02** | TEST-03A + TEST-03B | **91** |
+
+Los 91 escenarios están definidos, no ejecutados: no existe todavía un IUT y no se afirma conformance de `SyncPort`.
 
 | ID | Cobertura requerida |
 | --- | --- |
@@ -343,4 +356,4 @@ Requerirá las mismas suites de Ports y del Local Engine en PASS, además de sui
 
 ## 18. Próxima secuencia
 
-TEST-00, TEST-01 y TEST-02 están completos. TEST-03A está implementado con 48 escenarios abstractos; TEST-03B es el siguiente bloque. Solo después de completar las suites previstas se implementará `MemoryLocalEngine` como primer IUT; el audit final y la conformance runtime siguen siendo requisitos para declarar Ports globalmente cerrados.
+TEST-00→TEST-03B están completos y el contrato runtime P-02 está totalmente definido con 91 escenarios abstractos. MEM-01 es el siguiente bloque: implementará `ReadRepository`, `SyncPort` y `LocalChangeSource` como un único Local Engine funcional in-memory y ejecutará las suites existentes sin modificarlas. P-03 runtime permanece para una fase posterior; el audit final y la conformance runtime siguen siendo requisitos para declarar Ports globalmente cerrados.

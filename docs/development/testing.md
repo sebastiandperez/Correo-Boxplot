@@ -2,7 +2,7 @@
 
 ## Contract testing de Ports
 
-TEST-00, TEST-01 y TEST-02 están **COMPLETE**. TEST-03A está **IMPLEMENTED**: sus 48 escenarios definen Account, collection sync, caches y views de `SyncPort`. Las suites de `ReadRepository` y TEST-03A siguen sin ejecutarse contra un implementation-under-test. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque faltan TEST-03B y las suites posteriores, conformance de `MemoryLocalEngine` y audit final.
+TEST-00→TEST-03B están **COMPLETE**. El contrato runtime de `SyncPort` está totalmente definido: TEST-03A aporta 48 escenarios de estado y TEST-03B aporta 43 de mutaciones, para 91 escenarios P-02. Las suites de `ReadRepository` y `SyncPort` siguen sin ejecutarse contra un implementation-under-test. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque faltan conformance de `MemoryLocalEngine`, suites posteriores y audit final.
 
 La especificación ejecutable se escribe antes de la implementación: contract specification → abstract harness → reusable suites → implementation-under-test. `MemoryLocalEngine` será el primer IUT y no puede redefinir las suites.
 
@@ -15,7 +15,7 @@ Los niveles congelados son:
 5. integración adapter/persistencia;
 6. E2E Tauri.
 
-TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó `defineReadRepositoryContract(...)`; TEST-03A materializó `defineSyncPortStateContract(...)`. TEST-03B es el siguiente bloque. No existe todavía adapter ni Local Engine y no se afirma conformance de `ReadRepository` ni `SyncPort`.
+TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó `defineReadRepositoryContract(...)`; TEST-03A/TEST-03B materializaron las dos suites de `SyncPort` y su agregador final. MEM-01 es el siguiente bloque y deberá implementar los tres Ports en un único Local Engine in-memory funcional sin modificar las suites. No existe todavía IUT y no se afirma conformance de `ReadRepository` ni `SyncPort`.
 
 ## TypeScript y Vue
 

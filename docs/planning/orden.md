@@ -20,12 +20,14 @@ P0 — Port contract testing · IMPLEMENTACIÓN EN PROGRESO
 ├── TEST-01 infraestructura reusable · COMPLETE
 ├── TEST-02 ReadRepository suite · COMPLETE / NOT YET RUN AGAINST IUT
 ├── TEST-03A SyncPort state suite · COMPLETE / NOT YET RUN AGAINST IUT
-├── TEST-03B SyncPort mutations suite · READY
+├── TEST-03B SyncPort mutations suite · COMPLETE / NOT YET RUN AGAINST IUT
+├── P-02 runtime contract · FULLY DEFINED / 91 SCENARIOS
+├── MEM-01 MemoryLocalEngine · READY
 └── PORTS global · NOT CLOSED hasta conformance runtime + audit final
 
 P0 — primer IUT y adapters
 │
-└── MemoryLocalEngine después de completar las suites; adapters posteriores
+└── MEM-01 MemoryLocalEngine siguiente; P-03 runtime y adapters posteriores
 
 P0 — Local Engine / persistence integration
 │
