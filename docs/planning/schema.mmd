@@ -19,9 +19,9 @@ flowchart LR
 
         RR["ReadRepository · P-01 CLOSED<br/><br/>Consumers:<br/>Application / Coordinator / Outbox<br/><br/>Input:<br/>queries locales<br/><br/>Output:<br/>estado committed tipado"]
 
-        SP["SyncPort · P-02 IMPLEMENTED<br/>REVIEW PENDING<br/><br/>Consumers:<br/>Application / Coordinator / Outbox<br/><br/>Input:<br/>semantic atomic transitions<br/><br/>Output:<br/>committed WriteResult"]
+        SP["SyncPort · P-02 CLOSED<br/><br/>Consumers:<br/>Application / Coordinator / Outbox<br/><br/>Input:<br/>semantic atomic transitions<br/><br/>Output:<br/>committed WriteResult"]
 
-        LCS["LocalChangeSource · P-03 FUTURE<br/><br/>Output:<br/>invalidaciones post-commit<br/><br/>No es autoridad"]
+        LCS["LocalChangeSource · P-03 IMPLEMENTED<br/>REVIEW PENDING<br/><br/>Output:<br/>invalidaciones post-commit<br/><br/>No es autoridad"]
 
         JC["JmapClient<br/><br/>Consumers futuros:<br/>Coordinator / Outbox<br/><br/>Input:<br/>JMAP intents<br/><br/>Output:<br/>normalized domain data"]
     end
@@ -38,7 +38,7 @@ flowchart LR
 
         TauriSync["TauriSyncPort<br/><br/>Responsabilidad:<br/>SP → semantic IPC"]
 
-        ChangeBridge["Tauri Event Bridge<br/><br/>Input:<br/>native change event<br/><br/>Output futuro:<br/>LocalChangeSource"]
+        ChangeBridge["Tauri Event Bridge<br/><br/>Input:<br/>native change event<br/><br/>Output:<br/>LocalChangeSource"]
 
         IPC["Semantic Tauri Commands<br/><br/>JSON serializable<br/>validated<br/>default-deny"]
 

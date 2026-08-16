@@ -6,9 +6,9 @@ Este bloque sostiene cuatro recorridos: recibir cambios, abrir un correo, redact
 
 Este documento define responsabilidades de componentes. Las reglas normativas sobre ubicación, imports y dirección de dependencias viven en [layers.md](layers.md).
 
-La regla central es local-first: Vue y Pinia solo obtienen correo mediante `ReadRepository`, que consulta estado local committed. Las futuras solicitudes de materialización remota pertenecen a orquestación Application → Coordinator; los datos se vuelven observables después del commit y de una invalidación del futuro `LocalChangeSource` P-03.
+La regla central es local-first: Vue y Pinia solo obtienen correo mediante `ReadRepository`, que consulta estado local committed. Las futuras solicitudes de materialización remota pertenecen a orquestación Application → Coordinator; los datos se vuelven observables después del commit y de una invalidación de `LocalChangeSource` P-03.
 
-La frontera local se divide en `ReadRepository`, compartido por Application, Coordinator y Outbox para lecturas, y `SyncPort`, consumido por sus casos de escritura semántica. El futuro `LocalChangeSource` P-03 queda separado. Cliente JMAP, Coordinator y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y cruza a la persistencia exclusivamente mediante `SyncPort`; su futuro adaptador Tauri concentrará `invoke()`.
+La frontera local se divide en `ReadRepository`, compartido por Application, Coordinator y Outbox para lecturas, `SyncPort`, consumido por sus casos de escritura semántica, y `LocalChangeSource`, consumido por Application para invalidar proyecciones después de commits. Cliente JMAP, Coordinator y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y cruza a la persistencia exclusivamente mediante `SyncPort`; su futuro adaptador Tauri concentrará `invoke()`.
 
 El ciclo local y el remoto son independientes. `LocalReady + RemoteAnonymous` es válido: la DEK del SQLite local procede del secure store del sistema operativo, mientras el token JMAP solo vive en memoria del Worker. Passkey/WebAuthn autentica al servidor y no deriva la clave SQLCipher.
 
@@ -32,9 +32,9 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 
 ## 3. Estado de aplicación (Pinia)
 
-* **Responsabilidad:** Mantener estado efímero de Application, selección y proyecciones visibles; coordinar lecturas locales; conservar el compositor temporal; releer `ReadRepository` cuando reciba invalidaciones del futuro `LocalChangeSource`.
+* **Responsabilidad:** Mantener estado efímero de Application, selección y proyecciones visibles; coordinar lecturas locales; conservar el compositor temporal; releer `ReadRepository` cuando reciba invalidaciones de `LocalChangeSource`.
 * **Qué NO hace:** No es fuente durable, no persiste stores, no importa JMAP, no interpreta respuestas remotas y no duplica `CollectionSyncCursor` ni `PendingMutation` como autoridad propia.
-* **Dependencias:** `ReadRepository`; futuros casos de escritura consumen `SyncPort` y las invalidaciones consumirán `LocalChangeSource` P-03.
+* **Dependencias:** `ReadRepository`; futuros casos de escritura consumen `SyncPort` y las invalidaciones consumen `LocalChangeSource` P-03.
 * **Consumidores:** Componentes y composables Vue.
 * **Datos de entrada:** Intenciones de UI, resultados locales de `ReadRepository` y futuras invalidaciones post-commit.
 * **Datos de salida:** Estado reactivo para Vue, consultas a `ReadRepository` e intenciones semánticas de escritura/orquestación.
@@ -46,19 +46,22 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 
 ## 4. Ports locales (`ReadRepository`, `SyncPort`, `LocalChangeSource`)
 
-* **Responsabilidad:** Separar tres conversaciones sin exponer el motor. `ReadRepository` P-01 ofrece únicamente consultas sobre estado local committed. `SyncPort` expresa transiciones semánticas atómicas. El futuro `LocalChangeSource` P-03 emitirá invalidaciones post-commit no durables para provocar relecturas.
+* **Responsabilidad:** Separar tres conversaciones sin exponer el motor. `ReadRepository` P-01 ofrece únicamente consultas sobre estado local committed. `SyncPort` P-02 expresa transiciones semánticas atómicas. `LocalChangeSource` P-03 entrega invalidaciones post-commit no durables para provocar relecturas. P-01 y P-02 están cerrados; P-03 está implementado con review pendiente.
 * **Semántica P-01:** `LocalEntityRead` distingue entidad local ausente/presente; `OwnedSnapshotRead` distingue owner ausente de snapshot presente, incluso vacío; `OwnedOptionalRead` añade ausencia conocida del valor owned; `OwnedCacheRead` distingue `ownerAbsent`, `notCached` y `cached`. Para `EmailBody`, `AttachmentRef[]` y `MailboxView`, `notCached` no equivale a `cached`; en attachments, `cached []` es una caché completa vacía. D-06 continúa gobernando la cobertura parcial de `MailboxView`.
 * **Semántica P-02:** cada método confirma una transición completa o no hace visible ningún estado parcial. Sus diez capacidades exactas son `registerAccount`, `applyCollectionSync`, `cacheEmailBody`, `replaceAttachmentRefs`, `replaceMailboxView`, `stageSendMutation`, `applyOptimisticKeywordMutation`, `applyOptimisticMailboxMembershipMutation`, `replacePendingMutationIfCurrent` y `removeConfirmedMutation`.
+* **Semántica P-03:** `LocalChangeSource` posee una única capacidad `subscribe(listener)`. Un batch contiene uno o más hints semánticos de las familias `accounts`, `mailboxes`, `identities`, `emails`, `emailMemberships`, `emailBody`, `attachmentRefs`, `mailboxView`, `syncCursor` y `pendingMutations`. Es una unidad de entrega, no una transacción, identidad de commit ni entrada de log, y puede cubrir uno o varios commits. Los hints contienen solo la clave Domain mínima del scope invalidado: nunca transportan Email, body, addresses, filenames, mutation payloads, valores previos/nuevos, revisión, secuencia, origen ni timestamp.
+* **Entrega P-03:** una suscripción exitosa ya está activa cuando `subscribe` resuelve. Mientras esté activa y operativa, los commits relevantes quedan cubiertos eventualmente; pueden agruparse o duplicarse y no hay replay, exactly-once ni orden de negocio. Un write fallido, revertido o en conflicto no produce hint. La entrega ocurre después del commit y su fallo nunca revierte ese commit. Una relectura inmediata observa ese estado ya committed o uno posterior, no un snapshot exacto del commit. El listener es síncrono, solo invalida/agenda y no introduce backpressure. Una excepción de un listener no afecta a los demás ni a la autoridad local. `unsubscribe` es idempotente, no lanza y, al retornar, impide que comiencen nuevas invocaciones del listener.
+* **Inicialización P-03:** Application debe ejecutar `subscribe → read current state → render`, también al reanudar o reconectar el change source. `read → subscribe` está prohibido porque perdería un commit ocurrido entre ambas operaciones. P-03 no conserva un log durable ni reproduce cambios anteriores a la suscripción, ocurridos sin suscripción, durante restart ni posteriores a `unsubscribe`.
 * **Collection sync:** Coordinator normaliza JMAP en uno de seis commits cerrados: Email/Mailbox/Identity × delta/replace. `applyCollectionSync` valida el cursor esperado por igualdad exacta, aplica cambios y nuevo `CollectionSyncCursor` en un commit, trata state como opaco y nunca modifica `MailboxView` implícitamente. `cannotCalculateChanges` y `hasMoreChanges` siguen en Coordinator; un refetch completo produce mode `replace`.
 * **Escrituras locales:** Send persiste únicamente `SendMutation`; no crea Email optimista. Keyword y membership aplican el delta sobre el snapshot committed y persisten la `PendingMutation` exacta atómicamente. El resultado de membership no puede quedar vacío. Outbox cambia lifecycle mediante CAS de snapshot completo, conserva `inFlight` después de crash y solo elimina mutaciones actualmente `confirmed`.
-* **Qué NO hace:** Ningún port expone SQL, tablas, `invoke()`, rutas de archivo ni DTOs JMAP. `ReadRepository` no escribe, agenda, hace red ni notifica. `SyncPort` no absorbe solicitudes `ensure…`; esas intenciones pertenecen a futura orquestación Application → Coordinator. `LocalChangeSource` no será fuente de verdad y sus señales podrán coalescerse.
+* **Qué NO hace:** Ningún port expone SQL, tablas, `invoke()`, rutas de archivo ni DTOs JMAP. `ReadRepository` no escribe, agenda, hace red ni notifica. `SyncPort` no absorbe solicitudes `ensure…`; esas intenciones pertenecen a futura orquestación Application → Coordinator. `LocalChangeSource` no es fuente de verdad, no lee, no publica mediante API pública, no filtra suscripciones y no sustituye una relectura.
 * **Dependencias:** Tipos del dominio y errores propios del contrato. En el MVP, adaptadores TypeScript Tauri satisfacen estos contratos y cruzan por IPC hacia el Motor Rust.
-* **Consumidores:** Application, Coordinator y Outbox pueden leer mediante `ReadRepository`; los casos de escritura de Application, Coordinator y Outbox usan `SyncPort`. Application consumirá `LocalChangeSource` cuando P-03 se implemente.
+* **Consumidores:** Application, Coordinator y Outbox pueden leer mediante `ReadRepository`; los casos de escritura de Application, Coordinator y Outbox usan `SyncPort`. Application consume `LocalChangeSource` para invalidar y releer.
 * **Datos de entrada:** IDs y specs Domain para lectura; transiciones Domain completas y normalizadas para escritura.
-* **Datos de salida:** `ReadResult` para consultas y `WriteResult` para commits. P-02 usa únicamente `unavailable | corruptState | conflict | unexpected`; las invalidaciones pertenecen exclusivamente a P-03.
+* **Datos de salida:** `ReadResult` para consultas y `WriteResult` para commits. P-02 usa únicamente `unavailable | corruptState | conflict | unexpected`; P-03 devuelve únicamente `unavailable | unexpected`, sin payload de error, y después entrega invalidaciones por listener.
 * **Estado:** Los contratos no poseen autoridad de dominio ni mantienen trabajo remoto en vuelo.
 * **Persistencia:** Ninguna por sí misma. Sus futuras implementaciones deben preservar `cambio optimista + PendingMutation` y `cambios remotos + nuevo collection state` como transacciones atómicas. El éxito solo se devuelve después del commit.
-* **Networking:** Ninguno. El kit de contrato por implementar incluye mock en memoria de ambos puertos y suite de conformidad reutilizable contra el mock y los adaptadores Tauri respaldados por el Motor Rust; Motor Web se añadirá a esa misma suite en su iteración futura.
+* **Networking:** Ninguno. El kit de contrato por implementar incluye doubles en memoria de los Ports y una suite de conformidad reutilizable contra esos doubles y los adaptadores Tauri respaldados por el Motor Rust; Motor Web se añadirá a esa misma suite en su iteración futura.
 
 Los flujos contractuales quedan separados:
 
@@ -75,11 +78,30 @@ Read PendingMutation → D-08 lifecycle transition
                      → remote attempt
 crash with inFlight → preserve → reconcile; never blind reset
 
-SyncPort operation → commit → future LocalChangeSource
+SyncPort operation → commit → LocalChangeSource
                    → Application invalidates → ReadRepository re-read
 ```
 
 `registerAccount` permite éxito idempotente para el mismo `AccountKey` y `RemoteAccountRef`, pero un binding distinto produce `conflict`: P-02 no permite rebind silencioso. `cacheEmailBody`, `replaceAttachmentRefs` y `replaceMailboxView` escriben snapshots completos; attachments acepta `[]` como caché completa vacía y `queryState` nunca se ordena. El futuro motor valida owners, scopes y unicidad dentro del mismo commit.
+
+La cobertura mínima P-02 → P-03 es semántica, no un conteo de eventos:
+
+| Commit P-02 exitoso | Hints P-03 que deben cubrir el cambio |
+| --- | --- |
+| `registerAccount` | `accounts` |
+| `applyCollectionSync` de Email | `emails(account)`, `emailMemberships(account)`, `syncCursor(account, email)` |
+| `applyCollectionSync` de Mailbox | `mailboxes(account)`, `syncCursor(account, mailbox)` |
+| `applyCollectionSync` de Identity | `identities(account)`, `syncCursor(account, identity)` |
+| `cacheEmailBody` | `emailBody(email)` |
+| `replaceAttachmentRefs` | `attachmentRefs(email)` |
+| `replaceMailboxView` | `mailboxView(spec)` |
+| `stageSendMutation` | `pendingMutations(account)` |
+| `applyOptimisticKeywordMutation` | `emails(account)`, `pendingMutations(account)` |
+| `applyOptimisticMailboxMembershipMutation` | `emailMemberships(account)`, `pendingMutations(account)` |
+| `replacePendingMutationIfCurrent` | `pendingMutations(account)` |
+| `removeConfirmedMutation` | `pendingMutations(account)` |
+
+`emails(account)` también invalida lecturas cuya validez depende del owner Email, incluidas memberships, body y refs que puedan pasar a `ownerAbsent`; `mailboxes(account)` hace lo propio con la validez del owner de una `MailboxView`. Un adapter puede coalescer estos efectos en menos entregas o repetir hints sin alterar la obligación de cobertura.
 
 ---
 
@@ -99,10 +121,10 @@ SyncPort operation → commit → future LocalChangeSource
 
 ## 6. Motor Web/PWA — diferido
 
-* **Responsabilidad:** En una iteración futura, implementar los mismos contratos sobre `wa-sqlite`/OPFS dentro de `SharedWorker` y notificar por `BroadcastChannel`.
+* **Responsabilidad:** En una iteración futura, implementar `ReadRepository`, `SyncPort` y `LocalChangeSource` sobre `wa-sqlite`/OPFS dentro de `SharedWorker` y notificar por `BroadcastChannel`.
 * **Qué NO hace:** No forma parte del MVP Tauri, de Gate 0-C actual ni de sus criterios de aceptación. No se considera descartado.
 * **Dependencias:** **DEFERRED:** OPFS, wa-sqlite, estrategia de cifrado Web, custodia de credenciales, multi-tab y `SharedWorker`.
-* **Consumidores:** Futuros adaptadores Web de `ReadRepository`/`SyncPort`.
+* **Consumidores:** Futuros adaptadores Web de los tres Ports locales.
 * **Datos de entrada:** Los mismos contratos lógicos cuando se implemente.
 * **Datos de salida:** Resultados observables conformes a la suite compartida futura.
 * **Estado:** **MOVED TO FUTURE WEB ITERATION.**
@@ -130,7 +152,7 @@ SyncPort operation → commit → future LocalChangeSource
 * **Responsabilidad:** Tomar exclusivamente la familia discriminada de intenciones durables —`SendMutation`, `KeywordMutation` y `MailboxMembershipMutation`—, traducirlas a JMAP, reconciliar outcomes inciertos y registrar confirmación o fallo terminal. La primera conserva `SendIntent`; las otras actúan sobre `ScopedEmailId`.
 * **Qué NO hace:** No crea un `Email` falso o placeholder con ID temporal, no guarda drafts, no considera éxito el clic en Enviar, no descarta payload ante fallo de red, no implementa SMTP y no sube adjuntos en el MVP.
 * **Dependencias:** `SyncPort`, Cliente JMAP y la operación acordada para solicitar reconciliación al Coordinador.
-* **Consumidores:** Worker TypeScript y, por proyección local releída tras una futura invalidación P-03, Pinia.
+* **Consumidores:** Worker TypeScript y, por proyección local releída tras una invalidación P-03, Pinia.
 * **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados JMAP.
 * **Datos de salida:** Operaciones JMAP, transiciones durables, errores presentables y solicitud de resincronización.
 * **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
@@ -163,7 +185,7 @@ Imagina que arrancas la aplicación sin conexión. Rust recupera la DEK del secu
 6. **Cuando te autenticas, empieza el ciclo remoto.** El Passkey se ejecuta en el navegador del sistema. El token resultante entra solo en la memoria del Worker; no desbloquea la DB ni pasa por Pinia.
 7. **El Worker habla JMAP directamente.** El Coordinador lee el cursor por `ReadRepository`; Cliente JMAP usa `fetch`/WebSocket contra el servidor. `StateChange` solo dispara la consulta incremental.
 8. **Los cambios se vuelven locales antes de ser visibles.** El Worker normaliza la respuesta como `CollectionSyncCommit` y llama `SyncPort.applyCollectionSync`; el futuro `TauriSyncPort` concentrará `invoke()` y Rust confirmará datos y nuevo cursor en una transacción SQLCipher antes de emitir un evento Tauri.
-9. **Pinia vuelve a leer.** Después del commit, el futuro `LocalChangeSource` emite una invalidación; Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
+9. **Pinia vuelve a leer.** Después del commit, `LocalChangeSource` emite una invalidación; Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
 10. **Al abrir un mensaje se repite la regla.** Si el cuerpo está `notCached`, Application podrá solicitar su materialización al Coordinator. Cuando llega un `EmailBody` completo y normalizado conforme a D-09, Rust lo cifra y una invalidación post-commit provoca otra lectura; la ausencia previa del body nunca volvía incompleto al Email de metadata y ambos `text`/`html` null siguen siendo un resultado completo válido.
 11. **El HTML se trata como hostil.** Vue sanitiza el raw en cada render, elimina contenido activo y remoto y lo muestra dentro del sandbox bajo CSP; no persiste el resultado sanitizado.
 12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent`; `SyncPort.stageSendMutation` persiste la `SendMutation` antes de limpiar Composer. Si falla, conserva la edición. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación JMAP.

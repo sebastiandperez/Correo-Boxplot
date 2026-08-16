@@ -11,8 +11,8 @@ P0 — Domain Final Audit #2 · COMPLETO / PASS
 P0 — Ports · EN PROGRESO
 │
 ├── P-01 ReadRepository · CLOSED
-├── P-02 SyncPort · IMPLEMENTADO / REVIEW PENDIENTE
-└── P-03 LocalChangeSource · FUTURO
+├── P-02 SyncPort · CLOSED
+└── P-03 LocalChangeSource · IMPLEMENTADO / REVIEW PENDIENTE
 
 P0 — adapters y conformance doubles
 │

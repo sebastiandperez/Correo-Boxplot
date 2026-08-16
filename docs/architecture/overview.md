@@ -13,7 +13,7 @@ Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc
 ## Filosofía
 
 *   **Local-first real:** la UI nunca espera a la red. Lee siempre de una base SQLite local; la sincronización con el servidor ocurre en background y actualiza esa base, nunca al revés.
-*   **Tauri primero, Web después:** el MVP valida el recorrido completo en Tauri. La arquitectura conserva `ReadRepository` y `SyncPort` como frontera para que una iteración futura pueda añadir Web/PWA sin acoplar Vue/Pinia al motor local.
+*   **Tauri primero, Web después:** el MVP valida el recorrido completo en Tauri. La arquitectura conserva `ReadRepository`, `SyncPort` y `LocalChangeSource` como fronteras para que una iteración futura pueda añadir Web/PWA sin acoplar Vue/Pinia al motor local.
 *   **JMAP de punta a punta:** el canal cliente↔servidor es JMAP estándar (no un RPC propio como el `MessagePort` de Stormbox), porque el servidor ya necesita hablar JMAP para lo demás, y porque el cliente y el servidor no comparten proceso — a diferencia de Stormbox, donde UI y SharedWorker viven en la misma pestaña.
 *   **Nunca la única puerta:** este cliente es una fachada más sobre un servidor que ya es accesible por IMAP/SMTP estándar. Su valor está en la experiencia (rápido, offline, bonito), no en ser indispensable.
 *   **Ligero de verdad:** Tauri en vez de Electron, sin ML pesado embebido. Compute-at-the-edge queda documentado únicamente como extensión futura opcional y fuera del MVP.
@@ -23,7 +23,7 @@ Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc
 *   **Lenguaje principal:** TypeScript para Vue/Pinia y para Cliente JMAP, Coordinador y Outbox; Rust queda limitado a persistencia, cifrado y secure store de Tauri.
 *   **Framework UI:** Vue 3 (Composition API), Vite como bundler — igual que Stormbox, por continuidad de patrones ya probados.
 *   **Entrega del MVP:** Tauri v2, con Vue dentro del webview y backend Rust. No depende de WASM, OPFS ni políticas de almacenamiento del navegador.
-*   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository` para lecturas committed y `SyncPort` para transiciones semánticas atómicas. Application, Coordinator y Outbox consumen la capacidad que corresponda; las futuras invalidaciones post-commit vivirán en `LocalChangeSource` P-03. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
+*   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository` para lecturas committed y `SyncPort` para transiciones semánticas atómicas. Application, Coordinator y Outbox consumen la capacidad que corresponda; `LocalChangeSource` P-03 comunica únicamente invalidaciones post-commit. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
 *   **Orquestador de sincronización y concurrencia:**
     *   Cliente JMAP, Coordinador de sincronización y Outbox tienen una única implementación en TypeScript.
     *   En Tauri corre en un Worker normal dentro del webview: habla JMAP directamente mediante `fetch`/WebSocket y cruza por los adaptadores Tauri/`invoke()` únicamente para persistir a través de Rust. Los cambios se notifican mediante el sistema de eventos de Tauri.
@@ -37,7 +37,7 @@ Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc
 
 ## Iteración futura Web/PWA
 
-La arquitectura Web/PWA previamente acordada no se descarta: reutilizará Vue/Pinia y los contratos `ReadRepository` + `SyncPort`, y prevé `wa-sqlite` sobre OPFS, `SharedWorker` y `BroadcastChannel`. Su cifrado, custodia de credenciales, concurrencia multi-tab y operación de almacenamiento se resolverán en esa iteración. Ninguno de esos puntos bloquea el MVP Tauri ni se da por resuelto en este documento.
+La arquitectura Web/PWA previamente acordada no se descarta: reutilizará Vue/Pinia y los contratos `ReadRepository`, `SyncPort` y `LocalChangeSource`, y prevé `wa-sqlite` sobre OPFS, `SharedWorker` y `BroadcastChannel`. Su cifrado, custodia de credenciales, concurrencia multi-tab y operación de almacenamiento se resolverán en esa iteración. Ninguno de esos puntos bloquea el MVP Tauri ni se da por resuelto en este documento.
 
 ## Qué NO es este cliente
 

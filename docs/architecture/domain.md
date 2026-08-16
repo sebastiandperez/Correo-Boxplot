@@ -27,13 +27,13 @@ Es deliberadamente posible que el Domain requiera conceptos todavía ausentes de
 
 ### 1.2 Frontera con Ports
 
-`ReadRepository` P-01 está cerrado como port de consultas puras sobre estado local committed. `SyncPort` expresa transiciones semánticas atómicas para casos de escritura de Application, Coordinator y Outbox. Las notificaciones post-commit pertenecen al futuro `LocalChangeSource` P-03 y las necesidades de materialización remota a futura orquestación Application → Coordinator.
+`ReadRepository` P-01 está cerrado como port de consultas puras sobre estado local committed. `SyncPort` P-02 está cerrado como frontera de transiciones semánticas atómicas para casos de escritura de Application, Coordinator y Outbox. `LocalChangeSource` P-03 está implementado con review pendiente como fuente separada de invalidaciones post-commit; las necesidades de materialización remota pertenecen a futura orquestación Application → Coordinator.
 
 ### 1.3 Estado de Application: fuera del modelo durable
 
 Pinia no añade entidades a este modelo. Mantiene únicamente proyecciones y estado efímero: runtime, selección, página visible, load state y Composer en edición.
 
-`LocalReady + RemoteAnonymous` es válido. La selección actual no identifica una Account, el estado de autenticación no forma parte de Account y el Composer no es `SendIntent`. Pinia no conserva DEK ni token. Los diagnósticos de sync y Outbox son proyecciones operativas separadas de `CollectionSyncCursor` y `PendingMutation`; el flujo visible futuro será `commit local → LocalChangeSource → ReadRepository → Pinia → Vue`.
+`LocalReady + RemoteAnonymous` es válido. La selección actual no identifica una Account, el estado de autenticación no forma parte de Account y el Composer no es `SendIntent`. Pinia no conserva DEK ni token. Los diagnósticos de sync y Outbox son proyecciones operativas separadas de `CollectionSyncCursor` y `PendingMutation`; el flujo visible es `commit local → LocalChangeSource → ReadRepository → Pinia → Vue`.
 
 ## 2. Vista de relaciones
 
@@ -450,13 +450,13 @@ La estrategia concreta de generación/encoding durable de IDs y la organización
 2.  Coordinator usa el `CollectionSyncCursor` anterior para solicitar el delta y los DTOs JMAP necesarios.
 3.  Las respuestas parciales se normalizan o mergean hasta producir Emails completos y scoped.
 4.  `SyncPort.applyCollectionSync` aplica los `Email`, `EmailMailbox` y el nuevo collection state en un commit atómico. `MailboxView` no cambia implícitamente: solo se reemplaza mediante su operación explícita cuando existe un resultado de consulta coherente.
-5.  Después del commit, el futuro `LocalChangeSource` invalida la proyección y Pinia vuelve a leer mediante `ReadRepository`; Vue no consume la respuesta JMAP directamente.
+5.  Después del commit, `LocalChangeSource` invalida la proyección y Pinia vuelve a leer mediante `ReadRepository`; Vue no consume la respuesta JMAP directamente.
 
 ### 9.2 Correo abierto
 
 1.  `ReadRepository` devuelve `Email` y, si existe, `EmailBody` desde SQLite.
 2.  Si el cuerpo no está cacheado, una futura intención de Application solicita su materialización al Coordinator sin convertir la red en dependencia de la lectura local; la API exacta permanece diferida.
-3.  Cuando llega un body completo y normalizado conforme a D-09, el motor lo persiste y el futuro `LocalChangeSource` emite una invalidación post-commit; un resultado truncado no produce `EmailBody`.
+3.  Cuando llega un body completo y normalizado conforme a D-09, el motor lo persiste y `LocalChangeSource` emite una invalidación post-commit; un resultado truncado no produce `EmailBody`.
 4.  La UI vuelve a leer y aplica la frontera de seguridad a cualquier HTML raw; nunca lo inserta libremente en el DOM privilegiado.
 5.  Marcar como leído actualiza `KeywordSet` y crea su `KeywordMutation` en una transacción independiente del fetch del cuerpo.
 
@@ -490,7 +490,7 @@ La estrategia concreta de generación/encoding durable de IDs y la organización
 
 ## 12. Trabajo deliberadamente abierto después de D-01→D-10
 
-D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo y Domain queda cerrado. P-01 `ReadRepository` también está cerrado; P-02 `SyncPort` está implementado con review pendiente y P-03 `LocalChangeSource` permanece futuro. Los Ports evolucionan fuera del Domain sin reabrirlo. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
+D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo y Domain queda cerrado. P-01 `ReadRepository` y P-02 `SyncPort` también están cerrados; P-03 `LocalChangeSource` está implementado con review pendiente. Los Ports evolucionan fuera del Domain sin reabrirlo y todavía requieren su audit conjunto antes de declararse cerrados. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
 
 ## 13. Nota para el diseño del servidor
 
