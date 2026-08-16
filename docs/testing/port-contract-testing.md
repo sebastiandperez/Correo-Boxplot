@@ -2,7 +2,7 @@
 
 ## 1. Estado y autoridad
 
-**TEST-00: COMPLETE. TEST-01: COMPLETE. TEST-02: IMPLEMENTED.** La arquitectura y la infraestructura reusable están materializadas; la suite runtime de `ReadRepository` está definida pero todavía no se ha ejecutado contra un implementation-under-test.
+**TEST-00: COMPLETE. TEST-01: COMPLETE. TEST-02: COMPLETE. TEST-03A: IMPLEMENTED.** La infraestructura reusable y las suites abstractas de `ReadRepository` y del estado de `SyncPort` están materializadas, pero todavía no se han ejecutado contra un implementation-under-test.
 
 Estado de los contratos:
 
@@ -10,8 +10,9 @@ Estado de los contratos:
 * P-02 `SyncPort`: **CLOSED**.
 * P-03 `LocalChangeSource`: **CLOSED**.
 * `ReadRepository` runtime contract: **DEFINED — NOT YET EXECUTED AGAINST IUT**.
+* `SyncPort` runtime contract: **PARTIALLY DEFINED — TEST-03A IMPLEMENTED; TEST-03B NEXT**.
 * `MemoryLocalEngine` conformance: **NOT STARTED**.
-* Port contract tests: **IMPLEMENTATION IN PROGRESS — TEST-03A NEXT**.
+* Port contract tests: **IMPLEMENTATION IN PROGRESS — TEST-03B NEXT**.
 * Ports como fase completa: **NOT CLOSED — runtime conformance required**.
 
 La prioridad normativa es:
@@ -46,7 +47,7 @@ Los nombres conceptuales congelados para los runners Vitest son:
 * `defineLocalChangeSourceContract(...)`;
 * `defineLocalEngineContract(...)`.
 
-TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`; los demás runners permanecen pendientes.
+TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`. TEST-03A implementa la primera suite parcial P-02, `defineSyncPortStateContract(...)`; el runner de mutaciones y el agregador final `defineSyncPortContract(...)` permanecen pendientes de TEST-03B.
 
 ## 3. Aclaraciones normativas de Ports
 
@@ -224,6 +225,23 @@ Los errores `unavailable`, `corruptState` y `unexpected`, así como el éxito pa
 
 ## 11. Grupos obligatorios de SyncPort
 
+TEST-03A define 48 escenarios estables en `src/tests/contracts/sync-port-state.contract.ts`. Esta tabla conserva la trazabilidad sin duplicar la especificación ejecutable exacta:
+
+| Grupo TEST-03A | IDs | Cantidad |
+| --- | --- | ---: |
+| Account | SP-A01→SP-A03 | 3 |
+| Collection general | SP-CS01→SP-CS17 | 17 |
+| Email sync | SP-E01→SP-E09 | 9 |
+| Mailbox sync | SP-M01→SP-M02 | 2 |
+| Identity sync | SP-I01→SP-I02 | 2 |
+| EmailBody | SP-B01→SP-B03 | 3 |
+| AttachmentRef | SP-AR01→SP-AR05 | 5 |
+| MailboxView | SP-V01→SP-V04 | 4 |
+| Snapshot/alias | SP-SNAP01→SP-SNAP03 | 3 |
+| **Total** |  | **48** |
+
+Estos escenarios están definidos, no ejecutados: no existe todavía un IUT. TEST-03B cubrirá mutaciones/Outbox y compondrá el runner P-02 final; TEST-03A por sí solo no afirma conformance de `SyncPort`.
+
 | ID | Cobertura requerida |
 | --- | --- |
 | SP-ACCOUNT | Registro, idempotencia exacta y prohibición de rebind. |
@@ -325,4 +343,4 @@ Requerirá las mismas suites de Ports y del Local Engine en PASS, además de sui
 
 ## 18. Próxima secuencia
 
-TEST-00, TEST-01 y TEST-02 están completos. TEST-03A es el siguiente bloque de especificación ejecutable. Solo después de completar las suites previstas se implementará `MemoryLocalEngine` como primer IUT; el audit final y la conformance runtime siguen siendo requisitos para declarar Ports globalmente cerrados.
+TEST-00, TEST-01 y TEST-02 están completos. TEST-03A está implementado con 48 escenarios abstractos; TEST-03B es el siguiente bloque. Solo después de completar las suites previstas se implementará `MemoryLocalEngine` como primer IUT; el audit final y la conformance runtime siguen siendo requisitos para declarar Ports globalmente cerrados.

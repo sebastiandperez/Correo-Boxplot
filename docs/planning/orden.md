@@ -19,7 +19,8 @@ P0 — Port contract testing · IMPLEMENTACIÓN EN PROGRESO
 ├── TEST-00 arquitectura de tests · COMPLETE
 ├── TEST-01 infraestructura reusable · COMPLETE
 ├── TEST-02 ReadRepository suite · COMPLETE / NOT YET RUN AGAINST IUT
-├── TEST-03A · READY
+├── TEST-03A SyncPort state suite · COMPLETE / NOT YET RUN AGAINST IUT
+├── TEST-03B SyncPort mutations suite · READY
 └── PORTS global · NOT CLOSED hasta conformance runtime + audit final
 
 P0 — primer IUT y adapters
