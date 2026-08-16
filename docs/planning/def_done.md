@@ -5,7 +5,7 @@
 ✓ Memory y Tauri pasan la misma suite observable
 ✓ SQLite + SQLCipher abre, migra, reabre y falla cerrado
 ✓ DEK permanece solo en Rust
-✓ onChange provoca reread local
+✓ LocalChangeSource post-commit provoca reread local mediante ReadRepository
 ✓ Composer persiste PendingMutation antes de limpiar
 ✓ HTML se renderiza tras la frontera de seguridad
 ✓ JmapClient funciona aisladamente contra Stalwart

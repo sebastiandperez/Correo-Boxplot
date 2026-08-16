@@ -26,7 +26,7 @@ La secuencia obligatoria del core es:
 3. Documentation alignment — completado.
 4. Isolated Domain implementation D-01→D-10 — completada.
 5. Domain Final Audit #2 y freeze final — completados.
-6. Ports — siguiente fase habilitada.
+6. Ports — P-01 cerrado; P-02 implementado con review pendiente; P-03 futuro.
 7. Adapters y conformance doubles.
 8. Rust Local Engine y persistence integration.
 9. JMAP, Coordinator y Outbox integration.
@@ -42,7 +42,7 @@ Application y Presentation siguen siendo capas consumidoras independientes; este
 | Runtime de JMAP/Coordinator/Outbox | Worker normal TypeScript dentro del webview |
 | Persistencia | `SyncPort`/`ReadRepository` → adaptadores Tauri TypeScript → `invoke()` validado → Rust → SQLite + SQLCipher |
 | Red JMAP | `fetch` + WebSocket directos desde TypeScript; nunca por Rust |
-| Cambios locales | Sistema de eventos de Tauri → `onChange` → relectura local |
+| Cambios locales | Commit → futuro `LocalChangeSource` P-03 → invalidación → relectura local |
 | Clave local | DEK aleatoria 32 bytes, creada/recuperada y usada solo en Rust |
 | Sesión remota | Passkey en navegador del sistema; token solo en memoria del Worker |
 | Background | Política Tauri `backgroundThrottling: "throttle"`; riesgo acotado aceptado |
@@ -56,7 +56,7 @@ flowchart TD
     Docs["Documentation alignment<br/>COMPLETE"]
     Domain["D-01…D-10 implementation<br/>COMPLETE"]
     DomainGate["Domain Final Audit #2<br/>PASS · FREEZE COMPLETE"]
-    Ports["Ports"]
+    Ports["Ports<br/>P-01 CLOSED<br/>P-02 IMPLEMENTED · REVIEW PENDING<br/>P-03 FUTURE"]
     Adapters["Adapters + conformance doubles"]
     Engine["Rust Local Engine<br/>persistence integration"]
     Remote["JMAP + Coordinator + Outbox<br/>integration"]
@@ -95,7 +95,7 @@ Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri c
 
 #### 0-B — Domain D-01…D-10
 
-Quedaron congelados e implementados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor`, la familia discriminada `PendingMutation`, `EmailBody` completo/lazy y la metadata `AttachmentRef`. Domain Final Audit #2 aprobó el freeze; Ports y su representación TypeScript son ahora la siguiente fase de diseño.
+Quedaron congelados e implementados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor`, la familia discriminada `PendingMutation`, `EmailBody` completo/lazy y la metadata `AttachmentRef`. Domain Final Audit #2 aprobó el freeze; P-01 está cerrado, P-02 está implementado con review pendiente y P-03 permanece futuro.
 
 `0001_initial.sql` es una migración histórica y mínima: sus gaps no redefinen Domain ni implican que el Local Engine esté implementado.
 
@@ -144,7 +144,7 @@ Las verificaciones por bloque y el Domain Final Audit #1 comprobaron identidades
 
 ### 2-A — Ports
 
-Diseñar y materializar `ReadRepository` y `SyncPort` sobre el vocabulario Domain ya congelado. Las firmas no pueden introducir row IDs, DTOs JMAP, Emails parciales, hashes como identidad de View ni payloads semánticamente arbitrarios.
+P-01 `ReadRepository` está **CLOSED** como consulta pura del estado local committed. P-02 `SyncPort` está **IMPLEMENTED / REVIEW PENDING** con diez transiciones semánticas atómicas y sin row IDs, DTOs JMAP, Emails parciales, hashes como identidad de View ni payloads arbitrarios. P-03 `LocalChangeSource` permanece futuro y separado; las solicitudes de materialización remota siguen diferidas a orquestación Application → Coordinator.
 
 ### 2-B — Adapters y conformance doubles
 
@@ -173,7 +173,7 @@ El JMAP Client normaliza DTOs parciales antes de producir Domain. Coordinator se
 
 ### 3-C — Application y Presentation integration
 
-Conectar Vue/Pinia con `ReadRepository`, Tauri adapters y Local Engine. La UI relee SQLite mediante `onChange`, mantiene Composer efímero y nunca consume respuestas JMAP directamente.
+Conectar Vue/Pinia con `ReadRepository`, Tauri adapters y Local Engine. La UI releerá SQLite tras invalidaciones del futuro `LocalChangeSource`, mantiene Composer efímero y nunca consume respuestas JMAP directamente.
 
 ## 9. Fase 4 — aceptación Tauri
 
@@ -191,7 +191,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Componente | Construcción principal | Integración / aceptación |
 | --- | --- | --- |
 | Domain | **D-01→D-10 implementados; Final Audit #2 PASS; CLOSED** | Base congelada de Ports y todas las integraciones |
-| `ReadRepository` + `SyncPort` | **Fase 2 · 2-A** | Adapters; Fase 3; aceptación |
+| `ReadRepository` + `SyncPort` | **P-01 CLOSED; P-02 IMPLEMENTED / REVIEW PENDING** | Adapters; Fase 3; aceptación |
 | Memory/Tauri adapters | **Fase 2 · 2-B** | Local Engine y conformance |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
@@ -211,7 +211,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | C-02 | **RESOLVED · 0-C FOR TAURI MVP** | Ciclos local/remoto independientes y recuperación local definida. |
 | C-03 | **RESOLVED · 0-D** | Vocabulario de `runtime`, `mail` y `composer` fijado. |
 | C-04 | **RESOLVED · 0-D** | Draft memory-only; sin autosave/JMAP/persistencia. |
-| C-05 | **BOUNDARY RESOLVED · PORT DESIGN READY** | Consumers y dirección de Ports están fijados; firmas, errores y suite son la siguiente fase después del Domain freeze. |
+| C-05 | **P-01 CLOSED · P-02 IMPLEMENTED / REVIEW PENDING** | Lecturas, transiciones atómicas y futuras invalidaciones P-03 permanecen separadas. |
 | C-06 | **SPLIT** | Lifecycle local resuelto en 0-C; modelo de tareas/hilos es detalle de implementación del Local Engine. |
 | C-07 | **PHYSICAL BASELINE PRESENT** | `0001_initial.sql` es histórico y mínimo; migrations futuras, runner y runtime siguen en Fase 3-A. |
 | C-08 | **RESOLVED · 0-A** | JMAP Tauri corre en Worker TS directo. |
@@ -250,7 +250,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
-| PORTS-01 | **Fase 2-A** | Firmas, errores, receipts y operaciones concretas de `ReadRepository`/`SyncPort`. |
+| PORTS-01 | **P-01 CLOSED · P-02 REVIEW PENDING · P-03 FUTURE** | Completar revisión de SyncPort y diseñar después el change source separado. |
 | PERSISTENCE-01 | **Fase 3-A** | Mapping físico, migrations posteriores y codecs sin modificar `0001`. |
 | ATTACHMENT-CACHE-01 | **Fase 2-A / 3-A** | Distinguir disponibilidad de la colección de refs en el contrato de lectura/persistencia sin añadir flags a `AttachmentRef`. |
 | OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |

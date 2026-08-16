@@ -6,9 +6,9 @@ Este bloque sostiene cuatro recorridos: recibir cambios, abrir un correo, redact
 
 Este documento define responsabilidades de componentes. Las reglas normativas sobre ubicación, imports y dirección de dependencias viven en [layers.md](layers.md).
 
-La regla central es local-first: Vue y Pinia solo obtienen correo mediante `ReadRepository`, que responde desde SQLite local. Una operación `ensure…` registra o deduplica una necesidad y resuelve su `Promise` sin esperar a la red; los datos llegan después mediante `onChange`.
+La regla central es local-first: Vue y Pinia solo obtienen correo mediante `ReadRepository`, que consulta estado local committed. Las futuras solicitudes de materialización remota pertenecen a orquestación Application → Coordinator; los datos se vuelven observables después del commit y de una invalidación del futuro `LocalChangeSource` P-03.
 
-La frontera Repository se divide en `ReadRepository`, consumido por Application/Pinia, y `SyncPort`, consumido por Coordinador/Outbox. Cliente JMAP, Coordinador y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y cruza a la persistencia exclusivamente mediante `SyncPort`; su adaptador Tauri concentra `invoke()`.
+La frontera local se divide en `ReadRepository`, compartido por Application, Coordinator y Outbox para lecturas, y `SyncPort`, consumido por sus casos de escritura semántica. El futuro `LocalChangeSource` P-03 queda separado. Cliente JMAP, Coordinator y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y cruza a la persistencia exclusivamente mediante `SyncPort`; su futuro adaptador Tauri concentrará `invoke()`.
 
 El ciclo local y el remoto son independientes. `LocalReady + RemoteAnonymous` es válido: la DEK del SQLite local procede del secure store del sistema operativo, mientras el token JMAP solo vive en memoria del Worker. Passkey/WebAuthn autentica al servidor y no deriva la clave SQLCipher.
 
@@ -32,29 +32,54 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 
 ## 3. Estado de aplicación (Pinia)
 
-* **Responsabilidad:** Mantener estado efímero de Application, selección y proyecciones visibles; coordinar lecturas locales; conservar el compositor temporal; releer `ReadRepository` cuando recibe `onChange`.
+* **Responsabilidad:** Mantener estado efímero de Application, selección y proyecciones visibles; coordinar lecturas locales; conservar el compositor temporal; releer `ReadRepository` cuando reciba invalidaciones del futuro `LocalChangeSource`.
 * **Qué NO hace:** No es fuente durable, no persiste stores, no importa JMAP, no interpreta respuestas remotas y no duplica `CollectionSyncCursor` ni `PendingMutation` como autoridad propia.
-* **Dependencias:** `ReadRepository`.
+* **Dependencias:** `ReadRepository`; futuros casos de escritura consumen `SyncPort` y las invalidaciones consumirán `LocalChangeSource` P-03.
 * **Consumidores:** Componentes y composables Vue.
-* **Datos de entrada:** Intenciones de UI, resultados locales de `ReadRepository` y señales `onChange`.
-* **Datos de salida:** Estado reactivo para Vue y llamadas semánticas a `ReadRepository`.
+* **Datos de entrada:** Intenciones de UI, resultados locales de `ReadRepository` y futuras invalidaciones post-commit.
+* **Datos de salida:** Estado reactivo para Vue, consultas a `ReadRepository` e intenciones semánticas de escritura/orquestación.
 * **Estado:** Tres stores mínimos: `runtime` con `local: opening | ready | error`, `auth: anonymous | authenticating | authenticated | expired`, `connectivity: online | offline`; `mail` con cuenta/mailbox/email seleccionados, página visible y `loadState: idle | loading | ready | error`; `composer` con campos en edición y `phase: idle | editing | queueing | error`. Estados de sync y Outbox se proyectan desde SQLite.
 * **Persistencia:** Ninguna. El draft es **memory only**: sin tabla, autosave ni JMAP Draft sync. El compositor se limpia únicamente después de persistir con éxito la `PendingMutation`; si falla, conserva todo el contenido. Un cierre o crash previo a Enviar puede perder la redacción y es una limitación explícita del MVP.
 * **Networking:** Ninguno.
 
 ---
 
-## 4. Interfaz Repository (`ReadRepository` + `SyncPort`)
+## 4. Ports locales (`ReadRepository`, `SyncPort`, `LocalChangeSource`)
 
-* **Responsabilidad:** Separar consumidores sin exponer el motor. `ReadRepository` ofrece lecturas locales, registro atómico de cambios optimistas y envíos, `ensureFolderWindow`/`ensureMessageBody` y `onChange`. `SyncPort` permite al Coordinador/Outbox aplicar lotes, avanzar cursores y transicionar `PendingMutation`.
-* **Qué NO hace:** No expone SQL, tablas, `invoke()`, rutas de archivo ni tipos de transporte JMAP. `ensure…` nunca promete que los datos remotos ya llegaron. No usa `viewId`, `filterHash` o `sortHash` como autoridad de igualdad: la identidad de `MailboxView` procede de Account, Mailbox y sus FilterSpec/SortSpec canónicos.
+* **Responsabilidad:** Separar tres conversaciones sin exponer el motor. `ReadRepository` P-01 ofrece únicamente consultas sobre estado local committed. `SyncPort` expresa transiciones semánticas atómicas. El futuro `LocalChangeSource` P-03 emitirá invalidaciones post-commit no durables para provocar relecturas.
+* **Semántica P-01:** `LocalEntityRead` distingue entidad local ausente/presente; `OwnedSnapshotRead` distingue owner ausente de snapshot presente, incluso vacío; `OwnedOptionalRead` añade ausencia conocida del valor owned; `OwnedCacheRead` distingue `ownerAbsent`, `notCached` y `cached`. Para `EmailBody`, `AttachmentRef[]` y `MailboxView`, `notCached` no equivale a `cached`; en attachments, `cached []` es una caché completa vacía. D-06 continúa gobernando la cobertura parcial de `MailboxView`.
+* **Semántica P-02:** cada método confirma una transición completa o no hace visible ningún estado parcial. Sus diez capacidades exactas son `registerAccount`, `applyCollectionSync`, `cacheEmailBody`, `replaceAttachmentRefs`, `replaceMailboxView`, `stageSendMutation`, `applyOptimisticKeywordMutation`, `applyOptimisticMailboxMembershipMutation`, `replacePendingMutationIfCurrent` y `removeConfirmedMutation`.
+* **Collection sync:** Coordinator normaliza JMAP en uno de seis commits cerrados: Email/Mailbox/Identity × delta/replace. `applyCollectionSync` valida el cursor esperado por igualdad exacta, aplica cambios y nuevo `CollectionSyncCursor` en un commit, trata state como opaco y nunca modifica `MailboxView` implícitamente. `cannotCalculateChanges` y `hasMoreChanges` siguen en Coordinator; un refetch completo produce mode `replace`.
+* **Escrituras locales:** Send persiste únicamente `SendMutation`; no crea Email optimista. Keyword y membership aplican el delta sobre el snapshot committed y persisten la `PendingMutation` exacta atómicamente. El resultado de membership no puede quedar vacío. Outbox cambia lifecycle mediante CAS de snapshot completo, conserva `inFlight` después de crash y solo elimina mutaciones actualmente `confirmed`.
+* **Qué NO hace:** Ningún port expone SQL, tablas, `invoke()`, rutas de archivo ni DTOs JMAP. `ReadRepository` no escribe, agenda, hace red ni notifica. `SyncPort` no absorbe solicitudes `ensure…`; esas intenciones pertenecen a futura orquestación Application → Coordinator. `LocalChangeSource` no será fuente de verdad y sus señales podrán coalescerse.
 * **Dependencias:** Tipos del dominio y errores propios del contrato. En el MVP, adaptadores TypeScript Tauri satisfacen estos contratos y cruzan por IPC hacia el Motor Rust.
-* **Consumidores:** Application/Pinia consume solo `ReadRepository`; Coordinador y Outbox consumen solo `SyncPort`.
-* **Datos de entrada:** `AccountKey`, scoped IDs, ViewSpec semántica, `position + limit`, filtro/orden, cambios semánticos, `SendIntent`, lotes normalizados, `CollectionSyncCursor` y transiciones de `PendingMutation`.
-* **Datos de salida:** Entidades/proyecciones locales, comprobantes transaccionales, `onChange` y errores `not_found | conflict | storage_unavailable | encryption_locked | migration_failed`.
-* **Estado:** El contrato no posee autoridad de dominio. Una implementación puede mantener suscripciones y solicitudes `ensure…` en vuelo.
-* **Persistencia:** Ninguna por sí misma. Sus futuras implementaciones deben preservar `cambio optimista + PendingMutation` y `cambios remotos + nuevo collection state` como transacciones atómicas.
+* **Consumidores:** Application, Coordinator y Outbox pueden leer mediante `ReadRepository`; los casos de escritura de Application, Coordinator y Outbox usan `SyncPort`. Application consumirá `LocalChangeSource` cuando P-03 se implemente.
+* **Datos de entrada:** IDs y specs Domain para lectura; transiciones Domain completas y normalizadas para escritura.
+* **Datos de salida:** `ReadResult` para consultas y `WriteResult` para commits. P-02 usa únicamente `unavailable | corruptState | conflict | unexpected`; las invalidaciones pertenecen exclusivamente a P-03.
+* **Estado:** Los contratos no poseen autoridad de dominio ni mantienen trabajo remoto en vuelo.
+* **Persistencia:** Ninguna por sí misma. Sus futuras implementaciones deben preservar `cambio optimista + PendingMutation` y `cambios remotos + nuevo collection state` como transacciones atómicas. El éxito solo se devuelve después del commit.
 * **Networking:** Ninguno. El kit de contrato por implementar incluye mock en memoria de ambos puertos y suite de conformidad reutilizable contra el mock y los adaptadores Tauri respaldados por el Motor Rust; Motor Web se añadirá a esa misma suite en su iteración futura.
+
+Los flujos contractuales quedan separados:
+
+```text
+JMAP → Coordinator → normalization → CollectionSyncCommit
+     → SyncPort.applyCollectionSync → Local Engine
+
+Application → Domain PendingMutation → SyncPort optimistic operation
+            → atomic projection + mutation → committed success
+            → ReadRepository observes committed state
+
+Read PendingMutation → D-08 lifecycle transition
+                     → replacePendingMutationIfCurrent(expected, next)
+                     → remote attempt
+crash with inFlight → preserve → reconcile; never blind reset
+
+SyncPort operation → commit → future LocalChangeSource
+                   → Application invalidates → ReadRepository re-read
+```
+
+`registerAccount` permite éxito idempotente para el mismo `AccountKey` y `RemoteAccountRef`, pero un binding distinto produce `conflict`: P-02 no permite rebind silencioso. `cacheEmailBody`, `replaceAttachmentRefs` y `replaceMailboxView` escriben snapshots completos; attachments acepta `[]` como caché completa vacía y `queryState` nunca se ordena. El futuro motor valida owners, scopes y unicidad dentro del mismo commit.
 
 ---
 
@@ -105,7 +130,7 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 * **Responsabilidad:** Tomar exclusivamente la familia discriminada de intenciones durables —`SendMutation`, `KeywordMutation` y `MailboxMembershipMutation`—, traducirlas a JMAP, reconciliar outcomes inciertos y registrar confirmación o fallo terminal. La primera conserva `SendIntent`; las otras actúan sobre `ScopedEmailId`.
 * **Qué NO hace:** No crea un `Email` falso o placeholder con ID temporal, no guarda drafts, no considera éxito el clic en Enviar, no descarta payload ante fallo de red, no implementa SMTP y no sube adjuntos en el MVP.
 * **Dependencias:** `SyncPort`, Cliente JMAP y la operación acordada para solicitar reconciliación al Coordinador.
-* **Consumidores:** Worker TypeScript y, por proyección local vía `onChange`, Pinia.
+* **Consumidores:** Worker TypeScript y, por proyección local releída tras una futura invalidación P-03, Pinia.
 * **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados JMAP.
 * **Datos de salida:** Operaciones JMAP, transiciones durables, errores presentables y solicitud de resincronización.
 * **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
@@ -134,14 +159,14 @@ Imagina que arrancas la aplicación sin conexión. Rust recupera la DEK del secu
 2. **Pinia actualiza la selección.** El store pide la primera ventana mediante `ReadRepository` y marca la carga local, no una espera JMAP.
 3. **`ReadRepository` cruza la frontera Tauri.** El adaptador usa un comando `invoke()` explícito; Rust consulta SQLite cifrado sin exponer SQL ni la DEK al webview.
 4. **Ves inmediatamente lo disponible.** La `MailboxView` y sus `Email` vuelven a Pinia, que publica la proyección para Vue. Todo lo visible procede de SQLite, también offline.
-5. **Completar la ventana no bloquea la pantalla.** `ensureFolderWindow` registra o deduplica la necesidad y resuelve. Si no hay sesión remota, el trabajo espera sin impedir la lectura local.
+5. **Completar la ventana no bloquea la pantalla.** Una futura intención de Application solicita materialización al Coordinator. La API exacta de esa orquestación sigue diferida y no forma parte de `ReadRepository` ni se traslada automáticamente a `SyncPort`.
 6. **Cuando te autenticas, empieza el ciclo remoto.** El Passkey se ejecuta en el navegador del sistema. El token resultante entra solo en la memoria del Worker; no desbloquea la DB ni pasa por Pinia.
-7. **El Worker habla JMAP directamente.** El Coordinador lee el cursor por `SyncPort`; Cliente JMAP usa `fetch`/WebSocket contra el servidor. `StateChange` solo dispara la consulta incremental.
-8. **Los cambios se vuelven locales antes de ser visibles.** El Worker entrega el lote normalizado a `SyncPort`; `TauriSyncPort` concentra `invoke()` y Rust confirma datos y nuevo cursor en una transacción SQLCipher antes de emitir un evento Tauri.
-9. **Pinia vuelve a leer.** `ReadRepository.onChange` recibe el evento, Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
-10. **Al abrir un mensaje se repite la regla.** Si falta el cuerpo, `ensureMessageBody` lo agenda. Cuando llega un `EmailBody` completo y normalizado conforme a D-09, Rust lo cifra y el evento provoca otra lectura; la ausencia previa del body nunca volvía incompleto al Email de metadata y ambos `text`/`html` null siguen siendo un resultado completo válido.
+7. **El Worker habla JMAP directamente.** El Coordinador lee el cursor por `ReadRepository`; Cliente JMAP usa `fetch`/WebSocket contra el servidor. `StateChange` solo dispara la consulta incremental.
+8. **Los cambios se vuelven locales antes de ser visibles.** El Worker normaliza la respuesta como `CollectionSyncCommit` y llama `SyncPort.applyCollectionSync`; el futuro `TauriSyncPort` concentrará `invoke()` y Rust confirmará datos y nuevo cursor en una transacción SQLCipher antes de emitir un evento Tauri.
+9. **Pinia vuelve a leer.** Después del commit, el futuro `LocalChangeSource` emite una invalidación; Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
+10. **Al abrir un mensaje se repite la regla.** Si el cuerpo está `notCached`, Application podrá solicitar su materialización al Coordinator. Cuando llega un `EmailBody` completo y normalizado conforme a D-09, Rust lo cifra y una invalidación post-commit provoca otra lectura; la ausencia previa del body nunca volvía incompleto al Email de metadata y ambos `text`/`html` null siguen siendo un resultado completo válido.
 11. **El HTML se trata como hostil.** Vue sanitiza el raw en cada render, elimina contenido activo y remoto y lo muestra dentro del sandbox bajo CSP; no persiste el resultado sanitizado.
-12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent`; el motor persiste una `SendMutation` con ese snapshot antes de limpiar Composer. Si falla, conserva la edición. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación JMAP.
+12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent`; `SyncPort.stageSendMutation` persiste la `SendMutation` antes de limpiar Composer. Si falla, conserva la edición. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación JMAP.
 
 ## 11. Extensiones futuras fuera de alcance
 

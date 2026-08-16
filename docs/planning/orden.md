@@ -8,9 +8,11 @@ P0 — Domain Final Audit #2 · COMPLETO / PASS
 │
 └── B-00B freeze final declarado · DOMAIN CLOSED
 
-P0 — Ports · SIGUIENTE FASE / READY
+P0 — Ports · EN PROGRESO
 │
-└── B-01 ReadRepository + SyncPort sobre Domain frozen
+├── P-01 ReadRepository · CLOSED
+├── P-02 SyncPort · IMPLEMENTADO / REVIEW PENDIENTE
+└── P-03 LocalChangeSource · FUTURO
 
 P0 — adapters y conformance doubles
 │

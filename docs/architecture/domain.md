@@ -27,13 +27,13 @@ Es deliberadamente posible que el Domain requiera conceptos todavía ausentes de
 
 ### 1.2 Frontera con Ports
 
-`ReadRepository` servirá a Application y `SyncPort` a Coordinator/Outbox, pero sus firmas, errores, receipts, DTOs IPC y operaciones concretas se diseñan **después** de implementar y verificar Domain. Este documento solo fija las necesidades semánticas que esos contratos deberán respetar; no diseña sus APIs.
+`ReadRepository` P-01 está cerrado como port de consultas puras sobre estado local committed. `SyncPort` expresa transiciones semánticas atómicas para casos de escritura de Application, Coordinator y Outbox. Las notificaciones post-commit pertenecen al futuro `LocalChangeSource` P-03 y las necesidades de materialización remota a futura orquestación Application → Coordinator.
 
 ### 1.3 Estado de Application: fuera del modelo durable
 
 Pinia no añade entidades a este modelo. Mantiene únicamente proyecciones y estado efímero: runtime, selección, página visible, load state y Composer en edición.
 
-`LocalReady + RemoteAnonymous` es válido. La selección actual no identifica una Account, el estado de autenticación no forma parte de Account y el Composer no es `SendIntent`. Pinia no conserva DEK ni token. Los diagnósticos de sync y Outbox son proyecciones operativas separadas de `CollectionSyncCursor` y `PendingMutation`; el flujo visible continúa siendo `SQLite → onChange → ReadRepository → Pinia → Vue`.
+`LocalReady + RemoteAnonymous` es válido. La selección actual no identifica una Account, el estado de autenticación no forma parte de Account y el Composer no es `SendIntent`. Pinia no conserva DEK ni token. Los diagnósticos de sync y Outbox son proyecciones operativas separadas de `CollectionSyncCursor` y `PendingMutation`; el flujo visible futuro será `commit local → LocalChangeSource → ReadRepository → Pinia → Vue`.
 
 ## 2. Vista de relaciones
 
@@ -449,21 +449,21 @@ La estrategia concreta de generación/encoding durable de IDs y la organización
 1.  WebSocket informa un `StateChange`.
 2.  Coordinator usa el `CollectionSyncCursor` anterior para solicitar el delta y los DTOs JMAP necesarios.
 3.  Las respuestas parciales se normalizan o mergean hasta producir Emails completos y scoped.
-4.  En una transacción local se aplican `Email`, `EmailMailbox`, las proyecciones afectadas y el nuevo collection state.
-5.  `onChange` hace que Pinia vuelva a leer mediante `ReadRepository`; Vue no consume la respuesta JMAP directamente.
+4.  `SyncPort.applyCollectionSync` aplica los `Email`, `EmailMailbox` y el nuevo collection state en un commit atómico. `MailboxView` no cambia implícitamente: solo se reemplaza mediante su operación explícita cuando existe un resultado de consulta coherente.
+5.  Después del commit, el futuro `LocalChangeSource` invalida la proyección y Pinia vuelve a leer mediante `ReadRepository`; Vue no consume la respuesta JMAP directamente.
 
 ### 9.2 Correo abierto
 
 1.  `ReadRepository` devuelve `Email` y, si existe, `EmailBody` desde SQLite.
-2.  Si el cuerpo falta, `ensureMessageBody` registra o deduplica el trabajo y su `Promise` resuelve sin convertir la red en dependencia de la UI.
-3.  Cuando llega un body completo y normalizado conforme a D-09, el motor lo persiste y notifica el cambio mediante `onChange`; un resultado truncado no produce `EmailBody`.
+2.  Si el cuerpo no está cacheado, una futura intención de Application solicita su materialización al Coordinator sin convertir la red en dependencia de la lectura local; la API exacta permanece diferida.
+3.  Cuando llega un body completo y normalizado conforme a D-09, el motor lo persiste y el futuro `LocalChangeSource` emite una invalidación post-commit; un resultado truncado no produce `EmailBody`.
 4.  La UI vuelve a leer y aplica la frontera de seguridad a cualquier HTML raw; nunca lo inserta libremente en el DOM privilegiado.
 5.  Marcar como leído actualiza `KeywordSet` y crea su `KeywordMutation` en una transacción independiente del fetch del cuerpo.
 
 ### 9.3 Correo enviado
 
 1.  Application valida Composer y resuelve la Identity seleccionada para producir `SendIntent`.
-2.  El motor guarda una `SendMutation` cuyo payload es ese snapshot; solo entonces Pinia limpia Composer. Si falla, conserva la redacción.
+2.  `SyncPort.stageSendMutation` guarda una `SendMutation` cuyo payload es ese snapshot; solo entonces Pinia limpia Composer. Si falla, conserva la redacción.
 3.  Outbox traduce la intención a JMAP sin fabricar un Email provisional ni releer defaults de Identity.
 4.  Si el resultado remoto queda incierto, `inFlight` permanece durable y Outbox reconcilia antes de cualquier nuevo intento.
 5.  El `Email` confirmado aparece únicamente mediante sync autoritativo; la política exacta de reconciliación y cleanup queda para Outbox/Coordinator.
@@ -490,7 +490,7 @@ La estrategia concreta de generación/encoding durable de IDs y la organización
 
 ## 12. Trabajo deliberadamente abierto después de D-01→D-10
 
-D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo, Domain queda cerrado y el diseño de `ReadRepository`/`SyncPort` puede comenzar. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, error model de Ports, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, APIs de `ReadRepository`/`SyncPort`, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, disponibilidad de la colección de AttachmentRefs, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
+D-01→D-10 están implementadas, documentadas y cerradas. Domain Final Audit #2 concluyó `PASS`: el Domain Freeze está completo y Domain queda cerrado. P-01 `ReadRepository` también está cerrado; P-02 `SyncPort` está implementado con review pendiente y P-03 `LocalChangeSource` permanece futuro. Los Ports evolucionan fuera del Domain sin reabrirlo. No son blockers del Domain las decisiones posteriores sobre generación/encoding durable de IDs, serialización canónica adicional de `FilterSpec`, mutation codec y `payload_version`, IPC DTOs, mapping/schema/migrations posteriores, normalización JMAP, `queryChanges`/`ChangeBatch`/Push, algoritmos de Coordinator/Outbox, flattening concreto de bodies, descarga/caché binaria/filesystem, renderer CID/Content-Location, sanitización de Presentation ni cache eviction.
 
 ## 13. Nota para el diseño del servidor
 

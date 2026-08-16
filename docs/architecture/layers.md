@@ -42,7 +42,7 @@ No ejecuta SQL, no consulta SQLite, no conoce SQLCipher o la DEK, no llama JMAP 
 
 **Ruta:** `src/app/`.
 
-Contiene Pinia, selección, composer temporal, proyecciones visibles y coordinación de lecturas locales. Convierte intenciones de UI en operaciones de Application, consume `ReadRepository`, reacciona a `onChange` y produce estado reactivo para Vue.
+Contiene Pinia, selección, composer temporal, proyecciones visibles y coordinación de lecturas locales. Convierte intenciones de UI en operaciones de Application, consume `ReadRepository`, reaccionará a invalidaciones mediante el futuro `LocalChangeSource` P-03 y produce estado reactivo para Vue.
 
 Puede depender de Domain, Ports y Pinia. No depende directamente de SQLite, SQL, SQLCipher, comandos Tauri concretos, transporte JMAP, `jmap-jam`, `fetch` o WebSocket. Pinia no es persistencia, segunda base de datos ni autoridad durable.
 
@@ -56,9 +56,11 @@ Domain no depende de Vue, Pinia, Tauri, `@tauri-apps/api`, SQLite, SQL, Rust, `r
 
 ### Ports
 
-**Ruta esperada al implementarse:** `src/ports/`.
+**Ruta:** `src/ports/`.
 
-`ReadRepository` será el contrato TypeScript consumido por Application/Pinia para lecturas locales, comandos locales, `ensure…` y `onChange`. `SyncPort` será el contrato TypeScript consumido por Coordinator/Outbox para collection cursors, lotes y `PendingMutation`. Con Domain cerrado, sus firmas constituyen la siguiente fase de diseño habilitada.
+`ReadRepository` es el contrato TypeScript P-01 cerrado para consultas puras sobre estado local committed. No escribe, no agenda trabajo remoto y no emite notificaciones. Distingue ausencia local, ausencia del owner, valor owned opcional y caché no materializada mediante `LocalEntityRead`, `OwnedSnapshotRead`, `OwnedOptionalRead` y `OwnedCacheRead`.
+
+`SyncPort` P-02 está implementado, con review pendiente, como frontera de transiciones semánticas atómicas consumida por casos de escritura de Application, Coordinator y Outbox. `LocalChangeSource` será el port P-03 separado para invalidaciones post-commit: sus señales no son autoridad, pueden coalescerse y hacen que el consumidor relea mediante `ReadRepository`. Las solicitudes `ensure…` o de materialización remota pertenecen a futura orquestación Application → Coordinator, no a ninguno de esos dos ports ya materializados.
 
 Ports puede depender únicamente de tipos de Domain y errores propios del contrato. No depende de Tauri, `invoke`, SQLite, SQL, Rust, `rusqlite`, JMAP transport ni `jmap-jam`. Un port es un contrato, no almacenamiento.
 
@@ -161,7 +163,7 @@ local source of truth for UI != remote authority
 | `src/styles/` | Presentation styles | Presente |
 | `src/app/` | Application state/orchestration | Store `runtime` inicial presente; resto se implementará por sprint |
 | `src/domain/` | Domain independiente de infraestructura | D-01→D-10 implementados; freeze completo; Domain cerrado |
-| `src/ports/` | Contratos `ReadRepository` / `SyncPort` | Diseño habilitado; implementación todavía no iniciada |
+| `src/ports/` | Contratos `ReadRepository` / `SyncPort` | P-01 cerrado; P-02 implementado/review pendiente; P-03 `LocalChangeSource` futuro |
 | `src/adapters/tauri/` | Implementaciones Tauri de ports TypeScript | Ubicación esperada cuando se implemente |
 | `src/adapters/memory/` | Mock/conformance de ports | Ubicación esperada cuando se implemente |
 | `src/jmap/` | Cliente y protocolo JMAP | Ubicación esperada cuando se implemente |

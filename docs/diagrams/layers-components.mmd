@@ -11,8 +11,9 @@ flowchart TD
 
     subgraph Core["Domain + Ports"]
         Domain["Domain<br/>tipos y semántica<br/>sin infraestructura"]
-        ReadRepo["ReadRepository<br/>contrato TypeScript<br/>Application"]
-        SyncPort["SyncPort<br/>contrato TypeScript<br/>Coordinator / Outbox"]
+        ReadRepo["ReadRepository · P-01 CLOSED<br/>pure committed-state reads"]
+        SyncPort["SyncPort · P-02 IMPLEMENTED<br/>review pending<br/>semantic atomic transitions"]
+        ChangeSource["LocalChangeSource<br/>P-03 future<br/>invalidación post-commit"]
 
         ReadRepo -.->|"tipos"| Domain
         SyncPort -.->|"tipos"| Domain
@@ -59,13 +60,13 @@ flowchart TD
     User --> UI
     UI --> State
     State --> ReadRepo
+    State -->|"write use-cases"| SyncPort
     ReadRepo --> ReadAdapter
     ReadAdapter -->|"invoke() semántico"| IPC
 
-    Events -->|"onChange"| ReadAdapter
-    ReadAdapter -.->|"Application relee"| State
+    Events --> ChangeSource
+    ChangeSource -.->|"Application relee"| State
 
-    ReadRepo -.->|"ensure no bloqueante"| Coordinator
     Coordinator --> SyncPort
     Outbox --> SyncPort
     SyncPort --> SyncAdapter
@@ -95,7 +96,7 @@ flowchart TD
     class State application;
     class Coordinator,Outbox sync;
     class JMAP remote;
-    class Domain,ReadRepo,SyncPort core;
+    class Domain,ReadRepo,SyncPort,ChangeSource core;
     class ReadAdapter,SyncAdapter adapter;
     class Commands,Rust,DB,Secret,DEK,Token secure;
     class WebFuture deferred;

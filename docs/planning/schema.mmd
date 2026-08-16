@@ -12,14 +12,16 @@ flowchart LR
 
         Stores["Pinia Application State<br/><br/>runtime<br/>mail<br/>composer<br/><br/>Responsabilidad:<br/>estado efímero + orchestration<br/><br/>Input:<br/>UI + repository changes<br/><br/>Output:<br/>proyección reactiva"]
 
-        AppContext["Application Composition Root<br/><br/>Responsabilidad:<br/>inyectar ports<br/>gestionar subscriptions"]
+        AppContext["Application Composition Root<br/><br/>Responsabilidad:<br/>inyectar ports<br/>orquestar consumidores"]
     end
 
-    subgraph Contracts["Contratos posteriores · se diseñan sobre Domain verificado"]
+    subgraph Contracts["Ports sobre Domain cerrado"]
 
-        RR["ReadRepository<br/><br/>Consumers:<br/>Application<br/><br/>Input:<br/>queries locales / intents<br/><br/>Output:<br/>proyecciones + receipts + onChange"]
+        RR["ReadRepository · P-01 CLOSED<br/><br/>Consumers:<br/>Application / Coordinator / Outbox<br/><br/>Input:<br/>queries locales<br/><br/>Output:<br/>estado committed tipado"]
 
-        SP["SyncPort<br/><br/>Consumers futuros:<br/>Coordinator / Outbox<br/><br/>Input:<br/>remote batches / transitions<br/><br/>Output:<br/>atomic receipts / cursors"]
+        SP["SyncPort · P-02 IMPLEMENTED<br/>REVIEW PENDING<br/><br/>Consumers:<br/>Application / Coordinator / Outbox<br/><br/>Input:<br/>semantic atomic transitions<br/><br/>Output:<br/>committed WriteResult"]
+
+        LCS["LocalChangeSource · P-03 FUTURE<br/><br/>Output:<br/>invalidaciones post-commit<br/><br/>No es autoridad"]
 
         JC["JmapClient<br/><br/>Consumers futuros:<br/>Coordinator / Outbox<br/><br/>Input:<br/>JMAP intents<br/><br/>Output:<br/>normalized domain data"]
     end
@@ -36,7 +38,7 @@ flowchart LR
 
         TauriSync["TauriSyncPort<br/><br/>Responsabilidad:<br/>SP → semantic IPC"]
 
-        ChangeBridge["Tauri Event Bridge<br/><br/>Input:<br/>native change event<br/><br/>Output:<br/>ReadRepository.onChange"]
+        ChangeBridge["Tauri Event Bridge<br/><br/>Input:<br/>native change event<br/><br/>Output futuro:<br/>LocalChangeSource"]
 
         IPC["Semantic Tauri Commands<br/><br/>JSON serializable<br/>validated<br/>default-deny"]
 
@@ -75,6 +77,7 @@ flowchart LR
     Components --> Stores
     Stores --> AppContext
     AppContext --> RR
+    AppContext --> SP
 
     Components --> SafeRender
     Stores --> SafeRender
@@ -92,8 +95,8 @@ flowchart LR
     Rust --> DB
     Security --> Rust
     Rust --> ChangeBridge
-    ChangeBridge --> TauriRead
-    TauriRead --> RR
+    ChangeBridge --> LCS
+    LCS --> Stores
     RR --> Stores
 
     Domain --> RR

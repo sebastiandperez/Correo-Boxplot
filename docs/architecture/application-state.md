@@ -18,9 +18,11 @@ composer
 - campos temporales, mutables y todavía no resueltos de redacción
 - phase: idle | editing | queueing | error
 
-Regla de actualización:
+Regla de actualización prevista cuando exista P-03:
 
-SQLite changes → onChange → ReadRepository → Pinia refresh → Vue
+SQLite commit → LocalChangeSource → invalidation → ReadRepository re-read → Pinia refresh → Vue
+
+`LocalChangeSource` será una señal post-commit no durable y podrá coalescer eventos. No transportará la nueva autoridad: Application siempre releerá el estado committed mediante `ReadRepository`. Las necesidades de materialización remota se dirigirán mediante futura orquestación Application → Coordinator; no son operaciones de `ReadRepository` ni se convierten automáticamente en operaciones de `SyncPort`.
 
 La selección actual no redefine la identidad de Account y no se mezcla con `runtime.auth`. Pinia puede seleccionar una `AccountKey` durable mientras `auth = anonymous`; `LocalReady + RemoteAnonymous` continúa siendo válido.
 

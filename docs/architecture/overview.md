@@ -23,7 +23,7 @@ Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc
 *   **Lenguaje principal:** TypeScript para Vue/Pinia y para Cliente JMAP, Coordinador y Outbox; Rust queda limitado a persistencia, cifrado y secure store de Tauri.
 *   **Framework UI:** Vue 3 (Composition API), Vite como bundler — igual que Stormbox, por continuidad de patrones ya probados.
 *   **Entrega del MVP:** Tauri v2, con Vue dentro del webview y backend Rust. No depende de WASM, OPFS ni políticas de almacenamiento del navegador.
-*   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository`, consumido por Application/Pinia, y `SyncPort`, consumido por Coordinador/Outbox. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
+*   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository` para lecturas committed y `SyncPort` para transiciones semánticas atómicas. Application, Coordinator y Outbox consumen la capacidad que corresponda; las futuras invalidaciones post-commit vivirán en `LocalChangeSource` P-03. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
 *   **Orquestador de sincronización y concurrencia:**
     *   Cliente JMAP, Coordinador de sincronización y Outbox tienen una única implementación en TypeScript.
     *   En Tauri corre en un Worker normal dentro del webview: habla JMAP directamente mediante `fetch`/WebSocket y cruza por los adaptadores Tauri/`invoke()` únicamente para persistir a través de Rust. Los cambios se notifican mediante el sistema de eventos de Tauri.
