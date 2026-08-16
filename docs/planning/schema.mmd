@@ -15,7 +15,7 @@ flowchart LR
         AppContext["Application Composition Root<br/><br/>Responsabilidad:<br/>inyectar ports<br/>gestionar subscriptions"]
     end
 
-    subgraph Contracts["Contratos compartidos · se congelan al final de Sprint 1"]
+    subgraph Contracts["Contratos posteriores · se diseñan sobre Domain verificado"]
 
         RR["ReadRepository<br/><br/>Consumers:<br/>Application<br/><br/>Input:<br/>queries locales / intents<br/><br/>Output:<br/>proyecciones + receipts + onChange"]
 
@@ -26,7 +26,7 @@ flowchart LR
 
     subgraph B["Persona B · Domain / Ports / Local Engine"]
 
-        Domain["Domain Types<br/><br/>Account · Mailbox · Email<br/>EmailBody · AttachmentRef<br/>PendingMutation · SyncCursor"]
+        Domain["Domain Types<br/><br/>Account · Identity · Mailbox · Email<br/>EmailAddress · SendIntent · MailboxView<br/>CollectionSyncCursor · PendingMutation<br/>EmailBody boundary · D-09 abierta"]
 
         MemRead["MemoryReadRepository<br/><br/>Uso:<br/>tests + conformance"]
 
@@ -55,7 +55,7 @@ flowchart LR
 
         MailAPI["Mail API<br/><br/>Mailbox/get<br/>Email/query + get<br/>changes + queryChanges"]
 
-        Body["Body Normalizer<br/><br/>Input:<br/>JMAP body parts<br/><br/>Output:<br/>{text, html}<br/>AttachmentRef metadata"]
+        Body["Body Normalizer<br/><br/>Input:<br/>JMAP body parts<br/><br/>Output:<br/>contenido según futura D-09<br/>AttachmentRef metadata"]
 
         Mutations["Remote Mutations<br/><br/>Email/set<br/>EmailSubmission"]
 
@@ -67,8 +67,8 @@ flowchart LR
 
     Server["Stalwart JMAP Server"]
 
-    FutureCoord["Sprint 2<br/>Coordinator"]
-    FutureOutbox["Sprint 2<br/>Outbox"]
+    FutureCoord["Fase 3<br/>Coordinator"]
+    FutureOutbox["Fase 3<br/>Outbox"]
 
     User --> UI
     UI --> Components
@@ -115,10 +115,10 @@ flowchart LR
     HTTP --> Server
     WS --> Server
 
-    FutureCoord -.Sprint 2.-> JC
-    FutureCoord -.Sprint 2.-> SP
-    FutureOutbox -.Sprint 2.-> JC
-    FutureOutbox -.Sprint 2.-> SP
+    FutureCoord -.Fase 3.-> JC
+    FutureCoord -.Fase 3.-> SP
+    FutureOutbox -.Fase 3.-> JC
+    FutureOutbox -.Fase 3.-> SP
 
     classDef future stroke-dasharray: 5 5,fill:#f5f5f5;
     class FutureCoord,FutureOutbox future;

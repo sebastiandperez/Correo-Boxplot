@@ -1,33 +1,41 @@
-P0 — desbloquear paralelismo
+P0 — arquitectura y freeze documental · COMPLETO
 │
-├── B-01 Domain + ReadRepository + SyncPort
-├── A-01 Store public API
-├── C-02 JmapClient public API
-├── B-02 Memory adapters
-├── C-01 Stalwart spike
-└── B-03 SQLCipher lifecycle
+├── decisiones D-01…D-08
+├── Pre-Domain repository diagnostic
+└── documentation freeze canónico
 
-P0 — probar fronteras
+P0 — Domain aislado
 │
-├── A-03 mail store
+├── B-00A materializar Domain
+└── B-00B verificar y congelar Domain
+
+P0 — Ports
+│
+└── B-01 ReadRepository + SyncPort sobre Domain frozen
+
+P0 — adapters y conformance doubles
+│
+└── B-02 Memory adapters + harness
+
+P0 — Local Engine / persistence integration
+│
+├── B-03 SQLCipher lifecycle y migrations
 ├── B-04 local reads
 ├── B-05 atomic writes
-├── B-06 Tauri adapter/events
-├── C-03 Session
-└── C-04 Mail read/deltas
+├── B-06 Tauri adapters/events
+└── B-07 conformance contra engine real
 
-P1 — completar superficies
+P0/P1 — consumers e integración remota
 │
-├── A-04 UI real
-├── A-05 safe viewer
-├── A-06 composer
-├── C-05 body normalization
-├── C-06 submission
-└── C-07 push
+├── A-01…A-08 Application / Presentation sobre Ports
+├── C-01…C-08 JMAP Client después de Domain frozen
+├── Coordinator con collection state separado de queryState
+└── Outbox con familia PendingMutation discriminada
 
-P0 — integración final
+P0 — aceptación final Tauri
 │
-├── B-07 conformance
-├── A-08 local cut
-├── C-08 token lifecycle
-└── Sprint-1 contract freeze
+├── corte local-first
+├── receive/open/sync
+├── send/reconciliation
+├── security/offline/recovery
+└── Sprint-1 contracts verificados

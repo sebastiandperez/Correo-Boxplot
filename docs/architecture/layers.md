@@ -50,7 +50,7 @@ Puede depender de Domain, Ports y Pinia. No depende directamente de SQLite, SQL,
 
 **Ruta esperada al implementarse:** `src/domain/`.
 
-Define conceptos y semántica del cliente —`Account`, `Mailbox`, `Email`, `EmailBody`, `AttachmentRef`, `PendingMutation`, `SyncCursor` y proyecciones relacionadas— sin decisiones de infraestructura.
+Define conceptos y semántica del cliente —identidades scoped, `Account`, `Mailbox`, `Email`, `Identity`, `SendIntent`, `EmailBody`, `AttachmentRef`, `MailboxView`, `PendingMutation` y `CollectionSyncCursor`— sin decisiones de infraestructura.
 
 Domain no depende de Vue, Pinia, Tauri, `@tauri-apps/api`, SQLite, SQL, Rust, `rusqlite`, SQLCipher, `jmap-jam`, `fetch`, WebSocket ni DOMPurify. Los adaptadores transforman entre tipos de transporte, persistencia y dominio; los tipos de una librería JMAP nunca se convierten en tipos de dominio.
 
@@ -58,7 +58,7 @@ Domain no depende de Vue, Pinia, Tauri, `@tauri-apps/api`, SQLite, SQL, Rust, `r
 
 **Ruta esperada al implementarse:** `src/ports/`.
 
-`ReadRepository` es el contrato TypeScript consumido por Application/Pinia para lecturas locales, comandos locales, `ensure…` y `onChange`. `SyncPort` es el contrato TypeScript consumido por Coordinator/Outbox para cursores, lotes y `PendingMutation`.
+`ReadRepository` será el contrato TypeScript consumido por Application/Pinia para lecturas locales, comandos locales, `ensure…` y `onChange`. `SyncPort` será el contrato TypeScript consumido por Coordinator/Outbox para collection cursors, lotes y `PendingMutation`. Sus firmas se diseñan después de implementar y verificar Domain.
 
 Ports puede depender únicamente de tipos de Domain y errores propios del contrato. No depende de Tauri, `invoke`, SQLite, SQL, Rust, `rusqlite`, JMAP transport ni `jmap-jam`. Un port es un contrato, no almacenamiento.
 
@@ -134,7 +134,7 @@ Una conveniencia local no justifica invertir o saltar esta dirección.
 
 | Categoría | Estado | Propietario |
 | --- | --- | --- |
-| Durable | Account cache, Mailbox, Email, EmailBody, metadata `AttachmentRef`, `PendingMutation` y `SyncCursor` | SQLite + SQLCipher mediante Rust Local Engine |
+| Durable | Account cache, Mailbox, Email, Identity, EmailBody, metadata `AttachmentRef`, `MailboxView`, `PendingMutation` y `CollectionSyncCursor` | SQLite + SQLCipher mediante Rust Local Engine |
 | Ephemeral | selección, página visible, runtime, conectividad, proyección de auth y composer en curso | Application / Pinia |
 | Secret | DEK | Rust + secure store del SO |
 | Secret | Token JMAP | Memoria del Worker TypeScript |

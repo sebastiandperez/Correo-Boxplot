@@ -33,7 +33,7 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 ## 3. Estado de aplicación (Pinia)
 
 * **Responsabilidad:** Mantener estado efímero de Application, selección y proyecciones visibles; coordinar lecturas locales; conservar el compositor temporal; releer `ReadRepository` cuando recibe `onChange`.
-* **Qué NO hace:** No es fuente durable, no persiste stores, no importa JMAP, no interpreta respuestas remotas y no duplica `SyncCursor` ni `PendingMutation` como autoridad propia.
+* **Qué NO hace:** No es fuente durable, no persiste stores, no importa JMAP, no interpreta respuestas remotas y no duplica `CollectionSyncCursor` ni `PendingMutation` como autoridad propia.
 * **Dependencias:** `ReadRepository`.
 * **Consumidores:** Componentes y composables Vue.
 * **Datos de entrada:** Intenciones de UI, resultados locales de `ReadRepository` y señales `onChange`.
@@ -47,13 +47,13 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 ## 4. Interfaz Repository (`ReadRepository` + `SyncPort`)
 
 * **Responsabilidad:** Separar consumidores sin exponer el motor. `ReadRepository` ofrece lecturas locales, registro atómico de cambios optimistas y envíos, `ensureFolderWindow`/`ensureMessageBody` y `onChange`. `SyncPort` permite al Coordinador/Outbox aplicar lotes, avanzar cursores y transicionar `PendingMutation`.
-* **Qué NO hace:** No expone SQL, tablas, `invoke()`, rutas de archivo ni tipos de transporte JMAP. `ensure…` nunca promete que los datos remotos ya llegaron.
+* **Qué NO hace:** No expone SQL, tablas, `invoke()`, rutas de archivo ni tipos de transporte JMAP. `ensure…` nunca promete que los datos remotos ya llegaron. No usa `viewId`, `filterHash` o `sortHash` como autoridad de igualdad: la identidad de `MailboxView` procede de Account, Mailbox y sus FilterSpec/SortSpec canónicos.
 * **Dependencias:** Tipos del dominio y errores propios del contrato. En el MVP, adaptadores TypeScript Tauri satisfacen estos contratos y cruzan por IPC hacia el Motor Rust.
 * **Consumidores:** Application/Pinia consume solo `ReadRepository`; Coordinador y Outbox consumen solo `SyncPort`.
-* **Datos de entrada:** IDs de cuenta/mailbox/vista/email, `position + limit`, filtro/orden, parches semánticos, intención de envío, lotes normalizados, cursores y transiciones.
+* **Datos de entrada:** `AccountKey`, scoped IDs, ViewSpec semántica, `position + limit`, filtro/orden, cambios semánticos, `SendIntent`, lotes normalizados, `CollectionSyncCursor` y transiciones de `PendingMutation`.
 * **Datos de salida:** Entidades/proyecciones locales, comprobantes transaccionales, `onChange` y errores `not_found | conflict | storage_unavailable | encryption_locked | migration_failed`.
 * **Estado:** El contrato no posee autoridad de dominio. Una implementación puede mantener suscripciones y solicitudes `ensure…` en vuelo.
-* **Persistencia:** Ninguna por sí misma. Debe preservar `cambio optimista + PendingMutation` y `cambios remotos + nuevo cursor` como transacciones atómicas.
+* **Persistencia:** Ninguna por sí misma. Sus futuras implementaciones deben preservar `cambio optimista + PendingMutation` y `cambios remotos + nuevo collection state` como transacciones atómicas.
 * **Networking:** Ninguno. El kit de contrato por implementar incluye mock en memoria de ambos puertos y suite de conformidad reutilizable contra el mock y los adaptadores Tauri respaldados por el Motor Rust; Motor Web se añadirá a esa misma suite en su iteración futura.
 
 ---
@@ -88,40 +88,40 @@ El shell visual desktop de tres columnas ya está materializado en `src/componen
 
 ## 7. Coordinador de sincronización
 
-* **Responsabilidad:** Mantener SQLite al día en background; reaccionar a inicio autenticado, reconexión, `ensure…` y `StateChange`; leer cursores, pedir deltas, aplicar lotes por `SyncPort` y avanzar cada cursor en la misma transacción que sus cambios.
+* **Responsabilidad:** Mantener SQLite al día en background; reaccionar a inicio autenticado, reconexión, `ensure…` y `StateChange`; leer `CollectionSyncCursor`, pedir deltas, normalizar/mergear DTOs JMAP parciales hasta producir entidades Domain completas, aplicar lotes por `SyncPort` y avanzar cada collection state en la misma transacción que sus cambios.
 * **Qué NO hace:** No participa en la lectura de primer plano, no entrega respuestas JMAP a Pinia, no implementa servidor/IMAP/SMTP y no interpreta un push como contenido completo.
 * **Dependencias:** Cliente JMAP, `SyncPort`, conectividad y sesión remota autenticada.
 * **Consumidores:** Worker TypeScript Tauri; un futuro `SharedWorker` reutilizará la implementación.
-* **Datos de entrada:** `SyncCursor`, solicitudes `ensure…`, eventos de conectividad/sesión y push.
-* **Datos de salida:** Invocaciones JMAP, lotes normalizados, nuevos cursores y señales locales indirectas.
-* **Estado:** Coordinación y deduplicación en vuelo. El diagnóstico durable reside en `SyncCursor`: `idle | syncing | error`, con `lastError: network | auth | serverError | stateInvalid`.
-* **Persistencia:** Solo por `SyncPort`; datos remotos y nuevo cursor se confirman atómicamente.
-* **Networking:** Solo mediante Cliente JMAP. Prioridades, batching, backoff, `queryChanges` y reconstrucción ante `stateInvalid` son trabajo de implementación posterior del Coordinador, no blockers de Gate 0.
+* **Datos de entrada:** `CollectionSyncCursor`, ViewSpecs con su `queryState`, solicitudes `ensure…`, eventos de conectividad/sesión y push.
+* **Datos de salida:** Invocaciones JMAP, lotes normalizados, nuevos collection states, cambios de `MailboxView` y señales locales indirectas.
+* **Estado:** Coordinación y deduplicación en vuelo. `CollectionSyncCursor` contiene solo el checkpoint `AccountKey + DataType + opaque state`; `queryState` pertenece a la ViewSpec exacta. Status, lastError y timestamps son diagnóstico operacional separado cuya forma definitiva todavía no se diseña.
+* **Persistencia:** Solo por `SyncPort`; datos remotos y nuevo collection state se confirman atómicamente.
+* **Networking:** Solo mediante Cliente JMAP. `cannotCalculateChanges` provoca refetch/rebase del scope afectado, no reset automático completo de DB. Prioridades, batching, backoff, `queryChanges`, movimientos de posiciones y el algoritmo de rebase son trabajo posterior del Coordinator.
 
 ---
 
 ## 8. Procesador de Pending Mutations (Outbox)
 
-* **Responsabilidad:** Tomar exclusivamente intenciones durables, traducirlas a JMAP, reintentar fallos temporales y registrar confirmación o fallo terminal. El MVP cubre envío sin adjuntos, keywords y pertenencia a mailboxes.
+* **Responsabilidad:** Tomar exclusivamente la familia discriminada de intenciones durables —`SendMutation`, `KeywordMutation` y `MailboxMembershipMutation`—, traducirlas a JMAP, reconciliar outcomes inciertos y registrar confirmación o fallo terminal. La primera conserva `SendIntent`; las otras actúan sobre `ScopedEmailId`.
 * **Qué NO hace:** No crea un `Email` falso o placeholder con ID temporal, no guarda drafts, no considera éxito el clic en Enviar, no descarta payload ante fallo de red, no implementa SMTP y no sube adjuntos en el MVP.
 * **Dependencias:** `SyncPort`, Cliente JMAP y la operación acordada para solicitar reconciliación al Coordinador.
 * **Consumidores:** Worker TypeScript y, por proyección local vía `onChange`, Pinia.
-* **Datos de entrada:** `PendingMutation` cifradas con identidad local estable, conectividad y resultados JMAP.
+* **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados JMAP.
 * **Datos de salida:** Operaciones JMAP, transiciones durables, errores presentables y solicitud de resincronización.
-* **Estado:** En vuelo y timers efímeros; el ciclo durable es `pending → inFlight → (confirmed | retrying → inFlight | failedTerminal)`.
-* **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. `confirmed` se limpia tras la siguiente sync exitosa, no al recibir la respuesta.
-* **Networking:** Solo mediante Cliente JMAP. Idempotencia tras respuesta ambigua, orden, backoff y conflictos se cierran durante la implementación de Outbox; la identidad local estable queda disponible desde ahora. Este trabajo no reabre Gate 0-D.
+* **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
+* **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. `confirmed` puede permanecer durable hasta reconciliar la autoridad relevante; la política exacta de cleanup queda para Outbox.
+* **Networking:** Solo mediante Cliente JMAP. Después de crash no reintenta ciegamente una `SendMutation` inFlight: debe reconciliar antes de decidir si otra submission es segura. El algoritmo de idempotencia, orden, backoff y conflictos se cierra durante la implementación de Outbox.
 
 ---
 
 ## 9. Cliente JMAP
 
-* **Responsabilidad:** Implementar en TypeScript JMAP estándar: descubrimiento/sesión, métodos por `fetch`, push `StateChange` por WebSocket, serialización, validación y errores. Aplana body parts a `{ text, html }`, eligiendo una única representación HTML preferida o texto plano sin concatenar HTML MIME crudo.
+* **Responsabilidad:** Implementar en TypeScript JMAP estándar: descubrimiento/sesión, métodos por `fetch`, push `StateChange` por WebSocket, serialización, validación y errores. Mantiene DTOs parciales dentro de la frontera de transporte y los normaliza/mergea antes de producir entidades Domain completas. Normaliza body parts sin exponer un MIME tree crudo; D-09 decidirá la representación final de `EmailBody`.
 * **Qué NO hace:** No implementa servidor ni proveedor real, no habla IMAP/SMTP, no ejecuta SQL, no entrega modelos de UI, no pasa la red por Rust y no maneja binarios de adjuntos en el MVP.
 * **Dependencias:** HTTPS, WebSocket, capacidades JMAP y token de sesión obtenido por el flujo Passkey en navegador del sistema.
 * **Consumidores:** Coordinador y Outbox.
 * **Datos de entrada:** Invocaciones JMAP, cursores/state, IDs, parches y cuerpo saliente sin adjuntos.
-* **Datos de salida:** Respuestas validadas, `{ text, html }`, metadatos `AttachmentRef`, errores clasificados y `StateChange`.
+* **Datos de salida:** Respuestas validadas y normalizadas, metadata `AttachmentRef`, contenido de body conforme a la futura D-09, errores clasificados y `StateChange`.
 * **Estado:** JMAP Session, WebSocket, solicitudes y token. El token vive solo en memoria del Worker, nunca en Pinia/SQLite/`localStorage`/logs, y se elimina al logout, expiración o cierre.
 * **Persistencia:** Ninguna directa. Correo, cursores y pendientes pasan por `SyncPort`.
 * **Networking:** Sí; corre en Worker normal dentro del webview Tauri y habla directo con el servidor JMAP. El runtime `SharedWorker` queda para la futura iteración Web.
@@ -139,9 +139,9 @@ Imagina que arrancas la aplicación sin conexión. Rust recupera la DEK del secu
 7. **El Worker habla JMAP directamente.** El Coordinador lee el cursor por `SyncPort`; Cliente JMAP usa `fetch`/WebSocket contra el servidor. `StateChange` solo dispara la consulta incremental.
 8. **Los cambios se vuelven locales antes de ser visibles.** El Worker entrega el lote normalizado a `SyncPort`; `TauriSyncPort` concentra `invoke()` y Rust confirma datos y nuevo cursor en una transacción SQLCipher antes de emitir un evento Tauri.
 9. **Pinia vuelve a leer.** `ReadRepository.onChange` recibe el evento, Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
-10. **Al abrir un mensaje se repite la regla.** Si falta el cuerpo, `ensureMessageBody` lo agenda. Cuando llega, el Cliente JMAP entrega `{ text, html }`, Rust lo cifra y el evento provoca otra lectura.
+10. **Al abrir un mensaje se repite la regla.** Si falta el cuerpo, `ensureMessageBody` lo agenda. Cuando llega contenido normalizado conforme a D-09, Rust lo cifra y el evento provoca otra lectura; la ausencia previa del body nunca volvía incompleto al Email de metadata.
 11. **El HTML se trata como hostil.** Vue sanitiza el raw en cada render, elimina contenido activo y remoto y lo muestra dentro del sandbox bajo CSP; no persiste el resultado sanitizado.
-12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Enviar, el motor debe persistir una `PendingMutation` antes de limpiar el compositor. Si la persistencia falla, conservas el texto. Outbox procesa esa fila sin fabricar un `Email`; el mensaje autoritativo aparecerá tras la reconciliación JMAP.
+12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent`; el motor persiste una `SendMutation` con ese snapshot antes de limpiar Composer. Si falla, conserva la edición. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación JMAP.
 
 ## 11. Extensiones futuras fuera de alcance
 

@@ -9,24 +9,31 @@ Este roadmap ordena dependencias reales; no asigna fechas ni confunde una decisi
 | Gate | Estado | Qué quedó cerrado |
 | --- | --- | --- |
 | **0-A** | **CLOSED** | Cliente JMAP + Coordinador + Outbox: una implementación TypeScript en Worker; red directa; Rust solo persistencia/cifrado/secure store. |
-| **0-B** | **CLOSED** | Modelo lógico y contratos `ReadRepository` + `SyncPort`, errores, `ensure…`, vistas, cursores y ciclo Outbox. |
+| **0-B** | **CLOSED** | Modelo lógico D-01…D-08: identities scoped, Email completo, addresses, Identity/SendIntent, Mailbox, MailboxView, CollectionSyncCursor y familia PendingMutation. |
 | **0-C** | **CLOSED FOR TAURI MVP** | DEK aleatoria en Rust/secure store, auth Passkey separada, token memory-only, ciclos local/remoto independientes, recuperación por reset/resync y frontera Tauri. |
 | **0-D** | **CLOSED FOR TAURI MVP** | Pinia efímero, drafts memory-only, solo `PendingMutation` para send, metadata de adjuntos y render HTML en defensa en profundidad. |
 
-El Gate 0 arquitectónico está cerrado. El mock, la suite de conformidad, los stores y los motores siguen siendo **trabajo de implementación**; su ausencia no vuelve a abrir las decisiones.
+El Gate 0 arquitectónico está cerrado y el diagnóstico previo a Domain confirmó que puede implementarse aislado. La documentación canónica ya refleja D-01…D-08; D-09 permanece abierta. Domain, Ports, adapters, motores y suites siguen siendo **trabajo de implementación** y no se agrupan en un único paso.
 
 La baseline de toolchains/dependencias del **13 de agosto de 2026** también está congelada en `docs/development/stack.md`. Esto cierra selección y pinning, no los PoCs de provisioning SQLCipher, conformance JMAP ni matriz WebView/OS.
 
-## 2. Dependencias reales que justifican las fases
+## 2. Orden de construcción vigente
 
-Solo se serializa en estas fronteras:
+La secuencia obligatoria del core es:
 
-1. **Contratos cerrados antes de integración.** Los cinco frentes de Fase 1 pueden construirse en paralelo contra las interfaces congeladas. Sus cortes integrados sí esperan los artefactos concretos que conectan.
-2. **Cliente JMAP antes de Coordinador y Outbox.** Ambos llaman a ese cliente y necesitan transporte, sesión y errores ejecutables.
-3. **Componentes antes de recorridos verticales.** La prueba local Tauri necesita Vue, Pinia y Motor Tauri; sync necesita Cliente JMAP + Coordinador + Motor; send necesita Cliente JMAP + Outbox + Motor.
-4. **Recorridos integrados antes de aceptación.** Offline, recuperación, seguridad y E2E verifican interacciones reales y no pueden cerrarse únicamente con contratos aislados.
+1. Architecture/Domain decisions — completadas.
+2. Repository diagnostic — completado.
+3. Documentation freeze — completado por esta revisión.
+4. Isolated Domain implementation.
+5. Domain verification/freeze.
+6. Ports.
+7. Adapters y conformance doubles.
+8. Rust Local Engine y persistence integration.
+9. JMAP, Coordinator y Outbox integration.
 
-No hay dependencia bloqueante entre Vue, Pinia, Motor Tauri, kit Repository y Cliente JMAP durante su construcción inicial. Vue usa un doble de la API pública del store; Pinia usa el mock de `ReadRepository`; los adaptadores TypeScript Tauri satisfacen los puertos y delegan la semántica de persistencia al Motor Rust; JMAP no depende de ninguno de ellos. Coordinador y Outbox pueden avanzar en paralelo una vez existe Cliente JMAP porque la solicitud de reconciliación ya cruza un contrato fijado.
+Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
+
+Application y Presentation siguen siendo capas consumidoras independientes; este orden no convierte a Persona B en intermediario organizativo entre A y C. Solo expresa dependencias de artefactos compartidos.
 
 ## 3. Topología vigente del MVP
 
@@ -44,95 +51,37 @@ No hay dependencia bloqueante entre Vue, Pinia, Motor Tauri, kit Repository y Cl
 
 ```mermaid
 flowchart TD
-    Sources["Informe técnico + arquitectura vigente"]
+    Decisions["Architecture + D-01…D-08<br/>CLOSED"]
+    Diagnostic["Pre-Domain diagnostic<br/>COMPLETE"]
+    Docs["Documentation freeze<br/>COMPLETE"]
+    Domain["Isolated Domain implementation"]
+    DomainGate["Domain verification/freeze"]
+    Ports["Ports"]
+    Adapters["Adapters + conformance doubles"]
+    Engine["Rust Local Engine<br/>persistence integration"]
+    Remote["JMAP + Coordinator + Outbox<br/>integration"]
+    App["Application + Presentation<br/>consumer work"]
+    Acceptance["Integrated Tauri acceptance"]
+    FutureWeb["Future Web/PWA iteration<br/>DEFERRED"]
 
-    subgraph Phase0["Fase 0 — decisiones arquitectónicas"]
-        A["0-A · CLOSED<br/>topología"]
-        B["0-B · CLOSED<br/>dominio y puertos"]
-        C["0-C · CLOSED FOR TAURI MVP<br/>seguridad y lifecycle"]
-        D["0-D · CLOSED FOR TAURI MVP<br/>Application y alcance"]
-    end
-
-    Gate0{"Gate 0 arquitectónico<br/>CLOSED"}
-
-    subgraph Phase1["Fase 1 — construcción independiente en paralelo"]
-        Repo["1-A · Repository<br/>mock + suite"]
-        Pinia["1-B · Pinia"]
-        Vue["1-C · Vue segura"]
-        Engine["1-D · Motor Tauri/Rust"]
-        Jmap["1-E · Cliente JMAP TS"]
-    end
-
-    subgraph Phase2["Fase 2 — integración por dependencia"]
-        Local["2-A · Corte local-first Tauri"]
-        Sync["2-B · Coordinador"]
-        Outbox["2-C · Outbox"]
-    end
-
-    subgraph Phase3["Fase 3 — recorridos y aceptación Tauri"]
-        Receive["3-A · recibir/abrir/sync"]
-        Send["3-B · redactar/encolar/enviar"]
-        Secure["3-C · offline/recovery/security"]
-    end
-
-    Done["MVP Tauri aceptado"]
-    FutureWeb["Future Web/PWA iteration<br/>wa-sqlite · OPFS · SharedWorker<br/>DEFERRED"]
-
-    Sources --> A
-    Sources --> B
-    Sources --> C
-    Sources --> D
-    A --> Gate0
-    B --> Gate0
-    C --> Gate0
-    D --> Gate0
-
-    Gate0 --> Repo
-    Gate0 --> Pinia
-    Gate0 --> Vue
-    Gate0 --> Engine
-    Gate0 --> Jmap
-
-    Repo --> Local
-    Pinia --> Local
-    Vue --> Local
-    Engine --> Local
-
-    Repo --> Sync
-    Engine --> Sync
-    Jmap --> Sync
-
-    Repo --> Outbox
-    Engine --> Outbox
-    Jmap --> Outbox
-
-    Local --> Receive
-    Sync --> Receive
-    Local --> Send
-    Sync --> Send
-    Outbox --> Send
-    Local --> Secure
-    Sync --> Secure
-    Outbox --> Secure
-
-    Receive --> Done
-    Send --> Done
-    Secure --> Done
-
-    B -.->|"contratos reutilizables"| FutureWeb
-    Done -.->|"iteración posterior"| FutureWeb
+    Decisions --> Diagnostic --> Docs --> Domain --> DomainGate --> Ports --> Adapters --> Engine --> Remote --> Acceptance
+    DomainGate --> App
+    Ports --> App
+    App --> Acceptance
+    Ports -.->|"future compatible boundary"| FutureWeb
+    Acceptance -.->|"later iteration"| FutureWeb
 
     classDef closed fill:#e7f7ea,stroke:#297a38,color:#222;
-    classDef parallel fill:#eef7ff,stroke:#336b99,color:#222;
+    classDef active fill:#eef7ff,stroke:#336b99,color:#222;
     classDef deferred fill:#f4f4f4,stroke:#777,stroke-dasharray:5 5,color:#444;
-    class A,B,C,D,Gate0 closed;
-    class Repo,Pinia,Vue,Engine,Jmap,Local,Sync,Outbox,Receive,Send,Secure parallel;
+    class Decisions,Diagnostic,Docs closed;
+    class Domain,DomainGate,Ports,Adapters,Engine,Remote,App,Acceptance active;
     class FutureWeb deferred;
 ```
 
-Web/PWA no tiene una flecha hacia `MVP Tauri aceptado`. Su nodo documenta continuidad futura, no trabajo concurrente ni gate presente.
+Web/PWA no participa en la aceptación del MVP. Su nodo documenta continuidad futura, no trabajo concurrente ni gate presente.
 
-## 5. Fase 0 — decisiones y contratos arquitectónicos
+## 5. Fase 0 — decisiones y documentation freeze
 
 ### Gate de entrada
 
@@ -144,9 +93,11 @@ Fuentes de verdad disponibles y aceptación de que el informe técnico reciente 
 
 Una implementación TypeScript de Cliente JMAP, Coordinador y Outbox. En Tauri corre en Worker normal, usa JMAP directo y cruza a Rust solo mediante los adaptadores Tauri que satisfacen `ReadRepository`/`SyncPort`. Rust no aloja JMAP.
 
-#### 0-B — dominio y Repository
+#### 0-B — Domain D-01…D-08
 
-`ReadRepository` sirve a Application y `SyncPort` a sync/outbox. `ensure…` es no bloqueante; errores, paginación, `MailboxView`, `SyncCursor`, `PendingMutation`, cuerpo `{ text, html }` y las dos invariantes transaccionales están congelados. El schema físico mínimo se materializó después en `0001_initial.sql`; no forma parte del cierre lógico de 0-B ni implica que el motor esté implementado.
+Quedaron congelados `AccountKey`/`RemoteAccountRef`, scoped IDs, Email mínimo completo, `EmailAddress`, `Identity`/`SendIntent`, Mailbox/rights, la identidad semántica de `MailboxView`, `CollectionSyncCursor` y la familia discriminada `PendingMutation`. D-09 (`EmailBody`) permanece abierta. Ports y su representación TypeScript se diseñan después del Domain verificado.
+
+`0001_initial.sql` es una migración histórica y mínima: sus gaps no redefinen Domain ni implican que el Local Engine esté implementado.
 
 #### 0-C — seguridad para Tauri
 
@@ -162,118 +113,95 @@ La idempotencia ante respuesta ambigua está **MOVED TO PHASE 2 · OUTBOX**; no 
 
 ### Criterio de salida
 
-Cumplido: los cuatro gates tienen una decisión inequívoca, sus exclusiones están registradas y ningún frente de Fase 1 necesita elegir política de seguridad, estado o dominio por su cuenta. Esto no afirma que exista código.
+Cumplido: los cuatro gates tienen decisiones inequívocas, el diagnóstico del repositorio está completo y la documentación canónica refleja D-01…D-08. Esto no afirma que Domain ni Ports existan como código.
 
-## 6. Fase 1 — construir componentes independientes
-
-### Gate de entrada
-
-Gate 0 cerrado y contratos versionados a nivel documental.
-
-### Frentes paralelos
-
-#### 1-A — Interfaz Repository
-
-Materializar firmas de `ReadRepository`/`SyncPort`, mock en memoria y suite de conformidad. Cubrir errores, paginación, `ensure…`, transiciones legales y las dos atomicidades. La suite se ejecuta primero contra el mock y luego contra los adaptadores Tauri respaldados por el Motor Rust.
-
-#### 1-B — Estado de aplicación (Pinia)
-
-Implementar `runtime`, `mail` y `composer` contra el contrato. Verificar relectura por `onChange`, ausencia de persistencia/imports JMAP y la invariante “persistir Send antes de limpiar composer”.
-
-#### 1-C — Presentación segura (Vue)
-
-Construir lista, lector y compositor contra la API pública del store. Implementar la frontera DOMPurify + sandbox + CSP, bloqueo remoto, navegación controlada, estados offline/auth y limitaciones visibles de drafts/adjuntos.
-
-#### 1-D — Motor Tauri/Rust
-
-Partir del schema declarativo ya adoptado en `src-tauri/src/db/migrations/0001_initial.sql` e implementar SQLite + SQLCipher con `rusqlite 0.40.2` + feature `sqlcipher`, migration runner, DEK/secure store, queries, repositories, comandos mínimos, transacciones, inicialización runtime y eventos. La presencia de `0001` no implementa ni cierra el Motor Tauri. Hacer que los adaptadores Tauri respaldados por el Motor Rust pasen la suite Repository sin exponer clave, SQL, shell o filesystem genéricos. Probar cifrado real, versiones runtime, clave incorrecta y fallo cerrado. **OPEN:** provisioning/packaging reproducible en Windows, macOS y Linux; no se permite `bundled-sqlcipher` ni plaintext como atajo.
-
-#### 1-E — Cliente JMAP TypeScript
-
-Mantener primero una interfaz JMAP propia. `jmap-jam 0.13.3` es el candidato preferido, pero se instala y congela solo después de un spike contra Stalwart que cubra Session, Mailbox/Email, `*/changes`, batching/result references, EmailSubmission y reconnect push. Ningún tipo del paquete cruza al dominio. Después, implementar token memory-only, errores y normalización a `{ text, html }` + metadata `AttachmentRef`. No incluir binarios ni entrypoint Web en el MVP. El callback exacto navegador del sistema→aplicación se acuerda como contrato de integración antes del E2E.
-
-### Criterio de salida
-
-* Mock y adaptadores Tauri respaldados por el Motor Rust pasan la misma suite de puertos.
-* Pinia/Vue recorren lectura y encolado con dobles, sin red ni persistencia paralela.
-* SQLCipher y secure store fallan cerrados; la DEK no cruza IPC.
-* Cliente JMAP pasa pruebas de transporte/parsing y no deja token en reposo.
-* Cada frente compila o se valida de forma aislada según su frontera.
-
-## 7. Fase 2 — integrar únicamente dependencias reales
-
-### Gates de entrada por frente
-
-* **2-A corte local-first:** 1-A + 1-B + 1-C + 1-D.
-* **2-B Coordinador:** 1-A + 1-D + 1-E.
-* **2-C Outbox:** 1-A + 1-D + 1-E y ciclo `PendingMutation` congelado.
-
-2-B y 2-C avanzan en paralelo: Outbox no necesita la implementación interna del Coordinador para construir su máquina de estados; solo la operación contractual de reconciliación.
-
-### Frentes paralelos
-
-#### 2-A — corte local-first Tauri
-
-Conectar Vue/Pinia/`ReadRepository`/adaptadores Tauri/Rust y demostrar lectura de bandeja/cuerpo, `onChange`, mutaciones optimistas y envío encolado sin red.
-
-#### 2-B — Coordinador
-
-Implementar sync inicial/incremental, deduplicación de `ensure…`, prioridades, batching, backoff, `queryChanges` y recuperación `stateInvalid`. Cada lote y nuevo cursor se confirman atómicamente.
-
-#### 2-C — Outbox
-
-Implementar toma exclusiva, transiciones, envío sin adjuntos, keywords/mailboxes, retry/backoff, conflictos, confirmación y limpieza posterior. Resolver aquí la idempotencia ante respuesta perdida usando la identidad local estable y la reconciliación del Coordinador; sigue **OPEN** hasta que este frente la cierre.
-
-### Criterio de salida
-
-* La UI responde solo desde SQLite y `ensure…` nunca espera red.
-* Coordinator recupera cambios y estados inválidos sin avanzar cursor prematuramente.
-* Outbox conserva payload en fallos, muestra errores terminales y evita duplicados según la estrategia ya implementada y probada.
-* No existe `Email` ficticio ni envío/descarga/subida de adjuntos.
-
-## 8. Fase 3 — validar recorridos completos Tauri
+## 6. Fase 1 — Domain aislado
 
 ### Gate de entrada
 
-Los tres cortes de Fase 2 están integrados con el Worker Tauri y el Motor Rust.
+Documentation freeze D-01…D-08 completado.
 
-### Frentes paralelos de validación
+### 1-A — Materialización de Domain
 
-#### 3-A — recibir, abrir y sincronizar
+Implementar exclusivamente `src/domain/` siguiendo `docs/architecture/domain.md`, sin importar Vue, Pinia, Tauri, SQLite, Rust, transporte JMAP ni librerías externas. El orden interno es D-01, primitives D-03, D-02, D-04, D-05, D-06, D-07 y D-08. D-09 no se materializa hasta su decisión.
 
-Validar `StateChange`, delta, cursor atómico, cache miss de body, relectura por evento y apertura offline.
+### 1-B — Verificación y freeze de Domain
 
-#### 3-B — redactar, encolar y enviar
+Comprobar identidades scoped, ausencia de row IDs, completitud de Email, null semántico de addresses, separación Composer/SendIntent/PendingMutation, rights exactos, ViewKey semántica, separación collection/query state e inFlight con outcome incierto. Solo después de superar este gate Domain queda disponible para consumers.
 
-Validar composer memory-only, fallo de persistencia sin pérdida del texto, restart con pendiente durable, retry, idempotencia, `confirmed` hasta sync y aparición posterior del `Email` autoritativo.
+### Criterio de salida
 
-#### 3-C — lifecycle y seguridad
+* Domain compila y se verifica de forma aislada.
+* No contiene infraestructura, DTOs de transporte ni estados Application.
+* No adapta sus invariantes a `0001`.
+* D-09 y las representaciones concretas deliberadamente abiertas permanecen sin improvisar.
 
-Validar `LocalReady + RemoteAnonymous`, logout/token expirado sin cerrar DB, ausencia de token en reposo, clave incorrecta, reset/resync advertido, capabilities/Isolation, CSP/sandbox, cero requests remotos desde HTML y actualización firmada.
+## 7. Fase 2 — Ports y adapters
+
+### Gate de entrada
+
+Domain implementado y verificado.
+
+### 2-A — Ports
+
+Diseñar y materializar `ReadRepository` y `SyncPort` sobre el vocabulario Domain ya congelado. Las firmas no pueden introducir row IDs, DTOs JMAP, Emails parciales, hashes como identidad de View ni payloads semánticamente arbitrarios.
+
+### 2-B — Adapters y conformance doubles
+
+Implementar adapters memory y la suite observable. Después se materializan los adapters Tauri contra la misma semántica, sin diseñar SQL ni JMAP dentro de TypeScript adapters.
+
+### Criterio de salida
+
+* Ports dependen solo de Domain y errores propios del contrato.
+* Adapters satisfacen Ports sin alterar las identidades o invariantes.
+* Domain permanece sin dependencias hacia consumers.
+
+## 8. Fase 3 — Local Engine e integración remota
+
+### 3-A — Rust Local Engine y persistencia
+
+Implementar SQLCipher lifecycle, migrations posteriores a `0001` cuando correspondan, mapping entre identities Domain y surrogates físicas, queries, transacciones, comandos semánticos y eventos. `0001` no se reescribe para simular alineación.
+
+Las dos atomicidades obligatorias son:
+
+* optimistic local projection + `PendingMutation`;
+* remote batch + nuevo `CollectionSyncCursor.state`.
+
+### 3-B — JMAP, Coordinator y Outbox
+
+El JMAP Client normaliza DTOs parciales antes de producir Domain. Coordinator separa collection state de View queryState y trata `cannotCalculateChanges` mediante refetch/rebase scoped. Outbox procesa las tres familias discriminadas, conserva `SendIntent` y reconcilia un Send inFlight antes de cualquier retry potencialmente duplicado.
+
+### 3-C — Application y Presentation integration
+
+Conectar Vue/Pinia con `ReadRepository`, Tauri adapters y Local Engine. La UI relee SQLite mediante `onChange`, mantiene Composer efímero y nunca consume respuestas JMAP directamente.
+
+## 9. Fase 4 — aceptación Tauri
+
+Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cache reset advertido, SQLCipher fail-closed, token memory-only y render HTML seguro.
 
 ### Criterio de salida del MVP
 
-* Recibir, abrir, redactar/encolar/enviar y sincronizar funcionan online/offline en Tauri.
 * Toda lectura visible procede de SQLite local; JMAP nunca bloquea la UI.
-* Las dos invariantes transaccionales y la idempotencia de send están probadas.
-* SQLCipher no tiene fallback plaintext; DEK y token respetan sus fronteras.
-* HTML hostil no alcanza el DOM privilegiado ni genera ejecución, forms o requests remotos.
-* Drafts durables y operaciones/binarios de adjuntos permanecen ausentes, tal como define el alcance.
+* Las dos atomicidades y la reconciliación segura de Send están probadas.
+* No existe fake Email, row ID en Domain ni fallback plaintext.
+* DEK, token, HTML hostil, drafts y attachments respetan sus fronteras vigentes.
 
-## 9. Tabla de trazabilidad de los ocho componentes
+## 10. Tabla de trazabilidad de los componentes
 
 | Componente | Construcción principal | Integración / aceptación |
 | --- | --- | --- |
-| Presentación segura (Vue 3) | **Fase 1 · 1-C** | 2-A; 3-A/3-B/3-C |
-| Estado de aplicación (Pinia) | **Fase 1 · 1-B** | 2-A; 3-A/3-B/3-C |
-| `ReadRepository` + `SyncPort` | **Decisión 0-B; implementación Fase 1 · 1-A** | 2-A/2-B/2-C; suite en Fase 3 |
-| Motor Tauri/Rust | **Fase 1 · 1-D** | 2-A/2-B/2-C; aceptación Fase 3 |
+| Domain | **Fase 1 · 1-A/1-B** | Base de Ports y todas las integraciones |
+| `ReadRepository` + `SyncPort` | **Fase 2 · 2-A** | Adapters; Fase 3; aceptación |
+| Memory/Tauri adapters | **Fase 2 · 2-B** | Local Engine y conformance |
+| Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
+| Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
+| Motor Tauri/Rust | **Fase 3 · 3-A** | 3-B/3-C; aceptación |
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
-| Cliente JMAP | **Fase 1 · 1-E** | 2-B/2-C; 3-A/3-B/3-C |
-| Coordinador de sincronización | **Fase 2 · 2-B** | 3-A/3-B/3-C |
-| Procesador de Pending Mutations | **Fase 2 · 2-C** | 3-B/3-C |
+| Cliente JMAP | **Fase 3 · 3-B** | Aceptación remota |
+| Coordinador de sincronización | **Fase 3 · 3-B** | Aceptación receive/sync |
+| Procesador de Pending Mutations | **Fase 3 · 3-B** | Aceptación send |
 
-## 10. Registro de decisiones heredadas
+## 11. Registro de decisiones vigente
 
 ### De `docs/architecture/components.md`
 
@@ -283,37 +211,31 @@ Validar `LocalReady + RemoteAnonymous`, logout/token expirado sin cerrar DB, aus
 | C-02 | **RESOLVED · 0-C FOR TAURI MVP** | Ciclos local/remoto independientes y recuperación local definida. |
 | C-03 | **RESOLVED · 0-D** | Vocabulario de `runtime`, `mail` y `composer` fijado. |
 | C-04 | **RESOLVED · 0-D** | Draft memory-only; sin autosave/JMAP/persistencia. |
-| C-05 | **RESOLVED · 0-B** | Puertos, errores, paginación y `ensure…`; mock/suite se implementan en 1-A. |
-| C-06 | **SPLIT** | Lifecycle local resuelto en 0-C; modelo de tareas/hilos es detalle de implementación 1-D. |
-| C-07 | **PARTIALLY MATERIALIZED · 1-D** | `0001_initial.sql` fija tablas, relaciones e índices iniciales; runner, ubicación y ejecución runtime siguen en 1-D. |
+| C-05 | **BOUNDARY RESOLVED · PORTS PENDING** | Consumers y dirección de Ports están fijados; firmas, errores y suite se materializan después del Domain freeze. |
+| C-06 | **SPLIT** | Lifecycle local resuelto en 0-C; modelo de tareas/hilos es detalle de implementación del Local Engine. |
+| C-07 | **PHYSICAL BASELINE PRESENT** | `0001_initial.sql` es histórico y mínimo; migrations futuras, runner y runtime siguen en Fase 3-A. |
 | C-08 | **RESOLVED · 0-A** | JMAP Tauri corre en Worker TS directo. |
 | C-09 | **MOVED TO FUTURE WEB ITERATION** | Coordinación Web/multi-tab no bloquea MVP. |
 | C-10 | **MOVED TO FUTURE WEB ITERATION** | SQLCipher/OPFS, cuotas y corrupción Web diferidos. |
 | C-11 | **MOVED TO FUTURE WEB ITERATION** | Runtime JMAP `SharedWorker` futuro conservado. |
-| C-12 | **MOVED TO 2-B** | Prioridades, batching, backoff y `stateInvalid`. |
-| C-13 | **RESOLVED · 0-B** | Ciclo durable y limpieza posterior de `confirmed`. |
-| C-14 | **OPEN · 2-C** | Idempotencia de send es implementación Outbox, no Gate 0-D. |
+| C-12 | **MOVED TO 3-B** | Prioridades, batching, backoff, queryChanges y rebase scoped. |
+| C-13 | **RESOLVED · D-08** | Ciclo durable conserva outcome incierto; cleanup exacto queda para reconciliación Outbox. |
+| C-14 | **OPEN · 3-B** | Algoritmo de idempotencia/reconciliación de Send pertenece a Outbox. |
 | C-15 | **RESOLVED · 0-C** | Token JMAP solo en memoria del Worker. |
 
 ### De `docs/architecture/domain.md`
 
 | ID | Estado actual | Resultado / destino |
 | --- | --- | --- |
-| D-01 | **PARTIALLY MATERIALIZED · 1-D** | Tipos, relaciones e índices de `0001` adoptados; runner, evolución y serialización Tauri siguen en 1-D. |
-| D-02–D-06 | **RESOLVED · 0-B** | Account, Identity, rights, threads y marcas derivadas. |
-| D-07 | **RESOLVED · 0-D** | Send pendiente solo como `PendingMutation`; no fake `Email`. |
-| D-08 | **RESOLVED · 0-B** | Cuerpo `{ text, html }`; sin árbol MIME crudo. |
-| D-09 | **RESOLVED · 0-D/0-C** | Raw cifrado; sanitización en cada render; sin copia sanitizada. |
-| D-10 | **RESOLVED BY EXCLUSION · 0-D** | Metadata sí; binarios/operaciones fuera del MVP. |
-| D-11 | **RESOLVED · 0-B** | Identidad de vista y `position + limit`. |
-| D-12 | **MOVED TO 2-B** | Aplicación de `Email/queryChanges`. |
-| D-13–D-14 | **RESOLVED · 0-B** | Vocabularios de cursor y mutación. |
-| D-15 | **OPEN · 2-C** | Mismo trabajo de idempotencia que C-14. |
-| D-16 | **OPEN · 2-C** | Política de conflictos se implementa en Outbox. |
-| D-17 | **RESOLVED · 0-D** | No entidad Draft en MVP. |
-| D-18 | **MOVED TO FUTURE WEB ITERATION** | SQLCipher Web/OPFS no bloquea Tauri. |
-| D-19 | **RESOLVED · 0-C** | DEK/DB local separada de auth y token remoto. |
-| D-20 | **RESOLVED FOR LOCAL CACHE · 0-C** | DEK perdida → reset explícito + nueva DB + full resync. Account recovery es servidor/auth. |
+| D-01 | **FROZEN / DOCUMENTED** | `AccountKey`, `ServiceKey`, `RemoteAccountRef`, scoped IDs y separación de row IDs. |
+| D-02 | **FROZEN / DOCUMENTED** | Email remoto confirmado con metadata mínima completa; partial DTO no es Email. |
+| D-03 | **FROZEN / DOCUMENTED** | `EmailAddress`, listas nullable con ausencia conocida y Message-ID family fuera del core. |
+| D-04 | **FROZEN / DOCUMENTED** | Identity autorizada y flow Composer → SendIntent → SendMutation. |
+| D-05 | **FROZEN / DOCUMENTED** | Mailbox scoped, parent canónico, counts remotos y seis rights MVP. |
+| D-06 | **FROZEN / DOCUMENTED** | ViewSpec semántica, queryState por vista y coverage parcial válida. |
+| D-07 | **FROZEN / DOCUMENTED** | `CollectionSyncCursor = AccountKey + DataType + opaque state`; diagnóstico separado. |
+| D-08 | **FROZEN / DOCUMENTED** | Tres familias PendingMutation, MutationId local e inFlight con outcome incierto. |
+| D-09 | **OPEN** | Completitud y representación final de `EmailBody`; no se materializa todavía. |
 
 ### De `docs/architecture/security.md` y overview
 
@@ -327,16 +249,18 @@ Validar `LocalReady + RemoteAnonymous`, logout/token expirado sin cerrar DB, aus
 
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
-| AUTH-01 | **Antes de 3-C** | Callback exacto navegador del sistema→aplicación y contrato de entrega de sesión; la frontera y custodia ya están decididas. |
-| C-14 / D-15 | **2-C Outbox** | Idempotencia de send ante respuesta ambigua. |
-| D-12 | **2-B Coordinator** | Aplicación y desplazamiento de posiciones en `Email/queryChanges`. |
-| D-16 | **2-C Outbox** | Conflictos concurrentes de keywords/mailboxes. |
-| STACK-01 | **Antes de completar 1-D** | Provisioning/packaging de SQLCipher `4.17.0` en Windows, macOS y Linux. |
-| STACK-02 | **Durante 1-E** | Conformance de `jmap-jam 0.13.3`; candidato no instalado ni congelado. |
-| STACK-03 | **Antes de release / 3-C** | Versiones mínimas OS/WebView y target explícito de Vite. |
-| STACK-04 | **Al implementar DEK / antes de 3-C** | Secret Service Linux y stores explícitos por plataforma. |
+| D-09 | **Decisión posterior de Domain** | Completitud y representación final de `EmailBody`. |
+| PORTS-01 | **Fase 2-A** | Firmas, errores, receipts y operaciones concretas de `ReadRepository`/`SyncPort`. |
+| PERSISTENCE-01 | **Fase 3-A** | Mapping físico, migrations posteriores y codecs sin modificar `0001`. |
+| OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |
+| COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
+| AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |
+| STACK-01 | **Antes de completar 3-A** | Provisioning/packaging de SQLCipher `4.17.0` en Windows, macOS y Linux. |
+| STACK-02 | **Durante 3-B** | Conformance de `jmap-jam 0.13.3`; candidato no instalado ni congelado. |
+| STACK-03 | **Antes de release** | Versiones mínimas OS/WebView y target explícito de Vite. |
+| STACK-04 | **Durante 3-A / antes de aceptación** | Secret Service Linux y stores explícitos por plataforma. |
 
-## 11. Trabajo deliberadamente diferido
+## 12. Trabajo deliberadamente diferido
 
 * **Web/PWA:** wa-sqlite, OPFS, SQLCipher Web, credenciales en navegador, multi-tab, `SharedWorker` y aceptación del adaptador.
 * **Producto posterior:** drafts durables/JMAP; caché, descarga, guardado, subida, envío y CID inline de adjuntos.
