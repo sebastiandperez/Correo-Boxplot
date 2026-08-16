@@ -2,9 +2,9 @@
 
 ## Contract testing de Ports
 
-TEST-00→TEST-03B están **COMPLETE**. El contrato runtime de `SyncPort` está totalmente definido: TEST-03A aporta 48 escenarios de estado y TEST-03B aporta 43 de mutaciones, para 91 escenarios P-02. Las suites de `ReadRepository` y `SyncPort` siguen sin ejecutarse contra un implementation-under-test. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque faltan conformance de `MemoryLocalEngine`, suites posteriores y audit final.
+TEST-00→TEST-04 están **COMPLETE** y MEM-01 está **IMPLEMENTED**. `MemoryLocalEngine` pasa 159/159 escenarios: 45 de `ReadRepository`, 91 de `SyncPort` y 23 de `LocalChangeSource`. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque TEST-05 y el audit final permanecen diferidos.
 
-La especificación ejecutable se escribe antes de la implementación: contract specification → abstract harness → reusable suites → implementation-under-test. `MemoryLocalEngine` será el primer IUT y no puede redefinir las suites.
+La especificación ejecutable se escribe antes de la implementación: contract specification → abstract harness → reusable suites → implementation-under-test. `MemoryLocalEngine` es el primer IUT conformant y no redefine las suites.
 
 Los niveles congelados son:
 
@@ -15,7 +15,7 @@ Los niveles congelados son:
 5. integración adapter/persistencia;
 6. E2E Tauri.
 
-TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó `defineReadRepositoryContract(...)`; TEST-03A/TEST-03B materializaron las dos suites de `SyncPort` y su agregador final. MEM-01 es el siguiente bloque y deberá implementar los tres Ports en un único Local Engine in-memory funcional sin modificar las suites. No existe todavía IUT y no se afirma conformance de `ReadRepository` ni `SyncPort`.
+TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó `defineReadRepositoryContract(...)`; TEST-03A/TEST-03B materializaron las dos suites de `SyncPort` y su agregador final; TEST-04 materializó `defineLocalChangeSourceContract(...)`. MEM-01 implementa los tres Ports sobre un único estado in-memory compartido y está conformant con las suites actuales. Esto no prueba durabilidad de disco, SQLCipher, transacciones SQLite, crash safety, IPC/Tauri, JMAP, fault injection ni scheduler interleavings deterministas.
 
 ## TypeScript y Vue
 

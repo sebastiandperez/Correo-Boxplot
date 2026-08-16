@@ -27,8 +27,8 @@ La secuencia obligatoria del core es:
 4. Isolated Domain implementation D-01→D-10 — completada.
 5. Domain Final Audit #2 y freeze final — completados.
 6. Ports — P-01, P-02 y P-03 cerrados individualmente; Ports global todavía abierto.
-7. TEST-00→TEST-03B — completados; P-02 runtime totalmente definido con 91 escenarios y aún no ejecutado contra IUT.
-8. MEM-01 MemoryLocalEngine como primer IUT de conformance — siguiente.
+7. TEST-00→TEST-04 — completados; suites P-01/P-02/P-03 ejecutadas contra Memory.
+8. MEM-01 MemoryLocalEngine — implementado y conformant, 159/159 escenarios.
 9. Rust Local Engine y persistence integration.
 10. JMAP, Coordinator y Outbox integration.
 
@@ -58,8 +58,8 @@ flowchart TD
     Domain["D-01…D-10 implementation<br/>COMPLETE"]
     DomainGate["Domain Final Audit #2<br/>PASS · FREEZE COMPLETE"]
     Ports["Ports contracts<br/>P-01/P-02/P-03 CLOSED<br/>PORTS GLOBAL NOT CLOSED"]
-    TestSpec["TEST-00→TEST-03B COMPLETE<br/>P-02: 91 SCENARIOS DEFINED<br/>NOT EXECUTED"]
-    Adapters["MEM-01 MemoryLocalEngine NEXT<br/>+ future adapters"]
+    TestSpec["TEST-00→TEST-04 COMPLETE<br/>P-01/P-02/P-03: 159/159 PASS<br/>AGAINST MEMORY"]
+    Adapters["MEM-01 MemoryLocalEngine CONFORMANT<br/>+ future adapters"]
     Engine["Rust Local Engine<br/>persistence integration"]
     Remote["JMAP + Coordinator + Outbox<br/>integration"]
     App["Application + Presentation<br/>consumer work"]
@@ -148,15 +148,15 @@ Las verificaciones por bloque y el Domain Final Audit #1 comprobaron identidades
 
 P-01 `ReadRepository` está **CLOSED** como consulta pura del estado local committed. P-02 `SyncPort` está **CLOSED** con diez transiciones semánticas atómicas y sin row IDs, DTOs JMAP, Emails parciales, hashes como identidad de View ni payloads arbitrarios. P-03 `LocalChangeSource` está **CLOSED** como contrato separado de invalidaciones post-commit no durables; no transporta estado y obliga a releer mediante P-01. Las solicitudes de materialización remota siguen diferidas a orquestación Application → Coordinator. Los tres contratos están cerrados individualmente, pero Ports global requiere suites runtime y audit final.
 
-TEST-00→TEST-03B están **COMPLETE**. `defineSyncPortStateContract(...)` declara 48 escenarios y `defineSyncPortMutationContract(...)` declara 43; el agregador P-02 compone 91 escenarios estables, todavía no ejecutados contra un IUT. La arquitectura [contract-first](../testing/port-contract-testing.md) y los grupos requeridos P-01/P-02/P-03/sistémicos permanecen congelados. MEM-01 es el siguiente bloque; no existe todavía conformance runtime.
+TEST-00→TEST-04 están **COMPLETE**. `defineReadRepositoryContract(...)` aporta 45 escenarios, el agregador P-02 compone 91 y `defineLocalChangeSourceContract(...)` aporta 23. MEM-01 ejecuta los 159 contra Memory con PASS. La arquitectura [contract-first](../testing/port-contract-testing.md) permanece congelada; TEST-05 y el audit final todavía bloquean el cierre global de Ports.
 
 ### 2-B — Contract suites y harness
 
-TEST-01 materializó el harness y la infraestructura reusable. TEST-02 materializó `defineReadRepositoryContract` con 45 escenarios; TEST-03A/TEST-03B materializaron el contrato runtime P-02 completo con 91 escenarios. Todas permanecen sin IUT y no afirman conformance.
+TEST-01 materializó el harness y la infraestructura reusable. TEST-02 materializó `defineReadRepositoryContract` con 45 escenarios; TEST-03A/TEST-03B materializaron P-02 con 91; TEST-04 materializó P-03 con 23. Las tres suites se ejecutan una vez contra el harness Memory.
 
 ### 2-C — MemoryLocalEngine y adapters
 
-MEM-01 implementará `ReadRepository`, `SyncPort` y `LocalChangeSource` como un único Local Engine funcional in-memory y ejecutará las suites sin modificarlas para acomodar Memory. P-03 runtime permanece posterior a MEM-01. Después se materializan los adapters Tauri contra la misma semántica, sin diseñar SQL ni JMAP dentro de TypeScript adapters.
+MEM-01 implementa `ReadRepository`, `SyncPort` y `LocalChangeSource` como un único Local Engine funcional in-memory sobre estado compartido. Pasa 159/159 escenarios sin modificar los contratos para acomodar Memory y queda listo para integración de Application/Coordinator. Después se materializan los adapters Tauri contra la misma semántica, sin diseñar SQL ni JMAP dentro de TypeScript adapters.
 
 ### Criterio de salida
 
@@ -201,9 +201,9 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Componente | Construcción principal | Integración / aceptación |
 | --- | --- | --- |
 | Domain | **D-01→D-10 implementados; Final Audit #2 PASS; CLOSED** | Base congelada de Ports y todas las integraciones |
-| Ports locales | **P-01/P-02/P-03 CLOSED individualmente; Ports global abierto por conformance runtime** | MEM-01+; adapters; Fase 3; aceptación |
-| Contract suites + harness | **TEST-00→TEST-03B COMPLETE; P-02 91 escenarios definidos, no ejecutados · Fase 2-B** | Memory y Tauri conformance |
-| Memory/Tauri adapters | **MEM-01 READY · Fase 2 · 2-C** | Local Engine y conformance |
+| Ports locales | **P-01/P-02/P-03 CLOSED individualmente; Ports global abierto por TEST-05/audit final** | adapters; Fase 3; aceptación |
+| Contract suites + harness | **TEST-00→TEST-04 COMPLETE; 159 escenarios ejecutados contra Memory · Fase 2-B** | Tauri conformance y TEST-05 |
+| Memory/Tauri adapters | **MEM-01 IMPLEMENTED / CONFORMANT · Fase 2 · 2-C** | Application/Coordinator y futuro Local Engine real |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Motor Tauri/Rust | **Fase 3 · 3-A** | 3-B/3-C; aceptación |
@@ -261,7 +261,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
-| PORTS-01 | **P-01/P-02/P-03 CLOSED · TEST-00→TEST-03B COMPLETE** | Ejecutar MEM-01, completar suites posteriores, certificar Memory y ejecutar audit final antes de declarar Ports globalmente cerrados. |
+| PORTS-01 | **P-01/P-02/P-03 CLOSED · TEST-00→TEST-04 + MEM-01 COMPLETE** | Completar TEST-05 y ejecutar audit final antes de declarar Ports globalmente cerrados. |
 | PERSISTENCE-01 | **Fase 3-A** | Mapping físico, migrations posteriores y codecs sin modificar `0001`. |
 | ATTACHMENT-CACHE-01 | **Fase 2-A / 3-A** | Distinguir disponibilidad de la colección de refs en el contrato de lectura/persistencia sin añadir flags a `AttachmentRef`. |
 | OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |

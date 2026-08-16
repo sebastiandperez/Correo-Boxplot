@@ -2,18 +2,18 @@
 
 ## 1. Estado y autoridad
 
-**TEST-00: COMPLETE. TEST-01: COMPLETE. TEST-02: COMPLETE. TEST-03A: COMPLETE. TEST-03B: IMPLEMENTED.** La infraestructura reusable y las suites abstractas de `ReadRepository` y `SyncPort` están materializadas, pero todavía no se han ejecutado contra un implementation-under-test.
+**TEST-00→TEST-04: COMPLETE. MEM-01: IMPLEMENTED.** Las suites abstractas de `ReadRepository`, `SyncPort` y `LocalChangeSource` están materializadas y se ejecutaron contra `MemoryLocalEngine`.
 
 Estado de los contratos:
 
 * P-01 `ReadRepository`: **CLOSED**.
 * P-02 `SyncPort`: **CLOSED**.
 * P-03 `LocalChangeSource`: **CLOSED**.
-* `ReadRepository` runtime contract: **DEFINED — NOT YET EXECUTED AGAINST IUT**.
-* `SyncPort` runtime contract: **FULLY DEFINED — 91 SCENARIOS; NOT YET EXECUTED AGAINST IUT**.
-* `MemoryLocalEngine` conformance: **NOT STARTED**.
-* Port contract tests: **IMPLEMENTATION IN PROGRESS — MEM-01 NEXT**.
-* Ports como fase completa: **NOT CLOSED — runtime conformance required**.
+* `ReadRepository` runtime contract: **45/45 PASS AGAINST MEMORY**.
+* `SyncPort` runtime contract: **91/91 PASS AGAINST MEMORY**.
+* `LocalChangeSource` runtime contract: **23/23 PASS AGAINST MEMORY**.
+* `MemoryLocalEngine` conformance: **159/159 PASS; CONFORMANT TO CURRENT P-01/P-02/P-03 SUITES**.
+* Ports como fase completa: **NOT CLOSED — TEST-05 systemic/final contract audit remains**.
 
 La prioridad normativa es:
 
@@ -38,7 +38,7 @@ Reusable Suites
 Implementation Under Test
 ```
 
-Las suites de contrato son la especificación ejecutable del comportamiento observable. `MemoryLocalEngine` será el primer implementation-under-test, no la fuente de verdad. Las mismas suites certificarán después el Local Engine Tauri sin aceptar cambios hechos para acomodar una implementación concreta.
+Las suites de contrato son la especificación ejecutable del comportamiento observable. `MemoryLocalEngine` es el primer implementation-under-test conformant, no la fuente de verdad. Las mismas suites certificarán después el Local Engine Tauri sin aceptar cambios hechos para acomodar una implementación concreta.
 
 Los nombres conceptuales congelados para los runners Vitest son:
 
@@ -47,7 +47,7 @@ Los nombres conceptuales congelados para los runners Vitest son:
 * `defineLocalChangeSourceContract(...)`;
 * `defineLocalEngineContract(...)`.
 
-TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`. TEST-03A y TEST-03B implementan `defineSyncPortStateContract(...)` y `defineSyncPortMutationContract(...)`; `defineSyncPortContract(...)` compone ambas suites sin duplicar escenarios.
+TEST-01 implementa el harness abstracto y la infraestructura reusable. TEST-02 implementa `defineReadRepositoryContract(...)`. TEST-03A y TEST-03B implementan `defineSyncPortStateContract(...)` y `defineSyncPortMutationContract(...)`; `defineSyncPortContract(...)` compone ambas suites sin duplicar escenarios. TEST-04 implementa `defineLocalChangeSourceContract(...)` con 23 escenarios.
 
 ## 3. Aclaraciones normativas de Ports
 
@@ -219,7 +219,7 @@ TEST-02 define 45 escenarios estables. La especificación ejecutable exacta vive
 | MailboxView | RR-V01→RR-V05 | 5 | Spec exacta/alternativa y coverage parcial/disjunta. |
 | CollectionSyncCursor | RR-C01→RR-C04 | 4 | `ownerAbsent`, absent, present y state vacío opaco. |
 | PendingMutation | RR-P01→RR-P05 | 5 | `ownerAbsent`, absent, present y snapshots sin orden semántico. |
-| **Total** |  | **45** | Suite declarada; conformance todavía no ejecutada. |
+| **Total** |  | **45** | Suite ejecutada contra Memory: 45/45 PASS. |
 
 Los errores `unavailable`, `corruptState` y `unexpected`, así como el éxito parcial imposible ante corrupción, permanecen para controles opcionales y suites posteriores; TEST-02 no fabrica esos estados.
 
@@ -253,7 +253,7 @@ TEST-03B completa P-02 con 43 escenarios de mutaciones optimistas, lifecycle, CA
 | **Total TEST-03B** |  | **43** |
 | **Total P-02** | TEST-03A + TEST-03B | **91** |
 
-Los 91 escenarios están definidos, no ejecutados: no existe todavía un IUT y no se afirma conformance de `SyncPort`.
+Los 91 escenarios están definidos y ejecutados contra Memory: 91/91 PASS.
 
 | ID | Cobertura requerida |
 | --- | --- |
@@ -274,6 +274,15 @@ Los 91 escenarios están definidos, no ejecutados: no existe todavía un IUT y n
 | SP-SNAPSHOT | Arrays mutables del caller no permanecen aliasados al estado committed. |
 
 ## 12. Grupos obligatorios de LocalChangeSource
+
+TEST-04 define 23 escenarios estables y los ejecuta contra Memory:
+
+| Grupo TEST-04 | IDs | Cantidad |
+| --- | --- | ---: |
+| Subscription lifecycle | LC-S01→LC-S09 | 9 |
+| P-02→P-03 mapping | LC-M01→LC-M12 | 12 |
+| Failure/no-op | LC-F01→LC-F02 | 2 |
+| **Total P-03** |  | **23** |
 
 | ID | Cobertura requerida |
 | --- | --- |
@@ -348,7 +357,7 @@ Requiere que todos los requisitos frozen estén mapeados a grupos/IDs, no quede 
 
 ### MEMORY LOCAL ENGINE: CONFORMANT
 
-Requerirá 100% de escenarios obligatorios en PASS, cero skipped/todo, regresión Domain runtime en PASS, type-tests Domain+Ports en PASS, cero timing flaky y ninguna modificación de los contratos para acomodar Memory.
+Cumplido por MEM-01: 159/159 escenarios P-01/P-02/P-03 en PASS, cero skipped/todo, regresión en PASS, cero timing sleeps y ninguna modificación de los contratos congelados para acomodar Memory. Esto habilita `MemoryLocalEngine` para integración de Application/Coordinator; no demuestra persistencia, crash safety, IPC, Tauri, SQLCipher ni JMAP.
 
 ### TAURI LOCAL ENGINE: CONFORMANT
 
@@ -356,4 +365,4 @@ Requerirá las mismas suites de Ports y del Local Engine en PASS, además de sui
 
 ## 18. Próxima secuencia
 
-TEST-00→TEST-03B están completos y el contrato runtime P-02 está totalmente definido con 91 escenarios abstractos. MEM-01 es el siguiente bloque: implementará `ReadRepository`, `SyncPort` y `LocalChangeSource` como un único Local Engine funcional in-memory y ejecutará las suites existentes sin modificarlas. P-03 runtime permanece para una fase posterior; el audit final y la conformance runtime siguen siendo requisitos para declarar Ports globalmente cerrados.
+TEST-00→TEST-04 y MEM-01 están completos. `MemoryLocalEngine` implementa los tres Ports sobre un estado compartido y pasa 159/159 escenarios (45 P-01 + 91 P-02 + 23 P-03). TEST-05 y el audit final de contratos permanecen diferidos antes de declarar Ports globalmente cerrados; la conformance de Memory no certifica persistencia, SQLite/SQLCipher, IPC, Tauri ni JMAP.
