@@ -60,7 +60,7 @@ Domain no depende de Vue, Pinia, Tauri, `@tauri-apps/api`, SQLite, SQL, Rust, `r
 
 `ReadRepository` es el contrato TypeScript P-01 cerrado para consultas puras sobre estado local committed. No escribe, no agenda trabajo remoto y no emite notificaciones. Distingue ausencia local, ausencia del owner, valor owned opcional y caché no materializada mediante `LocalEntityRead`, `OwnedSnapshotRead`, `OwnedOptionalRead` y `OwnedCacheRead`.
 
-`SyncPort` P-02 está cerrado como frontera de transiciones semánticas atómicas consumida por casos de escritura de Application, Coordinator y Outbox. `LocalChangeSource` P-03 también está cerrado como port separado para invalidaciones post-commit: sus señales no son autoridad, pueden coalescerse o duplicarse y hacen que el consumidor relea mediante `ReadRepository`. P-01→P-03 están cerrados individualmente, pero Ports como fase todavía exige las suites runtime y el audit final definidos en [port-contract-testing.md](../testing/port-contract-testing.md). Las solicitudes `ensure…` o de materialización remota pertenecen a futura orquestación Application → Coordinator, no a ninguno de estos ports.
+`SyncPort` P-02 está cerrado como frontera de transiciones semánticas atómicas consumida por casos de escritura de Application, Coordinator y Outbox. `LocalChangeSource` P-03 también está cerrado como port separado para invalidaciones post-commit: sus señales no son autoridad, pueden coalescerse o duplicarse y hacen que el consumidor relea mediante `ReadRepository`. P-01→P-03 y la suite reusable del Local Engine están cerrados para el alcance MVP actual según [port-contract-testing.md](../testing/port-contract-testing.md). Las solicitudes `ensure…` o de materialización remota pertenecen a futura orquestación Application → Coordinator, no a ninguno de estos ports.
 
 Ports puede depender únicamente de tipos de Domain y errores propios del contrato. No depende de Tauri, `invoke`, SQLite, SQL, Rust, `rusqlite`, JMAP transport ni `jmap-jam`. Un port es un contrato, no almacenamiento.
 
@@ -163,9 +163,9 @@ local source of truth for UI != remote authority
 | `src/styles/` | Presentation styles | Presente |
 | `src/app/` | Application state/orchestration | Store `runtime` inicial presente; resto se implementará por sprint |
 | `src/domain/` | Domain independiente de infraestructura | D-01→D-10 implementados; freeze completo; Domain cerrado |
-| `src/ports/` | Contratos locales | P-01→P-03 cerrados; conformance runtime y audit final de Ports pendientes |
+| `src/ports/` | Contratos locales | P-01→P-03 y Local Engine contract suite cerrados para MVP actual |
 | `src/adapters/tauri/` | Implementaciones Tauri de ports TypeScript | Ubicación esperada cuando se implemente |
-| `src/adapters/memory/` | Primer IUT de conformance (`MemoryLocalEngine`) | Ubicación esperada después de implementar las suites TEST-01 |
+| `src/adapters/memory/` | Primer IUT de conformance (`MemoryLocalEngine`) | Implementado; final audit PASS |
 | `src/jmap/` | Cliente y protocolo JMAP | Ubicación esperada cuando se implemente |
 | `src/sync/` | Coordinator + Outbox | Ubicación esperada cuando se implemente |
 | `src/security/` | Políticas frontend de render seguro | Ubicación esperada cuando se implemente |

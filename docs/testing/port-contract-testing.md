@@ -2,7 +2,7 @@
 
 ## 1. Estado y autoridad
 
-**TEST-00→TEST-04: COMPLETE. MEM-01: IMPLEMENTED.** Las suites abstractas de `ReadRepository`, `SyncPort` y `LocalChangeSource` están materializadas y se ejecutaron contra `MemoryLocalEngine`.
+**TEST-00→TEST-06: COMPLETE. MEM-01 FINAL AUDIT: PASS. PERSIST-00: COMPLETE.** Las suites portables P-01/P-02/P-03 y sistémica están cerradas para el alcance MVP actual; Memory superó además su hardening específico.
 
 Estado de los contratos:
 
@@ -12,8 +12,10 @@ Estado de los contratos:
 * `ReadRepository` runtime contract: **45/45 PASS AGAINST MEMORY**.
 * `SyncPort` runtime contract: **91/91 PASS AGAINST MEMORY**.
 * `LocalChangeSource` runtime contract: **23/23 PASS AGAINST MEMORY**.
-* `MemoryLocalEngine` conformance: **159/159 PASS; CONFORMANT TO CURRENT P-01/P-02/P-03 SUITES**.
-* Ports como fase completa: **NOT CLOSED — TEST-05 systemic/final contract audit remains**.
+* Local Engine reusable contract: **179/179 PASS AGAINST MEMORY**.
+* Memory-specific hardening: **18/18 PASS**.
+* `MemoryLocalEngine` final conformance: **PASS**.
+* Local Engine contract suite: **CLOSED FOR CURRENT MVP SCOPE**.
 
 La prioridad normativa es:
 
@@ -299,6 +301,18 @@ TEST-04 define 23 escenarios estables y los ejecuta contra Memory:
 
 ## 13. Grupos sistémicos del Local Engine
 
+TEST-05 define 20 escenarios portables y los ejecuta contra Memory:
+
+| Grupo TEST-05 | Cantidad |
+| --- | ---: |
+| Bootstrap | 3 |
+| Commit consistency | 4 |
+| Owner/cache | 5 |
+| Lazy cache | 2 |
+| Optimistic/Outbox | 4 |
+| Isolation | 2 |
+| **Total sistémico** | **20** |
+
 | ID | Invariante observable |
 | --- | --- |
 | SYS-WRITE | Write exitoso → invalidación que cubre el cambio → reread observa estado committed. |
@@ -355,9 +369,9 @@ TEST-00 no añade `fast-check`, proptest ni otra dependencia.
 
 Requiere que todos los requisitos frozen estén mapeados a grupos/IDs, no quede comportamiento esperado indefinido, las assertions sean independientes de implementación, no existan sleeps ni dependencias SQL/Tauri/JMAP, las notificaciones se verifiquen por cobertura y la política de fixtures deterministas esté definida.
 
-### MEMORY LOCAL ENGINE: CONFORMANT
+### MEMORY LOCAL ENGINE: FINAL CONFORMANCE PASS
 
-Cumplido por MEM-01: 159/159 escenarios P-01/P-02/P-03 en PASS, cero skipped/todo, regresión en PASS, cero timing sleeps y ninguna modificación de los contratos congelados para acomodar Memory. Esto habilita `MemoryLocalEngine` para integración de Application/Coordinator; no demuestra persistencia, crash safety, IPC, Tauri, SQLCipher ni JMAP.
+Cumplido por TEST-05/TEST-06 y el audit final: 179/179 escenarios portables y 18/18 escenarios de hardening en PASS, cero skipped/todo, regresión en PASS, cero timing sleeps y ninguna modificación de los contratos congelados para acomodar Memory. Esto habilita `MemoryLocalEngine` para integración de Application/Coordinator; no demuestra persistencia, crash safety, IPC, Tauri, SQLCipher ni JMAP.
 
 ### TAURI LOCAL ENGINE: CONFORMANT
 
@@ -365,4 +379,4 @@ Requerirá las mismas suites de Ports y del Local Engine en PASS, además de sui
 
 ## 18. Próxima secuencia
 
-TEST-00→TEST-04 y MEM-01 están completos. `MemoryLocalEngine` implementa los tres Ports sobre un estado compartido y pasa 159/159 escenarios (45 P-01 + 91 P-02 + 23 P-03). TEST-05 y el audit final de contratos permanecen diferidos antes de declarar Ports globalmente cerrados; la conformance de Memory no certifica persistencia, SQLite/SQLCipher, IPC, Tauri ni JMAP.
+TEST-00→TEST-06, el audit final de Memory y PERSIST-00 están completos. `MemoryLocalEngine` pasa 179/179 escenarios portables y 18/18 de hardening. El contrato normativo para la persistencia futura vive en [persistence-contract.md](../architecture/persistence-contract.md). PERSIST-01 es el siguiente bloque y requiere revisión conjunta; todavía no existe persistencia SQLite/SQLCipher, IPC ni adapter Tauri productivo.

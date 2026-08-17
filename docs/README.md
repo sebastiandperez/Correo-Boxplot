@@ -8,6 +8,7 @@
 * [Dominio local](architecture/domain.md)
 * [Estado de Application](architecture/application-state.md)
 * [Seguridad](architecture/security.md)
+* [Contrato de persistencia](architecture/persistence-contract.md)
 * [Diagrama de capas y componentes](diagrams/layers-components.mmd)
 
 ## Planificación

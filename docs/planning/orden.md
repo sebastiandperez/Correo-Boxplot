@@ -14,7 +14,7 @@ P0 — Ports · EN PROGRESO
 ├── P-02 SyncPort · CLOSED
 └── P-03 LocalChangeSource · CLOSED
 
-P0 — Port contract testing · IMPLEMENTACIÓN EN PROGRESO
+P0 — Port contract testing · COMPLETE PARA MVP ACTUAL
 │
 ├── TEST-00 arquitectura de tests · COMPLETE
 ├── TEST-01 infraestructura reusable · COMPLETE
@@ -22,8 +22,10 @@ P0 — Port contract testing · IMPLEMENTACIÓN EN PROGRESO
 ├── TEST-03A SyncPort state suite · COMPLETE / 48 PASS AGAINST MEMORY
 ├── TEST-03B SyncPort mutations suite · COMPLETE / 43 PASS AGAINST MEMORY
 ├── TEST-04 LocalChangeSource suite · COMPLETE / 23 PASS AGAINST MEMORY
-├── MEM-01 MemoryLocalEngine · IMPLEMENTED / 159 OF 159 PASS
-└── PORTS global · NOT CLOSED hasta TEST-05 + audit final
+├── TEST-05 Local Engine system suite · COMPLETE / 20 PASS AGAINST MEMORY
+├── TEST-06 Memory hardening · COMPLETE / 18 PASS
+├── MEM-01 MemoryLocalEngine · FINAL AUDIT PASS
+└── LOCAL ENGINE CONTRACT SUITE · CLOSED / 179 OF 179 PASS
 
 P0 — primer IUT y adapters
 │
@@ -31,6 +33,8 @@ P0 — primer IUT y adapters
 
 P0 — Local Engine / persistence integration
 │
+├── PERSIST-00 Persistence Contract · COMPLETE
+├── PERSIST-01 diseño/implementación · NEXT / JOINT REVIEW REQUIRED
 ├── B-03 SQLCipher lifecycle y migrations
 ├── B-04 local reads
 ├── B-05 atomic writes

@@ -2,7 +2,7 @@
 
 ## Contract testing de Ports
 
-TEST-00→TEST-04 están **COMPLETE** y MEM-01 está **IMPLEMENTED**. `MemoryLocalEngine` pasa 159/159 escenarios: 45 de `ReadRepository`, 91 de `SyncPort` y 23 de `LocalChangeSource`. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). P-01, P-02 y P-03 están cerrados individualmente; Ports como fase todavía no está cerrado porque TEST-05 y el audit final permanecen diferidos.
+TEST-00→TEST-06 están **COMPLETE** y el audit final de MEM-01 está en **PASS**. `MemoryLocalEngine` pasa 179/179 escenarios portables —45 P-01, 91 P-02, 23 P-03 y 20 sistémicos— más 18/18 escenarios específicos de hardening. La arquitectura normativa vive en [port-contract-testing.md](../testing/port-contract-testing.md). La suite del Local Engine queda cerrada para el alcance MVP actual.
 
 La especificación ejecutable se escribe antes de la implementación: contract specification → abstract harness → reusable suites → implementation-under-test. `MemoryLocalEngine` es el primer IUT conformant y no redefine las suites.
 
@@ -15,7 +15,7 @@ Los niveles congelados son:
 5. integración adapter/persistencia;
 6. E2E Tauri.
 
-TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó `defineReadRepositoryContract(...)`; TEST-03A/TEST-03B materializaron las dos suites de `SyncPort` y su agregador final; TEST-04 materializó `defineLocalChangeSourceContract(...)`. MEM-01 implementa los tres Ports sobre un único estado in-memory compartido y está conformant con las suites actuales. Esto no prueba durabilidad de disco, SQLCipher, transacciones SQLite, crash safety, IPC/Tauri, JMAP, fault injection ni scheduler interleavings deterministas.
+TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó P-01; TEST-03A/TEST-03B, P-02; TEST-04, P-03; TEST-05, la composición sistémica reusable; TEST-06 endurece exclusivamente Memory. MEM-01 implementa los tres Ports sobre un único estado in-memory compartido y tiene conformance final. Esto no prueba durabilidad de disco, SQLCipher, transacciones SQLite, crash safety, IPC/Tauri o JMAP. El contrato de esas obligaciones futuras comienza en [PERSIST-00](../architecture/persistence-contract.md).
 
 ## TypeScript y Vue
 
