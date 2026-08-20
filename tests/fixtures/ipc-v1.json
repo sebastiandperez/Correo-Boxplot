@@ -1,0 +1,107 @@
+{
+  "protocolVersion": 1,
+  "account": {
+    "key": "account-a",
+    "remoteRef": { "serviceKey": "service-a", "jmapAccountId": "remote-a" }
+  },
+  "emailBody": {
+    "emailId": { "accountKey": "account-a", "jmapEmailId": "email-a" },
+    "text": null,
+    "html": ""
+  },
+  "email": {
+    "id": { "accountKey": "account-a", "jmapEmailId": "email-a" },
+    "blobId": { "accountKey": "account-a", "jmapBlobId": "blob-a" },
+    "threadId": { "accountKey": "account-a", "jmapThreadId": "thread-a" },
+    "sender": null,
+    "from": [],
+    "replyTo": null,
+    "to": [],
+    "cc": null,
+    "bcc": [],
+    "subject": null,
+    "sentAt": null,
+    "receivedAt": "2026-08-20T12:00:00Z",
+    "size": 0,
+    "preview": "",
+    "hasAttachment": false,
+    "keywords": ["Custom"]
+  },
+  "mailboxView": {
+    "spec": {
+      "mailboxId": { "accountKey": "account-a", "jmapMailboxId": "inbox" },
+      "filter": { "kind": "all" },
+      "sort": { "property": "receivedAt", "direction": "descending" }
+    },
+    "queryState": "query-a",
+    "total": 10,
+    "coverage": [
+      { "start": 0, "endExclusive": 1 },
+      { "start": 5, "endExclusive": 6 }
+    ],
+    "items": [
+      {
+        "position": 0,
+        "emailId": { "accountKey": "account-a", "jmapEmailId": "email-a" }
+      },
+      {
+        "position": 5,
+        "emailId": { "accountKey": "account-a", "jmapEmailId": "email-b" }
+      }
+    ]
+  },
+  "cursor": { "accountKey": "account-a", "dataType": "email", "state": "" },
+  "sendMutation": {
+    "kind": "send",
+    "mutationId": "mutation-send",
+    "accountKey": "account-a",
+    "createdAt": "2026-08-20T12:00:00Z",
+    "intent": {
+      "identityId": {
+        "accountKey": "account-a",
+        "jmapIdentityId": "identity-a"
+      },
+      "from": { "name": "Sender", "email": "sender@example.test" },
+      "replyTo": [],
+      "to": [{ "name": null, "email": "to@example.test" }],
+      "cc": [],
+      "bcc": [],
+      "subject": "",
+      "body": { "text": "", "html": null }
+    },
+    "lifecycle": { "status": "pending", "attemptCount": 0 }
+  },
+  "keywordMutation": {
+    "kind": "keyword",
+    "mutationId": "mutation-keyword",
+    "accountKey": "account-a",
+    "createdAt": "2026-08-20T12:00:00Z",
+    "emailId": { "accountKey": "account-a", "jmapEmailId": "email-a" },
+    "change": { "add": ["$flagged"], "remove": ["$seen"] },
+    "lifecycle": { "status": "inFlight", "attemptCount": 1 }
+  },
+  "membershipMutation": {
+    "kind": "mailboxMembership",
+    "mutationId": "mutation-membership",
+    "accountKey": "account-a",
+    "createdAt": "2026-08-20T12:00:00Z",
+    "emailId": { "accountKey": "account-a", "jmapEmailId": "email-a" },
+    "change": {
+      "add": [{ "accountKey": "account-a", "jmapMailboxId": "archive" }],
+      "remove": [{ "accountKey": "account-a", "jmapMailboxId": "inbox" }]
+    },
+    "lifecycle": {
+      "status": "retrying",
+      "attemptCount": 1,
+      "nextAttemptAt": "2026-08-20T12:01:00Z"
+    }
+  },
+  "readError": { "ok": false, "error": { "kind": "corruptState" } },
+  "writeConflict": { "ok": false, "error": { "kind": "conflict" } },
+  "changeBatch": {
+    "hints": [
+      { "kind": "emails", "accountKey": "account-a" },
+      { "kind": "syncCursor", "accountKey": "account-a", "dataType": "email" }
+    ]
+  }
+}

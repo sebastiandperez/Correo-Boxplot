@@ -1,0 +1,20 @@
+{
+  "productName": "Correo Boxplot Conformance",
+  "build": {
+    "beforeBuildCommand": "",
+    "frontendDist": "../dist-conformance"
+  },
+  "bundle": {
+    "active": false
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Production Local Engine Conformance",
+        "width": 900,
+        "height": 600
+      }
+    ]
+  }
+}

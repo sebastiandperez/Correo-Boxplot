@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "vitest": ["./browser-vitest-shim.ts"]
+    },
+    "types": []
+  },
+  "include": [
+    "./browser-vitest-shim.ts",
+    "./production-conformance.ts",
+    "./production-local-engine.harness.ts"
+  ]
+}
