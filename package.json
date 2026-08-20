@@ -15,6 +15,7 @@
     "build:frontend": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
+    "test:production-conformance": "node scripts/run-production-conformance.mjs",
     "test:watch": "vitest",
     "test:rust": "cargo test --locked --manifest-path src-tauri/Cargo.toml",
     "lint": "eslint .",

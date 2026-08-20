@@ -9,11 +9,16 @@ rust-version = "1.97.1"
 name = "correo_boxplot_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+conformance = ["dep:getrandom"]
+
 [dependencies]
 tauri = { version = "=2.11.5", features = [] }
 rusqlite = { version = "=0.40.2", features = ["sqlcipher"] }
 serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
 thiserror = "=2.0.20"
+getrandom = { version = "=0.3.4", optional = true }
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
