@@ -29,8 +29,11 @@ La secuencia obligatoria del core es:
 6. Ports — P-01, P-02, P-03 y Local Engine contract suite cerrados para el MVP actual.
 7. TEST-00→TEST-06 — completados; 179/179 contratos portables y 18/18 hardening Memory.
 8. MEM-01 MemoryLocalEngine — final audit PASS.
-9. PERSIST-00 — contrato normativo completo; PERSIST-01 requiere revisión conjunta.
-10. JMAP, Coordinator y Outbox integration.
+9. PERSIST-00/PERSIST-01 — contrato durable y motor SQLite/SQLCipher completos.
+10. IPC-00 — contrato TypeScript↔Rust, 25 comandos y evento post-commit completos.
+11. TAURI-ADAPTERS-01 — adapters puros P-01/P-02/P-03 sobre IPC-00 completos.
+12. PROD-CONFORMANCE-01 — completado; 179/179 contra Tauri→IPC→Rust→SQLCipher y 5/5 smoke.
+13. JMAP, Coordinator y Outbox integration.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -156,7 +159,7 @@ TEST-01 materializó el harness y la infraestructura reusable. TEST-02 materiali
 
 ### 2-C — MemoryLocalEngine y adapters
 
-MEM-01 implementa `ReadRepository`, `SyncPort` y `LocalChangeSource` como un único Local Engine funcional in-memory sobre estado compartido. Su audit final está en PASS y queda listo para integración de Application/Coordinator. [PERSIST-00](../architecture/persistence-contract.md) define las obligaciones durables sin diseñar SQL; PERSIST-01 es el siguiente bloque sujeto a revisión conjunta.
+MEM-01 implementa `ReadRepository`, `SyncPort` y `LocalChangeSource` como un único Local Engine funcional in-memory sobre estado compartido. Su audit final está en PASS. [PERSIST-00](../architecture/persistence-contract.md) define las obligaciones durables y [PERSIST-01](../architecture/persistence-01-design.md) materializa el motor SQLite/SQLCipher nativo. [IPC-00](../architecture/ipc-contract.md) completa el bridge semántico TypeScript↔Rust. TAURI-ADAPTERS-01 implementa los tres Ports mediante codecs explícitos y `LocalEngineIpcClient`; PROD-CONFORMANCE-01 valida 179/179 escenarios portables y 5/5 smokes contra la cadena persistente/Tauri real del runtime probado.
 
 ### Criterio de salida
 
@@ -203,7 +206,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Domain | **D-01→D-10 implementados; Final Audit #2 PASS; CLOSED** | Base congelada de Ports y todas las integraciones |
 | Ports locales | **P-01/P-02/P-03 + Local Engine suite CLOSED para MVP actual** | adapters; Fase 3; aceptación |
 | Contract suites + harness | **TEST-00→TEST-06 COMPLETE; 179 contract + 18 hardening PASS · Fase 2-B** | Tauri conformance futura |
-| Memory/Tauri adapters | **MEM-01 FINAL AUDIT PASS; PERSIST-00 COMPLETE · Fase 2-C** | PERSIST-01, Application/Coordinator y Local Engine real |
+| Memory/Tauri adapters | **MEMORY 179/179 + 18/18; PRODUCTION TAURI 179/179 + 5/5; PROD-CONFORMANCE-01 COMPLETE** | Secure Store/bootstrap y Application/Coordinator |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Motor Tauri/Rust | **Fase 3 · 3-A** | 3-B/3-C; aceptación |
@@ -262,12 +265,12 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
 | PORTS-01 | **CLOSED FOR CURRENT MVP SCOPE · TEST-00→TEST-06 + MEM-01 FINAL PASS** | Reutilizar 179 escenarios para certificar el futuro Local Engine Tauri. |
-| PERSISTENCE-01 | **PERSIST-00 COMPLETE · PERSIST-01 NEXT** | Revisar conjuntamente mapping físico, migrations y codecs sin modificar `0001` todavía. |
+| PERSISTENCE-01 | **PERSIST-00/PERSIST-01 COMPLETE** | Motor nativo validado; SQLCipher exacto de packaging permanece en STACK-01. |
 | ATTACHMENT-CACHE-01 | **RESOLVED BY P-01 + PERSIST-00** | `notCached` y `cached []` son estados distintos sin añadir flags a `AttachmentRef`. |
 | OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |
 | COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
 | AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |
-| STACK-01 | **Antes de completar 3-A** | Provisioning/packaging de SQLCipher `4.17.0` en Windows, macOS y Linux. |
+| STACK-01 | **Antes del artefacto de release** | Provisioning/packaging de SQLCipher `4.17.0` en Windows, macOS y Linux. |
 | STACK-02 | **Durante 3-B** | Conformance de `jmap-jam 0.13.3`; candidato no instalado ni congelado. |
 | STACK-03 | **Antes de release** | Versiones mínimas OS/WebView y target explícito de Vite. |
 | STACK-04 | **Durante 3-A / antes de aceptación** | Secret Service Linux y stores explícitos por plataforma. |

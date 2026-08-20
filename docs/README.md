@@ -9,6 +9,8 @@
 * [Estado de Application](architecture/application-state.md)
 * [Seguridad](architecture/security.md)
 * [Contrato de persistencia](architecture/persistence-contract.md)
+* [Diseño SQLite / SQLCipher PERSIST-01](architecture/persistence-01-design.md)
+* [Contrato IPC TypeScript ↔ Rust IPC-00](architecture/ipc-contract.md)
 * [Diagrama de capas y componentes](diagrams/layers-components.mmd)
 
 ## Planificación

@@ -12,7 +12,7 @@ Estado de los contratos:
 * `ReadRepository` runtime contract: **45/45 PASS AGAINST MEMORY**.
 * `SyncPort` runtime contract: **91/91 PASS AGAINST MEMORY**.
 * `LocalChangeSource` runtime contract: **23/23 PASS AGAINST MEMORY**.
-* Local Engine reusable contract: **179/179 PASS AGAINST MEMORY**.
+* Local Engine reusable contract: **179/179 PASS AGAINST MEMORY AND PRODUCTION TAURI**.
 * Memory-specific hardening: **18/18 PASS**.
 * `MemoryLocalEngine` final conformance: **PASS**.
 * Local Engine contract suite: **CLOSED FOR CURRENT MVP SCOPE**.
@@ -375,8 +375,8 @@ Cumplido por TEST-05/TEST-06 y el audit final: 179/179 escenarios portables y 18
 
 ### TAURI LOCAL ENGINE: CONFORMANT
 
-Requerirá las mismas suites de Ports y del Local Engine en PASS, además de suites específicas de persistencia e IPC.
+PROD-CONFORMANCE-01 ejecutó sin modificar las suites: P-01 45/45, P-02 91/91, P-03 23/23 y System 20/20, para 179/179 PASS contra `TauriReadRepository`/`TauriSyncPort`/`TauriLocalChangeSource` → `LocalEngineIpcClient` → Tauri IPC/eventos → Rust → SQLite/SQLCipher. El bootstrap, la DEK y el lifecycle de bases temporales existen únicamente en el flavor de conformance; los 25 comandos productivos permanecen sin cambios.
 
 ## 18. Próxima secuencia
 
-TEST-00→TEST-06, el audit final de Memory y PERSIST-00 están completos. `MemoryLocalEngine` pasa 179/179 escenarios portables y 18/18 de hardening. El contrato normativo para la persistencia futura vive en [persistence-contract.md](../architecture/persistence-contract.md). PERSIST-01 es el siguiente bloque y requiere revisión conjunta; todavía no existe persistencia SQLite/SQLCipher, IPC ni adapter Tauri productivo.
+TEST-00→TEST-06 y PROD-CONFORMANCE-01 están completos. `MemoryLocalEngine` pasa 179/179 escenarios portables y 18/18 de hardening; el Local Engine Tauri productivo pasa los mismos 179/179 mediante la cadena IPC y SQLCipher real del runtime probado. Las suites portables quedan validadas contra dos implementaciones independientes. Esto no constituye certificación cross-platform ni resuelve el provisioning de SQLCipher 4.17.0 para release.

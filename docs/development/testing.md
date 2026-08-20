@@ -15,7 +15,9 @@ Los niveles congelados son:
 5. integración adapter/persistencia;
 6. E2E Tauri.
 
-TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó P-01; TEST-03A/TEST-03B, P-02; TEST-04, P-03; TEST-05, la composición sistémica reusable; TEST-06 endurece exclusivamente Memory. MEM-01 implementa los tres Ports sobre un único estado in-memory compartido y tiene conformance final. Esto no prueba durabilidad de disco, SQLCipher, transacciones SQLite, crash safety, IPC/Tauri o JMAP. El contrato de esas obligaciones futuras comienza en [PERSIST-00](../architecture/persistence-contract.md).
+TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó P-01; TEST-03A/TEST-03B, P-02; TEST-04, P-03; TEST-05, la composición sistémica reusable; TEST-06 endurece exclusivamente Memory. MEM-01 implementa los tres Ports sobre un único estado in-memory compartido y tiene conformance final. [PERSIST-01](../architecture/persistence-01-design.md) añade pruebas Rust nativas de migración, presencia, transacciones, reinicio, corrupción y SQLCipher. [IPC-00](../architecture/ipc-contract.md) congela y verifica el wire TypeScript↔Rust, los 25 comandos y el evento post-commit. TAURI-ADAPTERS-01 completa la traducción pura de P-01/P-02/P-03 mediante `LocalEngineIpcClient`. PROD-CONFORMANCE-01 ejecuta las mismas suites contra el webview Tauri, handlers Rust y base SQLCipher temporal reales: 179/179 PASS, más 5/5 smokes productivos. JMAP continúa fuera.
+
+La conformance productiva del runtime soportado se ejecuta con `pnpm test:production-conformance`. Requiere `tauri-driver`, `WebKitWebDriver` y SQLCipher disponibles en el host; no usa sleeps para `settle()` ni incorpora comandos de lifecycle al binario productivo normal.
 
 ## TypeScript y Vue
 

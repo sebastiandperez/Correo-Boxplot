@@ -66,9 +66,11 @@ Ports puede depender únicamente de tipos de Domain y errores propios del contra
 
 ### Adapters
 
-**Ruta Tauri esperada al implementarse:** `src/adapters/tauri/`.
+**Ruta Tauri implementada:** `src/adapters/tauri/`.
 
 Los adaptadores TypeScript, por ejemplo `TauriReadRepository` y `TauriSyncPort`, satisfacen los ports internos y traducen sus operaciones a comandos Tauri explícitos. Pueden depender de Ports, Domain y las APIs Tauri mínimas necesarias para IPC.
+
+PROD-CONFORMANCE-01 valida los tres adapters con 179/179 escenarios portables a través de `LocalEngineIpcClient`, Tauri IPC/eventos, handlers Rust y SQLite/SQLCipher reales en el runtime probado. El lifecycle temporal de conformance se compila por feature y no amplía los 25 comandos de la aplicación normal.
 
 No contienen lógica de UI, stores Pinia, protocolo JMAP, queries SQL escritas en TypeScript ni secretos. El `invoke()` de persistencia se concentra aquí; no se dispersa en componentes, stores, Domain, Sync o JMAP. Cualquier otra operación nativa requiere una frontera de infraestructura dedicada y explícitamente autorizada.
 
@@ -92,9 +94,9 @@ No depende de Vue, Pinia, SQLite, SQL, Rust Local Engine ni persistencia Tauri. 
 
 ### Tauri / Rust Local Engine
 
-**Rutas:** `src-tauri/src/commands/`, `src-tauri/src/db/`, `src-tauri/src/security/` y `src-tauri/src/errors/`.
+**Rutas implementadas:** `src-tauri/src/ipc/`, `src-tauri/src/persistence/` y `src-tauri/src/db/`; seguridad/secure store se integra en su fase dedicada.
 
-Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, DEK, validación de la frontera IPC, comandos semánticos y eventos locales necesarios. `commands/` delimita IPC; `db/` implementa el Local Engine; `security/` custodia secretos locales; `errors/` contiene errores nativos tipados.
+Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, DEK, validación de la frontera IPC, comandos semánticos y eventos locales necesarios. `ipc/` delimita los 25 comandos IPC-00 y `local-state-changed`; `persistence/` implementa el motor semántico PERSIST-01; `db/` aplica migraciones. La futura integración de `security/` custodiará secretos locales.
 
 No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa como proxy HTTP/WebSocket, no almacena el token JMAP, no renderiza UI y no maneja Pinia. El networking de correo de Rust es ninguno.
 
@@ -164,14 +166,16 @@ local source of truth for UI != remote authority
 | `src/app/` | Application state/orchestration | Store `runtime` inicial presente; resto se implementará por sprint |
 | `src/domain/` | Domain independiente de infraestructura | D-01→D-10 implementados; freeze completo; Domain cerrado |
 | `src/ports/` | Contratos locales | P-01→P-03 y Local Engine contract suite cerrados para MVP actual |
-| `src/adapters/tauri/` | Implementaciones Tauri de ports TypeScript | Ubicación esperada cuando se implemente |
+| `src/adapters/tauri/` | Implementaciones Tauri de ports TypeScript | TAURI-ADAPTERS-01 completo; P-01/P-02/P-03 traducen mediante el cliente IPC-00 |
 | `src/adapters/memory/` | Primer IUT de conformance (`MemoryLocalEngine`) | Implementado; final audit PASS |
 | `src/jmap/` | Cliente y protocolo JMAP | Ubicación esperada cuando se implemente |
 | `src/sync/` | Coordinator + Outbox | Ubicación esperada cuando se implemente |
 | `src/security/` | Políticas frontend de render seguro | Ubicación esperada cuando se implemente |
 | `src/workers/` | Bootstrap del Worker cuando sea necesario | Ubicación esperada cuando se implemente |
-| `src-tauri/src/commands/` | Frontera IPC semántica | Ubicación esperada cuando se implemente |
-| `src-tauri/src/db/` | SQLite/SQLCipher Local Engine | Solo schema `0001_initial.sql` presente; runtime pendiente |
+| `src/ipc/` | DTOs y cliente IPC TypeScript de bajo nivel | IPC-00 completo; todavía no implementa Ports |
+| `src-tauri/src/ipc/` | Frontera IPC semántica | IPC-00 completo: 15 reads, 10 writes y un evento post-commit |
+| `src-tauri/src/persistence/` | Persistent Local Engine | PERSIST-01 completo sobre SQLite/SQLCipher |
+| `src-tauri/src/db/` | Migraciones SQLite/SQLCipher | PERSIST-01 completo hasta schema version 2 |
 | `src-tauri/src/security/` | DEK / secure store | Ubicación esperada cuando se implemente |
 | `src-tauri/src/errors/` | Errores nativos tipados | Base inicial presente |
 

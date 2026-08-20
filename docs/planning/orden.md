@@ -34,12 +34,13 @@ P0 — primer IUT y adapters
 P0 — Local Engine / persistence integration
 │
 ├── PERSIST-00 Persistence Contract · COMPLETE
-├── PERSIST-01 diseño/implementación · NEXT / JOINT REVIEW REQUIRED
+├── PERSIST-01 SQLite/SQLCipher · COMPLETE
+├── IPC-00 Production Local Engine Bridge · COMPLETE
 ├── B-03 SQLCipher lifecycle y migrations
 ├── B-04 local reads
 ├── B-05 atomic writes
-├── B-06 Tauri adapters/events
-└── B-07 conformance contra engine real
+├── B-06 TAURI-ADAPTERS-01 · COMPLETE
+└── B-07 PROD-CONFORMANCE-01 contra engine real · COMPLETE / 179 PASS
 
 P0/P1 — consumers e integración remota
 │
