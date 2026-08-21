@@ -8,6 +8,7 @@
 * [Dominio local](architecture/domain.md)
 * [Estado de Application](architecture/application-state.md)
 * [Seguridad](architecture/security.md)
+* [Bootstrap seguro de la caché local](architecture/secure-local-cache.md)
 * [Contrato de persistencia](architecture/persistence-contract.md)
 * [Diseño SQLite / SQLCipher PERSIST-01](architecture/persistence-01-design.md)
 * [Contrato IPC TypeScript ↔ Rust IPC-00](architecture/ipc-contract.md)
@@ -21,6 +22,7 @@
 
 * [Stack canónico](development/stack.md)
 * [Setup](development/setup.md)
+* [Entornos locales Production/Development](development/local-environments.md)
 * [Testing](development/testing.md)
 * [Arquitectura de contract testing de Ports](testing/port-contract-testing.md)
 * [Git workflow](development/git-workflow.md)

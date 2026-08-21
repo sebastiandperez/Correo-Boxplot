@@ -2,7 +2,7 @@
 
 ## Estado de decisión
 
-**Gate 0-C está cerrado para el MVP Tauri.** Este cierre fija la frontera de autenticación, la estrategia de clave local, la vida del token JMAP, la recuperación de la caché y el hardening del webview. Cerrar la decisión arquitectónica no significa que sus comandos, configuración o pruebas ya estén implementados.
+**Gate 0-C está cerrado para el MVP Tauri.** SECURE-BOOTSTRAP-01 implementa la custodia nativa de la DEK, el bootstrap SQLCipher crash-safe, la distinción entre pérdida y falta temporal de acceso, el lock entre procesos y el core de reset autorizado. El detalle operativo canónico está en [secure-local-cache.md](secure-local-cache.md).
 
 La decisión provisional `Passkey → PRF → SQLCipher` queda sustituida para el MVP por dos mecanismos independientes:
 
@@ -31,6 +31,8 @@ El Passkey autentica a la persona ante el servidor. La DEK protege el archivo SQ
 3. **Phishing o robo de sesión remota**.
 4. **Escalación mediante IPC de Tauri** si el webview llega a comprometerse.
 5. **Actualizaciones falsas o no firmadas**.
+6. **Ejecución de desarrollo con identidad Production**, que podría abrir por accidente la caché y credencial reales.
+7. **Pruebas que reutilicen namespaces Development o Production** y alteren secretos durables.
 
 No se promete protección frente a un sistema operativo ya comprometido ni frente al acceso físico a un proceso ya desbloqueado.
 
@@ -75,6 +77,8 @@ Reglas:
 * Los adaptadores Tauri del webview solo invocan operaciones semánticas de `ReadRepository`/`SyncPort` necesarias para persistencia.
 * SQLCipher, la DEK y el secure store existen únicamente en Rust.
 * La DEK nunca se serializa ni atraviesa IPC hacia TypeScript.
+* Production y Development usan identificadores Tauri, roots y credenciales distintos. El runtime rechaza identidad Production bajo `tauri dev` o `debug_assertions` antes de cualquier side effect de caché.
+* Los smokes nativos usan servicios aleatorios `*.test.<RUN_ID>.local-cache`; ninguna entrada de test puede seleccionarse desde IPC o Application.
 * Cliente JMAP, Coordinador y Outbox siguen en el Worker TypeScript y usan `fetch`/WebSocket directo; Rust no retransmite ni custodia la sesión JMAP.
 
 ### 2. Renderizado de HTML en defensa en profundidad
@@ -115,7 +119,7 @@ Logout y expiración eliminan la referencia en memoria y detienen nuevas llamada
 
 En el primer provisioning, Rust genera una DEK criptográficamente aleatoria de 32 bytes. La guarda mediante el secure store del sistema operativo y la aplica a SQLCipher antes de cualquier acceso a la base.
 
-La baseline nativa usa `rusqlite 0.40.2` con feature `sqlcipher` y una biblioteca SQLCipher externa `4.17.0`/SQLite `3.53.3`. Su provisioning cross-platform sigue **OPEN**. `bundled-sqlcipher` y SQLite plaintext están prohibidos como atajos de bootstrap.
+La baseline nativa usa `rusqlite 0.40.2` con feature `sqlcipher`; el runtime local verificado sigue en SQLCipher `4.14.0` community/SQLite `3.51.3`, mientras el artefacto objetivo exige SQLCipher `4.17.0`/SQLite `3.53.3`. Ese provisioning cross-platform sigue **OPEN**. `bundled-sqlcipher` y SQLite plaintext están prohibidos como atajos de bootstrap.
 
 Invariantes:
 

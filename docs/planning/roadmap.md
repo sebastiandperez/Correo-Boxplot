@@ -33,7 +33,10 @@ La secuencia obligatoria del core es:
 10. IPC-00 — contrato TypeScript↔Rust, 25 comandos y evento post-commit completos.
 11. TAURI-ADAPTERS-01 — adapters puros P-01/P-02/P-03 sobre IPC-00 completos.
 12. PROD-CONFORMANCE-01 — completado; 179/179 contra Tauri→IPC→Rust→SQLCipher y 5/5 smoke.
-13. JMAP, Coordinator y Outbox integration.
+13. SECURE-BOOTSTRAP-01 — completado; credential store nativo, DEK Rust-only, recovery/reset crash-safe y process lock.
+14. LOCAL-SECURE-STORE-01 — completado en Linux; flavors dev/prod aislados, Secret Service real y Development reopen/persistence verificados. Windows runtime pendiente.
+15. SQLCIPHER-PACKAGING-01 — siguiente blocker de release; target 4.17.0.
+16. JMAP, Coordinator y Outbox integration.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -209,7 +212,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Memory/Tauri adapters | **MEMORY 179/179 + 18/18; PRODUCTION TAURI 179/179 + 5/5; PROD-CONFORMANCE-01 COMPLETE** | Secure Store/bootstrap y Application/Coordinator |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
-| Motor Tauri/Rust | **Fase 3 · 3-A** | 3-B/3-C; aceptación |
+| Motor Tauri/Rust | **PERSIST-01 + IPC-00 + PROD-CONFORMANCE-01 + SECURE-BOOTSTRAP-01 COMPLETE** | SQLCipher 4.17 packaging; 3-B/3-C; aceptación |
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
 | Cliente JMAP | **Fase 3 · 3-B** | Aceptación remota |
 | Coordinador de sincronización | **Fase 3 · 3-B** | Aceptación receive/sync |

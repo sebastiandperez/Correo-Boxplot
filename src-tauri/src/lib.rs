@@ -1,9 +1,13 @@
+mod bootstrap;
 #[cfg(feature = "conformance")]
 mod conformance;
 pub mod db;
 pub mod errors;
 pub mod ipc;
+#[cfg(feature = "local-env-doctor")]
+mod local_env_doctor;
 pub mod persistence;
+mod security;
 
 use serde::Serialize;
 
@@ -16,8 +20,21 @@ pub fn native_health() -> NativeHealth {
     NativeHealth { status: "ready" }
 }
 
+#[cfg(feature = "local-env-doctor")]
+pub fn run_local_env_doctor(arguments: impl Iterator<Item = String>) -> i32 {
+    local_env_doctor::run(arguments)
+}
+
 pub fn run() {
     let builder = tauri::Builder::default().manage(ipc::ManagedLocalEngine::default());
+
+    #[cfg(not(feature = "conformance"))]
+    let builder = builder.setup(|app| {
+        bootstrap::initialize_tauri(app);
+        #[cfg(feature = "local-env-doctor")]
+        local_env_doctor::maybe_run_development_acceptance(app);
+        Ok(())
+    });
 
     #[cfg(not(feature = "conformance"))]
     let builder = builder.invoke_handler(tauri::generate_handler![

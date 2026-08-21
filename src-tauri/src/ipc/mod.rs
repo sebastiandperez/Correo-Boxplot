@@ -4,4 +4,4 @@ mod errors;
 pub mod events;
 mod state;
 
-pub use state::ManagedLocalEngine;
+pub use state::{EngineLease, ManagedLocalEngine};

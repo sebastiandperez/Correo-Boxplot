@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::db::EncryptedDatabase;
+use crate::{db::EncryptedDatabase, security::Dek};
 
 use super::{
     PersistenceError,
@@ -16,6 +16,13 @@ pub struct PersistentLocalEngine {
 
 impl PersistentLocalEngine {
     pub fn open(path: impl AsRef<std::path::Path>, key: [u8; 32]) -> PersistResult<Self> {
+        Self::open_with_dek(path, key.into())
+    }
+
+    pub(crate) fn open_with_dek(
+        path: impl AsRef<std::path::Path>,
+        key: Dek,
+    ) -> PersistResult<Self> {
         Ok(Self {
             database: EncryptedDatabase::open(path, key)?,
         })

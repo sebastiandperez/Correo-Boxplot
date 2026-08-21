@@ -18,4 +18,4 @@
 ✓ Rust NO habla JMAP
 ✓ ReadRepository / SyncPort / JmapClient / store API quedan congelados
 ✓ pnpm check pasa
-✓ pnpm exec tauri dev abre el cliente y supera el smoke local-first
+✓ pnpm dev abre el flavor Development aislado y supera el smoke local-first

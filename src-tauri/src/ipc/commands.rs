@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use tauri::{AppHandle, State};
 
 use crate::persistence::{self as semantic, PersistentLocalEngine};
 
 use super::{
-    ManagedLocalEngine,
+    EngineLease, ManagedLocalEngine,
     dto::*,
     errors::{read_error, unavailable_read, unavailable_write, write_error},
     events::LocalChangeEmitter,
@@ -41,8 +39,8 @@ pub const WRITE_COMMAND_NAMES: [&str; 10] = [
     "local_remove_confirmed_mutation",
 ];
 
-fn engine(state: &State<'_, ManagedLocalEngine>) -> Option<Arc<PersistentLocalEngine>> {
-    state.get()
+fn engine<'a>(state: &'a State<'_, ManagedLocalEngine>) -> Option<EngineLease<'a>> {
+    state.lease()
 }
 fn read<T>(result: semantic::PersistResult<T>) -> IpcReadResult<T> {
     match result {
@@ -62,6 +60,15 @@ fn write<E: LocalChangeEmitter>(
         }
         Err(error) => write_error(error),
     }
+}
+
+fn write_leased<E: LocalChangeEmitter>(
+    _lease: &EngineLease<'_>,
+    result: semantic::PersistResult<()>,
+    emitter: &E,
+    hints: Vec<IpcLocalChangeHint>,
+) -> IpcWriteResult {
+    write(result, emitter, hints)
 }
 
 #[tauri::command]
@@ -322,7 +329,8 @@ pub fn local_apply_collection_sync(
         return write_error(error);
     }
     let hints = collection_hints(&request.commit);
-    write(e.apply_collection_sync(&request.commit.into()), &app, hints)
+    let result = e.apply_collection_sync(&request.commit.into());
+    write_leased(&e, result, &app, hints)
 }
 #[tauri::command]
 pub fn local_cache_email_body(
@@ -336,7 +344,8 @@ pub fn local_cache_email_body(
     let hint = IpcLocalChangeHint::EmailBody {
         email_id: request.body.email_id.clone(),
     };
-    write(e.cache_email_body(&request.body.into()), &app, vec![hint])
+    let result = e.cache_email_body(&request.body.into());
+    write_leased(&e, result, &app, vec![hint])
 }
 #[tauri::command]
 pub fn local_replace_attachment_refs(
@@ -358,15 +367,12 @@ pub fn local_replace_attachment_refs(
         email_id: request.email_id.clone(),
     };
     let refs = request.refs.into_iter().map(Into::into).collect::<Vec<_>>();
-    write(
-        e.replace_attachment_refs(
-            &request.email_id.account_key,
-            &request.email_id.jmap_email_id,
-            &refs,
-        ),
-        &app,
-        vec![hint],
-    )
+    let result = e.replace_attachment_refs(
+        &request.email_id.account_key,
+        &request.email_id.jmap_email_id,
+        &refs,
+    );
+    write_leased(&e, result, &app, vec![hint])
 }
 #[tauri::command]
 pub fn local_replace_mailbox_view(
@@ -383,11 +389,8 @@ pub fn local_replace_mailbox_view(
     let hint = IpcLocalChangeHint::MailboxView {
         spec: request.view.spec.clone(),
     };
-    write(
-        e.replace_mailbox_view(&request.view.into()),
-        &app,
-        vec![hint],
-    )
+    let result = e.replace_mailbox_view(&request.view.into());
+    write_leased(&e, result, &app, vec![hint])
 }
 #[tauri::command]
 pub fn local_stage_send_mutation(
@@ -430,8 +433,10 @@ pub fn local_replace_pending_mutation_if_current(
     let account = request.expected_account();
     let expected = request.expected.into();
     let next = request.next.into();
-    write(
-        e.replace_pending_mutation_if_current(&expected, &next),
+    let result = e.replace_pending_mutation_if_current(&expected, &next);
+    write_leased(
+        &e,
+        result,
         &app,
         vec![IpcLocalChangeHint::PendingMutations {
             account_key: account,
@@ -447,8 +452,10 @@ pub fn local_remove_confirmed_mutation(
     let Some(e) = engine(&state) else {
         return unavailable_write();
     };
-    write(
-        e.remove_confirmed_mutation(&request.account_key, &request.mutation_id),
+    let result = e.remove_confirmed_mutation(&request.account_key, &request.mutation_id);
+    write_leased(
+        &e,
+        result,
         &app,
         vec![IpcLocalChangeHint::PendingMutations {
             account_key: request.account_key,
@@ -476,7 +483,51 @@ mod tests {
 
     use super::*;
 
+    struct OrderingEmitter<'a> {
+        reset_done: &'a std::sync::mpsc::Receiver<()>,
+    }
+
+    impl LocalChangeEmitter for OrderingEmitter<'_> {
+        fn emit_local_change(
+            &self,
+            _batch: &IpcLocalChangeBatch,
+        ) -> Result<(), super::super::events::EventDeliveryError> {
+            assert!(self.reset_done.try_recv().is_err());
+            Ok(())
+        }
+    }
+
     const KEY: [u8; 32] = [0x44; 32];
+
+    #[test]
+    fn lifecycle_lease_is_held_through_event_emission() {
+        let db = TempDb::new();
+        let managed = std::sync::Arc::new(ManagedLocalEngine::default());
+        managed
+            .initialize(PersistentLocalEngine::open(&db.0, KEY).expect("encrypted engine opens"));
+        let lease = managed.lease().expect("engine ready");
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let worker = managed.clone();
+        let reset = std::thread::spawn(move || {
+            started_tx.send(()).expect("reset started");
+            worker.with_exclusive(|state| state.begin_reset());
+            done_tx.send(()).expect("reset completed");
+        });
+        started_rx.recv().expect("reset attempts lifecycle lock");
+        let result = write_leased(
+            &lease,
+            Ok(()),
+            &OrderingEmitter {
+                reset_done: &done_rx,
+            },
+            vec![],
+        );
+        assert!(matches!(result, IpcResult::Ok { .. }));
+        drop(lease);
+        done_rx.recv().expect("reset completes after emission");
+        reset.join().expect("reset thread joins");
+    }
 
     struct TempDb(PathBuf);
     impl TempDb {
@@ -804,7 +855,7 @@ fn mutation_write(
         MutationWrite::Keyword => e.apply_optimistic_keyword_mutation(&mutation),
         MutationWrite::Membership => e.apply_optimistic_mailbox_membership_mutation(&mutation),
     };
-    write(result, &app, mutation_hints(kind, account))
+    write_leased(&e, result, &app, mutation_hints(kind, account))
 }
 
 fn mutation_hints(kind: MutationWrite, account: String) -> Vec<IpcLocalChangeHint> {

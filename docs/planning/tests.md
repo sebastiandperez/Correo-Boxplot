@@ -1,5 +1,5 @@
 Smoke	Procedimiento	Resultado esperado	Owner principal
-S1-BOOT	pnpm exec tauri dev sin red	Ventana abre; DB local inicia; no error remoto bloqueante	A+B
+S1-BOOT	pnpm dev sin red	Ventana Development abre; DB local aislada inicia; no error remoto bloqueante	A+B
 S1-EMPTY	DB nueva	UI muestra empty states válidos	A
 S1-CACHE	DB de prueba con mailbox/emails	Sidebar/list/viewer muestran datos solo locales	A+B
 S1-BODY	Email con body cacheado	Viewer muestra text/HTML sanitizado	A

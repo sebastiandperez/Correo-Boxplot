@@ -94,9 +94,9 @@ No depende de Vue, Pinia, SQLite, SQL, Rust Local Engine ni persistencia Tauri. 
 
 ### Tauri / Rust Local Engine
 
-**Rutas implementadas:** `src-tauri/src/ipc/`, `src-tauri/src/persistence/` y `src-tauri/src/db/`; seguridad/secure store se integra en su fase dedicada.
+**Rutas implementadas:** `src-tauri/src/ipc/`, `src-tauri/src/persistence/`, `src-tauri/src/db/`, `src-tauri/src/security/` y `src-tauri/src/bootstrap/`.
 
-Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, DEK, validación de la frontera IPC, comandos semánticos y eventos locales necesarios. `ipc/` delimita los 25 comandos IPC-00 y `local-state-changed`; `persistence/` implementa el motor semántico PERSIST-01; `db/` aplica migraciones. La futura integración de `security/` custodiará secretos locales.
+Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, DEK, validación de la frontera IPC, comandos semánticos y eventos locales necesarios. `ipc/` delimita los 25 comandos IPC-00 y `local-state-changed`; `persistence/` implementa el motor semántico PERSIST-01; `db/` aplica migraciones; `security/` selecciona el credential store nativo y custodia la DEK; `bootstrap/` coordina lifecycle, markers crash-safe, reset interno y lock entre procesos. Véase [secure-local-cache.md](secure-local-cache.md).
 
 No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa como proxy HTTP/WebSocket, no almacena el token JMAP, no renderiza UI y no maneja Pinia. El networking de correo de Rust es ninguno.
 
@@ -176,7 +176,8 @@ local source of truth for UI != remote authority
 | `src-tauri/src/ipc/` | Frontera IPC semántica | IPC-00 completo: 15 reads, 10 writes y un evento post-commit |
 | `src-tauri/src/persistence/` | Persistent Local Engine | PERSIST-01 completo sobre SQLite/SQLCipher |
 | `src-tauri/src/db/` | Migraciones SQLite/SQLCipher | PERSIST-01 completo hasta schema version 2 |
-| `src-tauri/src/security/` | DEK / secure store | Ubicación esperada cuando se implemente |
+| `src-tauri/src/security/` | DEK / secure store nativo | SECURE-BOOTSTRAP-01 implementado; secreto binario Rust-only |
+| `src-tauri/src/bootstrap/` | Lifecycle cifrado / recovery / reset / process lock | SECURE-BOOTSTRAP-01 implementado; sin comandos IPC nuevos |
 | `src-tauri/src/errors/` | Errores nativos tipados | Base inicial presente |
 
 ## Construction principles

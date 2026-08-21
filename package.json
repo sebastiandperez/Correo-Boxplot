@@ -9,7 +9,7 @@
     "pnpm": "11.20.0"
   },
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "dev:frontend": "vite",
     "build": "tauri build",
     "build:frontend": "vue-tsc --noEmit && vite build",

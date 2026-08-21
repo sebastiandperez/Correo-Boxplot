@@ -1,19 +1,22 @@
 mod migrations;
 
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Write,
+    path::{Path, PathBuf},
+};
 
 use rusqlite::{Connection, OpenFlags};
+use zeroize::Zeroizing;
 
-use crate::persistence::PersistenceError;
+use crate::{persistence::PersistenceError, security::Dek};
 
-#[derive(Clone)]
-pub struct EncryptedDatabase {
+pub(crate) struct EncryptedDatabase {
     path: PathBuf,
-    key: [u8; 32],
+    key: Dek,
 }
 
 impl EncryptedDatabase {
-    pub fn open(path: impl AsRef<Path>, key: [u8; 32]) -> Result<Self, PersistenceError> {
+    pub(crate) fn open(path: impl AsRef<Path>, key: Dek) -> Result<Self, PersistenceError> {
         let database = Self {
             path: path.as_ref().to_path_buf(),
             key,
@@ -24,7 +27,7 @@ impl EncryptedDatabase {
     }
 
     pub(crate) fn connect(&self) -> Result<Connection, PersistenceError> {
-        open_keyed_connection(&self.path, &self.key)
+        open_keyed_connection(&self.path, self.key.expose())
     }
 
     pub fn runtime_versions(&self) -> Result<(String, String), PersistenceError> {
@@ -40,11 +43,15 @@ fn open_keyed_connection(path: &Path, key: &[u8; 32]) -> Result<Connection, Pers
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
     )?;
-    let key_hex = key
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    connection.execute_batch(&format!("PRAGMA key = \"x'{key_hex}'\";"))?;
+    let mut key_pragma = Zeroizing::new(String::with_capacity(82));
+    key_pragma.push_str("PRAGMA key = \"x'");
+    for byte in key {
+        write!(key_pragma, "{byte:02x}").map_err(|error| {
+            PersistenceError::Storage(format!("could not prepare SQLCipher key: {error}"))
+        })?;
+    }
+    key_pragma.push_str("'\";");
+    connection.execute_batch(key_pragma.as_str())?;
 
     let cipher: Option<String> = connection
         .query_row("PRAGMA cipher_version", [], |row| row.get(0))

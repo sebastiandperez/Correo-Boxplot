@@ -19,6 +19,10 @@ TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST
 
 La conformance productiva del runtime soportado se ejecuta con `pnpm test:production-conformance`. Requiere `tauri-driver`, `WebKitWebDriver` y SQLCipher disponibles en el host; no usa sleeps para `settle()` ni incorpora comandos de lifecycle al binario productivo normal.
 
+SECURE-BOOTSTRAP-01 añade pruebas Rust deterministas para la matriz DEK/DB, recuperación del marker de creación, reset reanudable en cada fase, lifecycle compartido/exclusivo, ordering commit→evento y lock real entre procesos. El smoke del credential store nativo se ejecuta separadamente con `cargo test --manifest-path src-tauri/Cargo.toml host_os_dek_store_smoke -- --ignored --nocapture`; usa un namespace de prueba único y siempre intenta cleanup. Un host sin D-Bus/Secret Service usable se registra como `ENVIRONMENT BLOCKED`, nunca activa un fallback.
+
+LOCAL-SECURE-STORE-01 añade contratos de configuración/flavor, guards sin side effects, aislamiento de `CacheIdentity`, codec Linux V1/Legacy V0, especificación Windows Local y el binario `local-env-doctor`. En el host Arch GNOME/Wayland actual, doctor CHECK, smoke real, bootstrap Development, reopen y persistencia semántica están en PASS. Windows conserva aceptación runtime PENDING.
+
 ## TypeScript y Vue
 
 Vitest es el runner unitario. Vue Test Utils se usa para component tests que necesiten el DOM; no se añade jsdom ni otro runtime DOM hasta que exista ese caso concreto.

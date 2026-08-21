@@ -40,7 +40,10 @@ P0 — Local Engine / persistence integration
 ├── B-04 local reads
 ├── B-05 atomic writes
 ├── B-06 TAURI-ADAPTERS-01 · COMPLETE
-└── B-07 PROD-CONFORMANCE-01 contra engine real · COMPLETE / 179 PASS
+├── B-07 PROD-CONFORMANCE-01 contra engine real · COMPLETE / 179 PASS
+├── B-08 SECURE-BOOTSTRAP-01 · COMPLETE
+├── B-09 LOCAL-SECURE-STORE-01 · COMPLETE LINUX / WINDOWS ACCEPTANCE PENDING
+└── B-10 SQLCIPHER-PACKAGING-01 · NEXT
 
 P0/P1 — consumers e integración remota
 │
