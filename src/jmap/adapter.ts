@@ -12,6 +12,11 @@ import type {
   JmapStateChange,
 } from './types'
 
+import { getMailboxes } from './mail/mailbox'
+import { queryEmails } from './mail/email-query'
+import { getEmails } from './mail/email-get'
+import { getEmailChanges } from './mail/email-changes'
+
 export class JamClientAdapter implements JmapClient {
   private readonly jam: JamClient
 
@@ -23,23 +28,23 @@ export class JamClientAdapter implements JmapClient {
     return discoverSession(this.jam)
   }
 
-  // --- The following methods are stubs to satisfy JmapClient, to be implemented in C-04 through C-07 ---
-
-  async getMailboxes(_accountId: string): Promise<JmapMailbox[]> {
-    throw new Error('Method not implemented yet.')
+  async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
+    return getMailboxes(this.jam, accountId)
   }
 
-  async queryEmails(_accountId: string, _mailboxId: string, _filter?: unknown): Promise<string[]> {
-    throw new Error('Method not implemented yet.')
+  async queryEmails(accountId: string, mailboxId: string, filter?: unknown): Promise<string[]> {
+    return queryEmails(this.jam, accountId, mailboxId, filter)
   }
 
-  async getEmails(_accountId: string, _emailIds: string[]): Promise<JmapEmail[]> {
-    throw new Error('Method not implemented yet.')
+  async getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
+    return getEmails(this.jam, accountId, emailIds)
   }
 
-  async getEmailChanges(_accountId: string, _sinceState: string): Promise<JmapDelta> {
-    throw new Error('Method not implemented yet.')
+  async getEmailChanges(accountId: string, sinceState: string): Promise<JmapDelta> {
+    return getEmailChanges(this.jam, accountId, sinceState)
   }
+
+  // --- The following methods are stubs to satisfy JmapClient, to be implemented in C-05 through C-07 ---
 
   async getEmailBody(_accountId: string, _emailId: string): Promise<JmapEmailBody> {
     throw new Error('Method not implemented yet.')
