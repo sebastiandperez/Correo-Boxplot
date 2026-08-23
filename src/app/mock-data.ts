@@ -243,6 +243,10 @@ export function createMockEmailsByFolder(): Record<string, Email[]> {
 
 const STORAGE_KEY = 'boxplot_mail_dev_data_v1'
 
+type PersistedEmail = Omit<Email, 'keywords'> & {
+  keywords: string[]
+}
+
 export function loadPersistedEmailsByFolder(): Record<string, Email[]> {
   if (typeof window === 'undefined' || !window.localStorage) {
     return createMockEmailsByFolder()
@@ -253,7 +257,7 @@ export function loadPersistedEmailsByFolder(): Record<string, Email[]> {
     if (!raw) {
       return createMockEmailsByFolder()
     }
-    const parsed = JSON.parse(raw) as Record<string, any[]>
+    const parsed = JSON.parse(raw) as Record<string, PersistedEmail[]>
     const result: Record<string, Email[]> = {}
 
     for (const [folderKey, emailList] of Object.entries(parsed)) {
@@ -280,7 +284,7 @@ export function savePersistedEmailsByFolder(
   if (typeof window === 'undefined' || !window.localStorage) return
 
   try {
-    const serialized: Record<string, any[]> = {}
+    const serialized: Record<string, PersistedEmail[]> = {}
     for (const [folderKey, emailList] of Object.entries(folders)) {
       serialized[folderKey] = emailList.map((e) => ({
         ...e,

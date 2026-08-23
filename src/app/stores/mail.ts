@@ -4,7 +4,7 @@ import type {
   ScopedEmailId,
   ScopedMailboxId,
 } from '../../domain/ids'
-import type { Mailbox } from '../../domain/mailbox'
+import { mailbox, type Mailbox } from '../../domain/mailbox'
 import { email, type Email } from '../../domain/email'
 import {
   createMockEmailsByFolder,
@@ -165,9 +165,13 @@ export const useMailStore = defineStore('mail', {
       this.allEmailsByFolder.sent.unshift(newEmail)
 
       // Actualizar contador de enviados
-      const sentBox = this.mailboxes.find((m) => m.role === 'sent')
-      if (sentBox) {
-        ;(sentBox as any).totalEmails += 1
+      const sentIndex = this.mailboxes.findIndex((m) => m.role === 'sent')
+      const sentBox = this.mailboxes[sentIndex]
+      if (sentIndex >= 0 && sentBox) {
+        this.mailboxes[sentIndex] = mailbox({
+          ...sentBox,
+          totalEmails: sentBox.totalEmails + 1,
+        })
       }
 
       // Si estamos en la carpeta enviados, refrescar la lista
