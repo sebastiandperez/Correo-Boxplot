@@ -12,6 +12,6 @@ Se registran solo elecciones con consecuencias arquitectónicas, no una ADR por 
 
 ## Desarrollo
 
-* [001 — SQLCipher externo](development/001-external-sqlcipher.md)
+* [001 — SQLCipher externo (superseded by SQLCIPHER-PACKAGING-01)](development/001-external-sqlcipher.md)
 * [002 — Interfaz JMAP propia](development/002-project-owned-jmap-interface.md)
 * [003 — Baseline exacta](development/003-exact-version-baseline.md)

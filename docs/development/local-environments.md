@@ -38,9 +38,11 @@ On Arch, diagnose before changing the host. Check `XDG_CURRENT_DESKTOP`, `XDG_SE
 
 The current Arch GNOME/Wayland host has a user D-Bus and GNOME Keyring providing `org.freedesktop.secrets`; CHECK and real native SMOKE pass. No one-time host change was needed.
 
+Development and release builds use the same repository-pinned SQLCipher `4.17.0 community` / SQLite `3.53.3` engine and vendored OpenSSL. The deterministic Development package command is `pnpm native:package:dev:linux`; the current Linux artifact is a DEB. Package acceptance runs its embedded doctor, then launches the embedded application with `--local-env-acceptance=seed` and in a new process with `--local-env-acceptance=verify`. These internal acceptance arguments are feature-gated and are not IPC commands.
+
 ## Windows
 
-Windows uses Windows Credential Manager. Entries have explicit target `<credential-service>/sqlcipher-dek-v1`, native binary 32-byte content and `Local` (`CRED_PERSIST_LOCAL_MACHINE`) persistence. Development and Production targets differ. An existing Session or Enterprise entry is migrated by preserving the same DEK, rewriting it as Local and verifying the attribute; migration failure stops bootstrap. Windows runtime acceptance remains pending until run on Windows.
+Windows uses Windows Credential Manager. Entries have explicit target `<credential-service>/sqlcipher-dek-v1`, native binary 32-byte content and `Local` (`CRED_PERSIST_LOCAL_MACHINE`) persistence. Development and Production targets differ. An existing Session or Enterprise entry is migrated by preserving the same DEK, rewriting it as Local and verifying the attribute; migration failure stops bootstrap. On an actual x86_64 Windows/MSVC host, use locked dependencies, `pnpm native:doctor`, `pnpm native:doctor:smoke` and `pnpm native:package:dev:windows`, then run the Development seed/reopen flow and inspect the NSIS package for external SQLite/SQLCipher/OpenSSL DLLs. Windows runtime and installer acceptance remain pending; Linux cross-checks do not certify them.
 
 ## Test identity policy
 

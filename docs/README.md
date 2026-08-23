@@ -23,6 +23,7 @@
 * [Stack canónico](development/stack.md)
 * [Setup](development/setup.md)
 * [Entornos locales Production/Development](development/local-environments.md)
+* [Vendor y mantenimiento de SQLCipher](development/sqlcipher-vendor.md)
 * [Testing](development/testing.md)
 * [Arquitectura de contract testing de Ports](testing/port-contract-testing.md)
 * [Git workflow](development/git-workflow.md)
@@ -35,7 +36,7 @@
 
 * [Índice de decisiones](decisions/README.md)
 * `decisions/architecture/` — seguridad, autenticación, drafts, adjuntos y HTML.
-* `decisions/development/` — baseline exacta, SQLCipher externo e interfaz JMAP.
+* `decisions/development/` — baseline exacta, historial de provisioning SQLCipher e interfaz JMAP.
 
 ## Investigación fuente
 

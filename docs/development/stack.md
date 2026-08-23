@@ -49,26 +49,26 @@ TypeScript contiene Vue, Pinia, contratos, Application, cliente JMAP, Coordinato
 | Database | `rusqlite` | `0.40.2` | REQUIRED NOW |
 | Serialization | `serde` | `1.0.228` | REQUIRED NOW |
 | Errors | `thiserror` | `2.0.20` | REQUIRED NOW |
-| Encryption | SQLCipher | `4.17.0` | RELEASE TARGET; provisioning OPEN |
-| Database | SQLite dentro de SQLCipher | `3.53.3` | RELEASE TARGET; provisioning OPEN |
+| Encryption | SQLCipher | `4.17.0 community` | PINNED/BUNDLED; Linux verified, Windows acceptance pending |
+| Database | SQLite dentro de SQLCipher | `3.53.3` | PINNED/BUNDLED; Linux verified, Windows acceptance pending |
 | JMAP | `jmap-jam` | `0.13.3` | OPEN / REQUIRES POC; no instalado |
 
 Los patches de Tauri Rust, API JS y CLI son distintos de forma deliberada: se publican independientemente.
 
 ## SQLCipher
 
-`rusqlite` usa el feature `sqlcipher`, que enlaza una biblioteca SQLCipher externa. Está prohibido activar `bundled-sqlcipher` mientras provea una versión inferior a la baseline, y está prohibido sustituir el motor por SQLite plaintext.
+`rusqlite 0.40.2` usa `bundled-sqlcipher-vendored-openssl` sobre el patch local mínimo de `libsqlite3-sys 0.38.2`. El patch sustituye exclusivamente los artefactos SQLCipher por el source oficial `v4.17.0`, bindings pregenerados correspondientes y el backport oficial del issue `#600`. Está prohibido sustituir el motor por SQLite plaintext o descubrir SQLCipher/OpenSSL del host.
 
-**Development capability:** el entorno local enlaza SQLCipher externo `4.x`; `PRAGMA cipher_version` está disponible y la suite demuestra cifrado real, reapertura con la clave correcta y rechazo de una incorrecta. `sqlite_version()` se informa como diagnóstico.
+**Development capability:** Development y release seleccionan el mismo source/provider pinned. El opener exige exactamente `4.17.0 community` y SQLite `3.53.3`; la suite demuestra cifrado real, reapertura, rechazo de clave incorrecta y compatibilidad con una DB 4.14.
 
 **Release baseline:** el artefacto distribuible debe afirmar:
 
 ```text
-PRAGMA cipher_version = 4.17.0
+PRAGMA cipher_version = 4.17.0 community
 sqlite_version()      = 3.53.3
 ```
 
-**OPEN — SQLCipher packaging / provisioning:** falta validar y automatizar esa combinación exacta para Windows, macOS y Linux. Hasta entonces, los builds nativos sin SQLCipher 4.x pueden quedar bloqueados.
+**Packaging status:** Linux x86_64 build, DEB, dependency audit y package-level acceptance están verificados. Windows x86_64 MSVC conserva build/package/runtime/Credential Manager acceptance pendiente en un host Windows real. macOS packaging está fuera del alcance de SQLCIPHER-PACKAGING-01.
 
 ## JMAP
 

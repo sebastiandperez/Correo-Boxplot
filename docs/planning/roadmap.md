@@ -35,7 +35,7 @@ La secuencia obligatoria del core es:
 12. PROD-CONFORMANCE-01 — completado; 179/179 contra Tauri→IPC→Rust→SQLCipher y 5/5 smoke.
 13. SECURE-BOOTSTRAP-01 — completado; credential store nativo, DEK Rust-only, recovery/reset crash-safe y process lock.
 14. LOCAL-SECURE-STORE-01 — completado en Linux; flavors dev/prod aislados, Secret Service real y Development reopen/persistence verificados. Windows runtime pendiente.
-15. SQLCIPHER-PACKAGING-01 — siguiente blocker de release; target 4.17.0.
+15. SQLCIPHER-PACKAGING-01 — Linux completo: source 4.17.0/SQLite 3.53.3 y OpenSSL vendored, runtime exacto fail-closed, compatibilidad 4.14 y paquete DEB verificados. Windows native/package acceptance pendiente en host Windows/MSVC.
 16. JMAP, Coordinator y Outbox integration.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
@@ -212,7 +212,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Memory/Tauri adapters | **MEMORY 179/179 + 18/18; PRODUCTION TAURI 179/179 + 5/5; PROD-CONFORMANCE-01 COMPLETE** | Secure Store/bootstrap y Application/Coordinator |
 | Presentación segura (Vue 3) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
-| Motor Tauri/Rust | **PERSIST-01 + IPC-00 + PROD-CONFORMANCE-01 + SECURE-BOOTSTRAP-01 COMPLETE** | SQLCipher 4.17 packaging; 3-B/3-C; aceptación |
+| Motor Tauri/Rust | **PERSIST-01 + IPC-00 + PROD-CONFORMANCE-01 + SECURE-BOOTSTRAP-01 + SQLCIPHER-PACKAGING-01 LINUX COMPLETE** | Windows native/package acceptance; 3-B/3-C; aceptación |
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
 | Cliente JMAP | **Fase 3 · 3-B** | Aceptación remota |
 | Coordinador de sincronización | **Fase 3 · 3-B** | Aceptación receive/sync |
@@ -268,12 +268,12 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | ID | Debe cerrarse en | Razón |
 | --- | --- | --- |
 | PORTS-01 | **CLOSED FOR CURRENT MVP SCOPE · TEST-00→TEST-06 + MEM-01 FINAL PASS** | Reutilizar 179 escenarios para certificar el futuro Local Engine Tauri. |
-| PERSISTENCE-01 | **PERSIST-00/PERSIST-01 COMPLETE** | Motor nativo validado; SQLCipher exacto de packaging permanece en STACK-01. |
+| PERSISTENCE-01 | **PERSIST-00/PERSIST-01 COMPLETE** | Motor nativo validado; SQLCipher 4.17/SQLite 3.53.3 exactos verificados en Linux. |
 | ATTACHMENT-CACHE-01 | **RESOLVED BY P-01 + PERSIST-00** | `notCached` y `cached []` son estados distintos sin añadir flags a `AttachmentRef`. |
 | OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |
 | COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
 | AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |
-| STACK-01 | **Antes del artefacto de release** | Provisioning/packaging de SQLCipher `4.17.0` en Windows, macOS y Linux. |
+| STACK-01 | **LINUX COMPLETE · WINDOWS PENDING · macOS OUT OF CURRENT SCOPE** | Source/provider deterministas y paquete Linux verificados; falta ejecución e inspección Windows/MSVC real. |
 | STACK-02 | **Durante 3-B** | Conformance de `jmap-jam 0.13.3`; candidato no instalado ni congelado. |
 | STACK-03 | **Antes de release** | Versiones mínimas OS/WebView y target explícito de Vite. |
 | STACK-04 | **Durante 3-A / antes de aceptación** | Secret Service Linux y stores explícitos por plataforma. |

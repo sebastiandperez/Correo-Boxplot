@@ -27,6 +27,15 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": false,
+    "icon": ["icons/icon.png"],
+    "resources": {
+      "../vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/LICENSE": "licenses/libsqlite3-sys-0.38.2-LICENSE",
+      "../vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/sqlcipher/LICENSE": "licenses/SQLCipher-4.17.0-LICENSE",
+      "../vendor/licenses/OpenSSL-3.6.3-LICENSE.txt": "licenses/OpenSSL-3.6.3-LICENSE.txt",
+      "../vendor/licenses/openssl-src-LICENSE-APACHE": "licenses/openssl-src-LICENSE-APACHE",
+      "../vendor/licenses/openssl-src-LICENSE-MIT": "licenses/openssl-src-LICENSE-MIT",
+      "../vendor/licenses/rusqlite-0.40.2-LICENSE": "licenses/rusqlite-0.40.2-LICENSE"
+    }
   }
 }

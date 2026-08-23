@@ -65,16 +65,16 @@ Las versiones mínimas de Windows/macOS, distribuciones Linux y WebViews siguen 
 
 ## 6. SQLCipher — capacidad de desarrollo y baseline de release
 
-El desarrollo local exige una biblioteca SQLCipher externa de major version `4.x` que enlace correctamente y demuestre cifrado real, reapertura con clave correcta y rechazo de una clave incorrecta. No usa `bundled-sqlcipher` ni tiene fallback plaintext.
+El desarrollo local compila la stack pinned del repositorio: `rusqlite 0.40.2` → patch local `libsqlite3-sys 0.38.2` → SQLCipher `4.17.0 community` / SQLite `3.53.3` → OpenSSL vendored. No descubre una biblioteca SQLCipher/OpenSSL externa y no tiene fallback plaintext.
 
 Estas comprobaciones son diagnósticas; `PRAGMA cipher_version` es la fuente correcta para la versión de SQLCipher:
 
 ```bash
-pkg-config --modversion sqlcipher
-sqlcipher ':memory:' 'PRAGMA cipher_version;'
+pnpm native:vendor:check
+pnpm native:doctor
 ```
 
-La baseline de **release** sigue siendo SQLCipher `4.17.0` sobre SQLite `3.53.3`. Su provisión reproducible para Windows, macOS y Linux está bloqueada por **OPEN — SQLCipher packaging / provisioning PoC**. Hasta resolverla, un entorno sin SQLCipher 4.x puede fallar al localizar o enlazar `libsqlcipher`; ese fallo no debe “corregirse” enlazando SQLite común.
+La baseline de **release** es SQLCipher `4.17.0 community` sobre SQLite `3.53.3`. Linux build/DEB/runtime están verificados; Windows x86_64 MSVC permanece pendiente de ejecución nativa. La ausencia de SQLCipher/OpenSSL del host no cambia la selección. Un mismatch runtime bloquea bootstrap y nunca activa SQLite común.
 
 ## 7. Instalar dependencias
 
@@ -101,7 +101,7 @@ Aplicación Tauri completa:
 pnpm dev
 ```
 
-`pnpm dev` requiere toolchain nativo, WebView y SQLCipher disponibles.
+`pnpm dev` requiere toolchain nativo y WebView. SQLCipher `4.17.0` y su proveedor OpenSSL se compilan desde los sources pinned del repositorio; no se requiere un paquete SQLCipher/OpenSSL del host para esa stack.
 
 ## 9. Tests, lint y formato
 
@@ -134,4 +134,4 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-Además, `PRAGMA cipher_version` debe devolver una versión SQLCipher `4.x`, y los tests deben probar cifrado, reapertura y rechazo de clave incorrecta. La aceptación del artefacto de release exigirá SQLCipher `4.17.0` y SQLite `3.53.3`; esa provisión exacta continúa abierta.
+Además, `PRAGMA cipher_version` debe ser exactamente `4.17.0 community` y `sqlite_version()` exactamente `3.53.3`; los tests prueban cifrado, reapertura, rechazo de clave incorrecta y compatibilidad 4.14→4.17. La aceptación Windows de ese mismo pin continúa pendiente en un host Windows/MSVC.
