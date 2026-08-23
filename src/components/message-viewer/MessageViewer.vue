@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   createSandboxedIframeSrcDoc,
+  escapeEmailText,
   sanitizeEmailHtml,
 } from '../../security/sanitizer'
+import { openSafeExternalUrl } from '../../security/external-links'
 import { useMailStore } from '../../app/stores/mail'
 import { useComposerStore } from '../../app/stores/composer'
+import { useMailApplicationController } from '../../app/vue-application-context'
 import type { EmailAddressList } from '../../domain/address'
 
 const mailStore = useMailStore()
 const composerStore = useComposerStore()
+const controller = useMailApplicationController()
+const bodyFrame = ref<HTMLIFrameElement | null>(null)
 
 const email = computed(() => mailStore.selectedEmail)
 
@@ -65,37 +70,55 @@ function handleReply() {
 
 function handleToggleFlag() {
   if (!email.value) return
-  mailStore.toggleFlagged(email.value.id)
+  void controller.toggleKeyword(email.value, '$flagged')
 }
 
 function handleToggleSeen() {
   if (!email.value) return
-  mailStore.toggleSeen(email.value.id)
+  void controller.toggleKeyword(email.value, '$seen')
 }
 
 function handleMarkSpam() {
   if (!email.value) return
-  mailStore.moveToFolder(email.value.id, 'spam')
+  void controller.moveEmail(email.value.id, 'junk')
 }
 
 function handleDelete() {
   if (!email.value) return
-  mailStore.deleteEmail(email.value.id)
+  void controller.moveEmail(email.value.id, 'trash')
 }
 
 const isFlagged = computed(() => email.value?.keywords.has('$flagged') ?? false)
 const isSeen = computed(() => email.value?.keywords.has('$seen') ?? false)
 
 const iframeDocument = computed(() => {
-  if (!email.value) return ''
+  const body = mailStore.emailBody
+  if (mailStore.bodyLoadState !== 'cached' || body === null) return ''
 
-  const rawHtml = email.value.preview
-    ? `<p>${email.value.preview}</p>`
-    : '<p><em>(Sin contenido de mensaje)</em></p>'
+  const rawHtml =
+    body.html !== null
+      ? body.html
+      : body.text !== null
+        ? `<pre>${escapeEmailText(body.text)}</pre>`
+        : '<p><em>(Mensaje sin representación textual o HTML)</em></p>'
 
   const cleanHtml = sanitizeEmailHtml(rawHtml)
   return createSandboxedIframeSrcDoc(cleanHtml)
 })
+
+function handleBodyFrameLoad() {
+  const document = bodyFrame.value?.contentDocument
+  if (document === null || document === undefined) return
+
+  document.addEventListener('click', (event) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const anchor = target.closest('a[href]')
+    if (!(anchor instanceof HTMLAnchorElement)) return
+    event.preventDefault()
+    void openSafeExternalUrl(anchor.href)
+  })
+}
 </script>
 
 <template>
@@ -284,11 +307,29 @@ const iframeDocument = computed(() => {
 
       <div class="message-viewer__body">
         <iframe
-          sandbox=""
+          v-if="mailStore.bodyLoadState === 'cached'"
+          ref="bodyFrame"
+          sandbox="allow-same-origin"
           :srcdoc="iframeDocument"
           class="message-viewer__iframe"
           title="Contenido del mensaje"
+          @load="handleBodyFrameLoad"
         />
+        <div v-else class="empty-state">
+          <h2 v-if="mailStore.bodyLoadState === 'loading'">
+            Cargando contenido local…
+          </h2>
+          <h2 v-else-if="mailStore.bodyLoadState === 'notCached'">
+            Contenido no disponible en la caché local
+          </h2>
+          <h2 v-else-if="mailStore.bodyLoadState === 'ownerAbsent'">
+            El mensaje ya no existe en la caché local
+          </h2>
+          <h2 v-else-if="mailStore.bodyLoadState === 'error'">
+            No se pudo leer el contenido local
+          </h2>
+          <h2 v-else>Contenido local no seleccionado</h2>
+        </div>
       </div>
     </div>
 

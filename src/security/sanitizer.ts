@@ -93,6 +93,16 @@ export function sanitizeEmailHtml(rawHtml: string): string {
   return forceSafeLinks(fallbackSanitize(rawHtml))
 }
 
+/** Converts untrusted plain text into inert HTML without changing its text. */
+export function escapeEmailText(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 /**
  * Ensures all hyperlinks inside the email body open securely in an external context
  * and strips any javascript: or data: protocols.
@@ -130,7 +140,7 @@ export function forceSafeLinks(html: string): string {
 }
 
 /**
- * Validates that a URL is safe to be referenced (http/https/mailto only).
+ * Validates that a URL is eligible for the controlled external opener.
  */
 export function isSafeUrl(url: string): boolean {
   if (!url) return false
@@ -143,12 +153,7 @@ export function isSafeUrl(url: string): boolean {
   ) {
     return false
   }
-  return (
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('mailto:') ||
-    trimmed.startsWith('#')
-  )
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://')
 }
 
 /**

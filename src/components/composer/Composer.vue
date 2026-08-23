@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useComposerStore } from '../../app/stores/composer'
 import { executeSend } from '../../app/services/send-service'
+import { useApplicationContext } from '../../app/vue-application-context'
 
 defineOptions({ name: 'MailComposer' })
 
 const composerStore = useComposerStore()
+const applicationContext = useApplicationContext()
 
 function handleClose() {
   composerStore.close()
@@ -13,20 +15,7 @@ function handleClose() {
 async function handleSend() {
   if (!composerStore.canSend) return
 
-  composerStore.setPhase('queueing')
-
-  const result = await executeSend()
-
-  if (result.ok) {
-    setTimeout(() => {
-      composerStore.reset()
-    }, 400)
-  } else {
-    composerStore.setPhase(
-      'editing',
-      `No se pudo enviar el correo (${result.error})`,
-    )
-  }
+  await executeSend(applicationContext)
 }
 </script>
 

@@ -1,72 +1,48 @@
-/**
- * send-service.ts — Caso de uso: Enviar un correo (Epic A-06).
- *
- * Orquesta el flujo de envío seguro:
- *   composerStore.setPhase('queueing')
- *   → SendIntent (dominio inmutable)
- *   → stageSendMutation (SyncPort)
- *   → Si éxito: limpia composerStore.reset() y actualiza mailStore
- *   → Si falla: conserva composerStore.setPhase('error', msg) con el texto intacto
- */
-
-import { sendIntent } from '../../domain/send-intent'
+import { emailAddress } from '../../domain/address'
+import { isWildcardIdentity } from '../../domain/identity'
+import { mutationIdFromString } from '../../domain/ids'
 import {
   mutationInstantFromString,
   sendMutation,
 } from '../../domain/pending-mutation'
-import { emailAddress } from '../../domain/address'
-import { mutationIdFromString } from '../../domain/ids'
-import { DEMO_IDENTITY, getEngine } from '../engine'
+import { sendIntent } from '../../domain/send-intent'
+import type { ApplicationContext } from '../application'
 import { useComposerStore } from '../stores/composer'
 import { useMailStore } from '../stores/mail'
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type SendResult =
   | { ok: true }
   | {
       ok: false
-      error: 'emptyRecipient' | 'invalidAddress' | 'engineError' | 'notReady'
+      error:
+        | 'emptyRecipient'
+        | 'invalidAddress'
+        | 'engineError'
+        | 'notReady'
+        | 'noIdentity'
     }
 
-// ─── Utilidades ───────────────────────────────────────────────────────────────
-
 function generateMutationId(): string {
-  return `mut_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-}
-
-function nowInstant(): string {
-  return new Date().toISOString()
+  return `send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function parseRecipients(rawTo: string) {
   return rawTo
     .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((addr) => emailAddress(null, addr))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .map((value) => emailAddress(null, value))
 }
 
-// ─── Servicio principal ───────────────────────────────────────────────────────
-
-/**
- * Toma el estado actual del composerStore, construye un SendMutation
- * correctamente tipado y lo persiste en el SyncPort.
- *
- * Sigue la semántica de cola de Epic A-06:
- * - Falla conserva el texto y pasa a phase='error'.
- * - Éxito limpia el compositor y pasa a phase='idle'.
- */
-export async function executeSend(): Promise<SendResult> {
+export async function executeSend(
+  context: ApplicationContext,
+): Promise<SendResult> {
   const composerStore = useComposerStore()
   const mailStore = useMailStore()
-
-  // 1. Marcar fase de encolamiento
   composerStore.setPhase('queueing')
 
-  // 2. Validar destinatarios
-  const toAddresses = parseRecipients(composerStore.to)
-  if (toAddresses.length === 0) {
+  const to = parseRecipients(composerStore.to)
+  if (to.length === 0) {
     composerStore.setPhase(
       'error',
       'El campo destinatario (Para) no puede estar vacío.',
@@ -74,34 +50,49 @@ export async function executeSend(): Promise<SendResult> {
     return { ok: false, error: 'emptyRecipient' }
   }
 
-  // 3. Validar que el engine esté disponible
-  let engine
-  try {
-    engine = await getEngine()
-  } catch {
-    composerStore.setPhase(
-      'error',
-      'El motor local de almacenamiento no está listo.',
-    )
+  const accountKey = mailStore.selectedAccountKey
+  if (accountKey === null) {
+    composerStore.setPhase('error', 'No hay una cuenta local seleccionada.')
     return { ok: false, error: 'notReady' }
   }
 
-  // 4. Construir el SendIntent usando el dominio inmutable
+  const identities = await context.readRepository.listIdentities(accountKey)
+  if (!identities.ok) {
+    composerStore.setPhase(
+      'error',
+      'No se pudieron leer las identidades de envío locales.',
+    )
+    return { ok: false, error: 'engineError' }
+  }
+  if (identities.value.kind === 'ownerAbsent') {
+    composerStore.setPhase('error', 'La cuenta local ya no está disponible.')
+    return { ok: false, error: 'notReady' }
+  }
+
+  const selectedIdentity = [...identities.value.value]
+    .filter((value) => !isWildcardIdentity(value))
+    .sort((left, right) =>
+      String(left.id.jmapId).localeCompare(String(right.id.jmapId)),
+    )[0]
+  if (selectedIdentity === undefined) {
+    composerStore.setPhase(
+      'error',
+      'No hay una identidad de envío utilizable en la caché local.',
+    )
+    return { ok: false, error: 'noIdentity' }
+  }
+
   let intent
   try {
     intent = sendIntent({
-      identity: DEMO_IDENTITY,
-      to: toAddresses,
+      identity: selectedIdentity,
+      to,
       cc: [],
       bcc: [],
-      subject: composerStore.subject.trim() || '(Sin asunto)',
-      body: {
-        text: composerStore.body,
-        html: null,
-      },
+      subject: composerStore.subject,
+      body: { text: composerStore.body, html: null },
     })
-  } catch (err) {
-    console.warn('[send-service] SendIntent inválido:', err)
+  } catch {
     composerStore.setPhase(
       'error',
       'Formato de dirección de correo electrónico inválido.',
@@ -109,31 +100,20 @@ export async function executeSend(): Promise<SendResult> {
     return { ok: false, error: 'invalidAddress' }
   }
 
-  // 5. Construir y persistir la SendMutation en el engine vía SyncPort
   const mutation = sendMutation({
     mutationId: mutationIdFromString(generateMutationId()),
-    accountKey: DEMO_IDENTITY.id.accountKey,
-    createdAt: mutationInstantFromString(nowInstant()),
+    accountKey,
+    createdAt: mutationInstantFromString(new Date().toISOString()),
     intent,
   })
-
-  const result = await engine.syncPort.stageSendMutation(mutation)
-
+  const result = await context.syncPort.stageSendMutation(mutation)
   if (!result.ok) {
-    console.error('[send-service] stageSendMutation falló:', result.error)
     composerStore.setPhase(
       'error',
       'Error al persistir la mutación de envío en la base local.',
     )
     return { ok: false, error: 'engineError' }
   }
-
-  // 6. Si el commit fue exitoso: actualizar UI optimista y resetear composer
-  mailStore.sendEmail(
-    composerStore.to,
-    composerStore.subject,
-    composerStore.body,
-  )
 
   composerStore.reset()
   return { ok: true }

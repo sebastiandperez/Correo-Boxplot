@@ -1,0 +1,21 @@
+{
+  "productName": "Correo Boxplot Persona A Integration",
+  "identifier": "com.editorialhuellas.correoboxplot.dev",
+  "build": {
+    "beforeBuildCommand": "",
+    "frontendDist": "target/persona-a-dist"
+  },
+  "bundle": {
+    "active": false
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Persona A Development Integration",
+        "width": 1180,
+        "height": 760
+      }
+    ]
+  }
+}

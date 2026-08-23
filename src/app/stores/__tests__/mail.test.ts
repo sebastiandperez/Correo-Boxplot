@@ -1,50 +1,53 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { setActivePinia, createPinia } from 'pinia'
+
+import { createTestFixtures } from '../../../tests/contracts/fixtures'
 import { useMailStore } from '../mail'
-import { jmapMailboxIdFromString, scopedMailboxId } from '../../../domain/ids'
-import { DEMO_ACCOUNT_KEY } from '../../mock-data'
 
-describe('useMailStore', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
+describe('useMailStore UI projection', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('starts empty without demo or durable mail state', () => {
+    const store = useMailStore()
+    expect(store.accounts).toEqual([])
+    expect(store.selectedAccountKey).toBeNull()
+    expect(store.mailboxes).toEqual([])
+    expect(store.emails).toEqual([])
+    expect(store.emailBody).toBeNull()
   })
 
-  it('starts initialized with demo account and inbox emails', () => {
+  it('stores snapshots supplied by Application without fabricating values', () => {
+    const fixtures = createTestFixtures()
     const store = useMailStore()
-    expect(store.selectedAccountKey).toBe(DEMO_ACCOUNT_KEY)
-    expect(store.selectedMailboxId?.jmapId).toBe('inbox')
-    expect(store.emails.length).toBeGreaterThan(0)
-    expect(store.selectedEmail).not.toBeNull()
+
+    store.setAccounts([fixtures.accountA])
+    store.selectAccount(fixtures.accountA.key)
+    store.setMailboxes([fixtures.inboxA])
+    store.selectMailbox(fixtures.inboxA.id)
+    store.setMailboxView(fixtures.partialInboxViewA)
+    store.setEmails([fixtures.emailA1, fixtures.emailA2])
+    store.selectEmail(fixtures.emailA1.id)
+    store.setEmailBody(fixtures.nullBodyA1, 'cached')
+
+    expect(store.selectedMailbox).toEqual(fixtures.inboxA)
+    expect(store.selectedEmail).toEqual(fixtures.emailA1)
+    expect(store.emailBody).toEqual(fixtures.nullBodyA1)
+    expect(store.bodyLoadState).toBe('cached')
   })
 
-  it('switches folder and loads folder emails', () => {
+  it('clears dependent projections when account changes', () => {
+    const fixtures = createTestFixtures()
     const store = useMailStore()
-    const sentId = scopedMailboxId(
-      DEMO_ACCOUNT_KEY,
-      jmapMailboxIdFromString('sent'),
-    )
+    store.selectAccount(fixtures.accountA.key)
+    store.setMailboxes([fixtures.inboxA])
+    store.selectMailbox(fixtures.inboxA.id)
+    store.setEmails([fixtures.emailA1])
 
-    store.selectMailbox(sentId)
-    expect(store.selectedMailboxId).toEqual(sentId)
-    expect(store.emails.length).toBe(1)
-    expect(store.selectedEmail?.subject).toContain('Avance del Proyecto')
-  })
+    store.selectAccount(fixtures.accountB.key)
 
-  it('sends email and adds to sent folder', () => {
-    const store = useMailStore()
-    const initialSentCount = store.allEmailsByFolder.sent?.length ?? 0
-
-    store.sendEmail('test@destino.com', 'Asunto prueba', 'Cuerpo prueba')
-    expect(store.allEmailsByFolder.sent?.length).toBe(initialSentCount + 1)
-  })
-
-  it('deletes an email and moves it to trash', () => {
-    const store = useMailStore()
-    const inboxCount = store.emails.length
-    const emailToDelete = store.emails[0]
-
-    store.deleteEmail(emailToDelete.id)
-    expect(store.emails.length).toBe(inboxCount - 1)
-    expect(store.allEmailsByFolder.trash[0].id).toEqual(emailToDelete.id)
+    expect(store.selectedMailboxId).toBeNull()
+    expect(store.selectedEmailId).toBeNull()
+    expect(store.mailboxes).toEqual([])
+    expect(store.emails).toEqual([])
   })
 })

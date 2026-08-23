@@ -74,14 +74,21 @@ describe('Security: HTML Sanitizer and Isolation (A-05)', () => {
   it('validates safe URLs strictly', () => {
     expect(isSafeUrl('https://example.com')).toBe(true)
     expect(isSafeUrl('http://example.com')).toBe(true)
-    expect(isSafeUrl('mailto:user@example.com')).toBe(true)
-    expect(isSafeUrl('#section')).toBe(true)
+    expect(isSafeUrl('mailto:user@example.com')).toBe(false)
+    expect(isSafeUrl('#section')).toBe(false)
 
     expect(isSafeUrl('javascript:alert(1)')).toBe(false)
     expect(isSafeUrl('data:text/html,<script>alert(1)</script>')).toBe(false)
     expect(isSafeUrl('vbscript:msgbox(1)')).toBe(false)
     expect(isSafeUrl('file:///etc/passwd')).toBe(false)
     expect(isSafeUrl('')).toBe(false)
+  })
+
+  it('escapes plain text before it enters the iframe HTML document', async () => {
+    const { escapeEmailText } = await import('../sanitizer')
+    expect(escapeEmailText('<script>"unsafe" & data</script>')).toBe(
+      '&lt;script&gt;&quot;unsafe&quot; &amp; data&lt;/script&gt;',
+    )
   })
 
   it('generates an isolated iframe srcdoc with strict Content-Security-Policy', () => {

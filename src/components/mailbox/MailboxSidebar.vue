@@ -1,80 +1,40 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useMailStore } from '../../app/stores/mail'
 import { useComposerStore } from '../../app/stores/composer'
 import { useRuntimeStore } from '../../app/stores/runtime'
-import {
-  accountKeyFromString,
-  jmapMailboxIdFromString,
-  scopedMailboxId,
-} from '../../domain/ids'
+import { useMailApplicationController } from '../../app/vue-application-context'
+import type { Mailbox } from '../../domain/mailbox'
 
 const mailStore = useMailStore()
 const composerStore = useComposerStore()
 const runtimeStore = useRuntimeStore()
+const controller = useMailApplicationController()
 
-const defaultAccount = accountKeyFromString('juan@correo.local')
-
-onMounted(() => {
-  if (!mailStore.selectedAccountKey) {
-    mailStore.selectAccount(defaultAccount)
-  }
-  if (!mailStore.selectedMailboxId) {
-    mailStore.selectMailbox(
-      scopedMailboxId(defaultAccount, jmapMailboxIdFromString('inbox')),
-    )
-  }
-  // Initialize runtime state as local ready
-  if (runtimeStore.local === 'opening') {
-    runtimeStore.setLocal('ready')
-  }
-})
-
-const defaultFolders = [
-  { id: 'inbox', name: 'Bandeja de entrada', icon: 'inbox' },
-  { id: 'drafts', name: 'Borradores', icon: 'drafts' },
-  { id: 'sent', name: 'Enviados', icon: 'sent' },
-  { id: 'spam', name: 'Spam', icon: 'spam' },
-  { id: 'trash', name: 'Papelera', icon: 'trash' },
-]
-
-function getUnreadCount(folderId: string): number {
-  if (folderId === 'inbox') {
-    const unread = mailStore.allEmailsByFolder.inbox?.filter(
-      (e) => !e.keywords.has('$seen'),
-    ).length
-    return unread ?? 0
-  }
-  if (folderId === 'spam') {
-    return (
-      mailStore.allEmailsByFolder.spam?.filter((e) => !e.keywords.has('$seen'))
-        .length ?? 0
-    )
-  }
-  return 0
+function mailboxIcon(mailbox: Mailbox): string {
+  if (mailbox.role === 'inbox') return 'inbox'
+  if (mailbox.role === 'drafts') return 'drafts'
+  if (mailbox.role === 'sent') return 'sent'
+  if (mailbox.role === 'junk') return 'spam'
+  if (mailbox.role === 'trash') return 'trash'
+  return 'folder'
 }
 
-function isFolderSelected(folderId: string): boolean {
-  if (!mailStore.selectedMailboxId) {
-    return folderId === 'inbox'
-  }
-  return mailStore.selectedMailboxId.jmapId === folderId
-}
-
-function handleSelectFolder(folderId: string) {
-  const account = mailStore.selectedAccountKey ?? defaultAccount
-  if (!mailStore.selectedAccountKey) {
-    mailStore.selectAccount(account)
-  }
-  mailStore.selectMailbox(
-    scopedMailboxId(account, jmapMailboxIdFromString(folderId)),
+function isFolderSelected(mailbox: Mailbox): boolean {
+  return (
+    mailStore.selectedMailboxId?.accountKey === mailbox.id.accountKey &&
+    mailStore.selectedMailboxId.jmapId === mailbox.id.jmapId
   )
+}
+
+function handleSelectFolder(mailbox: Mailbox) {
+  void controller.selectMailbox(mailbox.id)
 }
 
 const accountLabel = computed(() => {
   return mailStore.selectedAccountKey
     ? String(mailStore.selectedAccountKey)
-    : 'Cuenta activa'
+    : 'Sin cuenta local'
 })
 
 const runtimeStatusText = computed(() => {
@@ -135,19 +95,19 @@ const runtimeDotClass = computed(() => {
 
     <nav class="mailbox-sidebar__folders" aria-label="Carpetas">
       <button
-        v-for="folder in defaultFolders"
-        :key="folder.id"
+        v-for="folder in mailStore.mailboxes"
+        :key="`${folder.id.accountKey}:${folder.id.jmapId}`"
         class="mailbox-sidebar__folder"
         :class="{
-          'mailbox-sidebar__folder--current': isFolderSelected(folder.id),
+          'mailbox-sidebar__folder--current': isFolderSelected(folder),
         }"
         type="button"
-        :aria-current="isFolderSelected(folder.id) ? 'page' : undefined"
-        @click="handleSelectFolder(folder.id)"
+        :aria-current="isFolderSelected(folder) ? 'page' : undefined"
+        @click="handleSelectFolder(folder)"
       >
         <!-- Icono Inbox -->
         <svg
-          v-if="folder.icon === 'inbox'"
+          v-if="mailboxIcon(folder) === 'inbox'"
           class="mailbox-sidebar__icon"
           width="16"
           height="16"
@@ -166,7 +126,7 @@ const runtimeDotClass = computed(() => {
 
         <!-- Icono Borradores -->
         <svg
-          v-else-if="folder.icon === 'drafts'"
+          v-else-if="mailboxIcon(folder) === 'drafts'"
           class="mailbox-sidebar__icon"
           width="16"
           height="16"
@@ -187,7 +147,7 @@ const runtimeDotClass = computed(() => {
 
         <!-- Icono Enviados -->
         <svg
-          v-else-if="folder.icon === 'sent'"
+          v-else-if="mailboxIcon(folder) === 'sent'"
           class="mailbox-sidebar__icon"
           width="16"
           height="16"
@@ -204,7 +164,7 @@ const runtimeDotClass = computed(() => {
 
         <!-- Icono Spam -->
         <svg
-          v-else-if="folder.icon === 'spam'"
+          v-else-if="mailboxIcon(folder) === 'spam'"
           class="mailbox-sidebar__icon"
           width="16"
           height="16"
@@ -222,7 +182,7 @@ const runtimeDotClass = computed(() => {
 
         <!-- Icono Papelera -->
         <svg
-          v-else-if="folder.icon === 'trash'"
+          v-else-if="mailboxIcon(folder) === 'trash'"
           class="mailbox-sidebar__icon"
           width="16"
           height="16"
@@ -241,11 +201,8 @@ const runtimeDotClass = computed(() => {
 
         <span class="mailbox-sidebar__folder-name">{{ folder.name }}</span>
 
-        <span
-          v-if="getUnreadCount(folder.id) > 0"
-          class="mailbox-sidebar__badge"
-        >
-          {{ getUnreadCount(folder.id) }}
+        <span v-if="folder.unreadEmails > 0" class="mailbox-sidebar__badge">
+          {{ folder.unreadEmails }}
         </span>
       </button>
     </nav>
@@ -269,28 +226,6 @@ const runtimeDotClass = computed(() => {
           <span class="mailbox-sidebar__account-name">Mi Cuenta</span>
           <span class="mailbox-sidebar__account-email">{{ accountLabel }}</span>
         </div>
-        <button
-          class="mailbox-sidebar__reset-btn"
-          type="button"
-          title="Restablecer datos demo originales"
-          @click="mailStore.resetToDemoDefaults()"
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-            <path d="M3 21v-5h5" />
-          </svg>
-        </button>
       </div>
     </div>
   </aside>

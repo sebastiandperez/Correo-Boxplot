@@ -29,13 +29,16 @@ Vitest es el runner unitario. Vue Test Utils se usa para component tests que nec
 
 Además de los seis niveles contractuales, continúan los tests unitarios de Domain, stores, Coordinator y Outbox, y los smoke/component tests de Vue + Pinia cuando exista un consumidor real.
 
+SPRINT1-INTEGRATION-GATE-01 añade `pnpm test:persona-a-integration`. Este smoke crea datos reconocibles únicamente mediante los adapters y comandos productivos en la base SQLCipher **Development**, monta la UI real, verifica `write → P-03 → ReadRepository reread → Vue`, encola un `SendMutation` sin fabricar un Email y abre una segunda sesión contra la misma base. No usa `MemoryLocalEngine`, mocks de IPC, servidor remoto, plaintext ni comandos nativos de test.
+
 ```bash
 pnpm test
 pnpm test:watch
 pnpm typecheck
+pnpm test:persona-a-integration
 ```
 
-El smoke actual monta un componente de prueba con un renderer de Vue sin DOM externo, inicializa Pinia y comprueba una proyección de runtime. `App.vue` queda cubierto por `vue-tsc` y el build de Vite hasta que un caso real justifique añadir un runtime DOM.
+El smoke unitario base monta un componente de prueba con un renderer de Vue sin DOM externo, inicializa Pinia y comprueba una proyección de runtime. El gate A-08 anterior aporta por separado la cobertura vertical real de `App.vue` en el WebView Tauri.
 
 ## Rust
 

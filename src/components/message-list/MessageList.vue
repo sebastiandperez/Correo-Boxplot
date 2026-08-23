@@ -1,23 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useMailStore } from '../../app/stores/mail'
+import { useMailApplicationController } from '../../app/vue-application-context'
 import type { EmailAddressList } from '../../domain/address'
 import type { ScopedEmailId } from '../../domain/ids'
 import type { Email } from '../../domain/email'
 
 const mailStore = useMailStore()
+const controller = useMailApplicationController()
 const searchQuery = ref('')
 
 const folderTitle = computed(() => {
-  if (mailStore.selectedMailbox) {
-    return mailStore.selectedMailbox.name
-  }
-  const jmapId = mailStore.selectedMailboxId?.jmapId
-  if (jmapId === 'drafts') return 'Borradores'
-  if (jmapId === 'sent') return 'Enviados'
-  if (jmapId === 'spam') return 'Spam'
-  if (jmapId === 'trash') return 'Papelera'
-  return 'Bandeja de entrada'
+  return mailStore.selectedMailbox?.name ?? 'Correo local'
 })
 
 const filteredEmails = computed(() => {
@@ -78,17 +72,41 @@ function formatDate(dateStr: string): string {
 
 function handleToggleSeen(e: Event, emailId: ScopedEmailId) {
   e.stopPropagation()
-  mailStore.toggleSeen(emailId)
+  const value = mailStore.emails.find(
+    (email) =>
+      email.id.accountKey === emailId.accountKey &&
+      email.id.jmapId === emailId.jmapId,
+  )
+  if (value !== undefined) {
+    void controller.toggleKeyword(value, '$seen').catch(() => {
+      mailStore.setLoadState('error', 'No se pudo actualizar el mensaje.')
+    })
+  }
 }
 
 function handleToggleFlag(e: Event, emailId: ScopedEmailId) {
   e.stopPropagation()
-  mailStore.toggleFlagged(emailId)
+  const value = mailStore.emails.find(
+    (email) =>
+      email.id.accountKey === emailId.accountKey &&
+      email.id.jmapId === emailId.jmapId,
+  )
+  if (value !== undefined) {
+    void controller.toggleKeyword(value, '$flagged').catch(() => {
+      mailStore.setLoadState('error', 'No se pudo actualizar el mensaje.')
+    })
+  }
 }
 
 function handleDelete(e: Event, emailId: ScopedEmailId) {
   e.stopPropagation()
-  mailStore.deleteEmail(emailId)
+  void controller.moveEmail(emailId, 'trash').catch(() => {
+    mailStore.setLoadState('error', 'No se pudo mover el mensaje.')
+  })
+}
+
+function handleSelectEmail(emailId: ScopedEmailId) {
+  void controller.selectEmail(emailId)
 }
 </script>
 
@@ -146,7 +164,10 @@ function handleDelete(e: Event, emailId: ScopedEmailId) {
 
     <!-- Lista de Correos -->
     <ul v-else-if="filteredEmails.length > 0" class="message-list__items">
-      <li v-for="msg in filteredEmails" :key="msg.id.jmapId">
+      <li
+        v-for="msg in filteredEmails"
+        :key="`${msg.id.accountKey}:${msg.id.jmapId}`"
+      >
         <button
           class="message-item"
           :class="{
@@ -154,7 +175,7 @@ function handleDelete(e: Event, emailId: ScopedEmailId) {
             'message-item--unread': isUnread(msg),
           }"
           type="button"
-          @click="mailStore.selectEmail(msg.id)"
+          @click="handleSelectEmail(msg.id)"
         >
           <div class="message-item__top">
             <div class="message-item__from-group">
@@ -295,12 +316,27 @@ function handleDelete(e: Event, emailId: ScopedEmailId) {
           d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
         />
       </svg>
-      <h2>{{ searchQuery ? 'Sin resultados' : 'No hay mensajes' }}</h2>
+      <h2>
+        {{
+          mailStore.loadState === 'error'
+            ? 'Error de almacenamiento local'
+            : mailStore.loadState === 'notCached'
+              ? 'Vista no disponible en la caché local'
+              : searchQuery
+                ? 'Sin resultados'
+                : mailStore.selectedAccountKey === null
+                  ? 'No hay cuentas locales'
+                  : 'No hay mensajes'
+        }}
+      </h2>
       <p>
         {{
-          searchQuery
-            ? `No se encontraron correos que coincidan con "${searchQuery}".`
-            : `Los mensajes de ${folderTitle.toLowerCase()} aparecerán aquí.`
+          mailStore.error ??
+          (mailStore.loadState === 'notCached'
+            ? 'La sincronización remota podrá materializar esta vista más adelante.'
+            : searchQuery
+              ? `No se encontraron correos que coincidan con "${searchQuery}".`
+              : `Los mensajes de ${folderTitle.toLowerCase()} aparecerán aquí.`)
         }}
       </p>
     </div>

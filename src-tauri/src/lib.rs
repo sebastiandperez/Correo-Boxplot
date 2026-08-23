@@ -26,7 +26,9 @@ pub fn run_local_env_doctor(arguments: impl Iterator<Item = String>) -> i32 {
 }
 
 pub fn run() {
-    let builder = tauri::Builder::default().manage(ipc::ManagedLocalEngine::default());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .manage(ipc::ManagedLocalEngine::default());
 
     #[cfg(not(feature = "conformance"))]
     let builder = builder.setup(|app| {

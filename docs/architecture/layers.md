@@ -163,7 +163,7 @@ local source of truth for UI != remote authority
 | --- | --- | --- |
 | `src/components/` | Presentation | UI Shell estático presente |
 | `src/styles/` | Presentation styles | Presente |
-| `src/app/` | Application state/orchestration | Store `runtime` inicial presente; resto se implementará por sprint |
+| `src/app/` | Application state/orchestration | A-01→A-08 completos: composición explícita, proyecciones Pinia efímeras, lecturas P-01, escrituras P-02 e invalidación P-03 |
 | `src/domain/` | Domain independiente de infraestructura | D-01→D-10 implementados; freeze completo; Domain cerrado |
 | `src/ports/` | Contratos locales | P-01→P-03 y Local Engine contract suite cerrados para MVP actual |
 | `src/adapters/tauri/` | Implementaciones Tauri de ports TypeScript | TAURI-ADAPTERS-01 completo; P-01/P-02/P-03 traducen mediante el cliente IPC-00 |

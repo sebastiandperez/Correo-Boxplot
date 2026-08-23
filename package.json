@@ -22,6 +22,7 @@
     "test": "vitest run",
     "spike:jmap": "tsx",
     "test:production-conformance": "node scripts/run-production-conformance.mjs",
+    "test:persona-a-integration": "node scripts/run-persona-a-integration.mjs",
     "test:watch": "vitest",
     "test:rust": "cargo test --locked --manifest-path src-tauri/Cargo.toml",
     "lint": "eslint .",
@@ -33,6 +34,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-opener": "2.5.3",
     "@vue/devtools-api": "8.1.5",
     "dompurify": "3.4.13",
     "pinia": "4.0.3",

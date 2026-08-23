@@ -1,3 +1,5 @@
+> **SPRINT1-INTEGRATION-GATE-01: COMPLETE.** A-01→A-08 consumen el Local Engine productivo mediante P-01/P-02/P-03. El smoke A-08 ejecuta Vue → Application → adapters Tauri → IPC → Rust → SQLCipher Development, incluida invalidación post-commit, envío durable sin Email ficticio y reapertura sin servidor remoto.
+
 Epic	ID	Pri.	Título	Descripción	Paths previstos	Dep.	SP	Criterios de aceptación	Tests a añadir
 Application State	A-01	P0	Completar API pública de stores	Conservar runtime.ts existente y materializar mail + composer; fijar state/actions públicos	src/app/stores/runtime.ts, mail.ts, composer.ts	Contrato preliminar RR	3	Estados coinciden con application-state.md; cero persistencia; cero JMAP	runtime.test.ts, mail.test.ts, composer.test.ts
 Application State	A-02	P0	Composition root de Application	Inyectar ReadRepository; preparar consumo futuro de LocalChangeSource; componentes no conocen adapter	src/app/application.ts o src/app/services/*	B-01	3	Una sola frontera de creación/DI; ningún componente importa Tauri	Unit test con fake repository

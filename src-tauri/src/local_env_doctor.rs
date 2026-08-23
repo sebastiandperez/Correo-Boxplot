@@ -9,8 +9,10 @@ use crate::security::{
 };
 
 const SMOKE_USER: &str = "sqlcipher-dek-smoke-v1";
+#[cfg(not(feature = "conformance"))]
 const ACCEPTANCE_ACCOUNT_KEY: &str = "local-env-doctor-acceptance";
 
+#[cfg(not(feature = "conformance"))]
 pub fn maybe_run_development_acceptance(app: &tauri::App) {
     use tauri::Manager;
 

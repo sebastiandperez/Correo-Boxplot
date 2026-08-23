@@ -47,7 +47,7 @@ P0 — Local Engine / persistence integration
 
 P0/P1 — consumers e integración remota
 │
-├── A-01…A-08 Application / Presentation sobre Ports
+├── A-01…A-08 Application / Presentation sobre Ports · COMPLETE
 ├── C-01…C-08 JMAP Client después de Domain frozen
 ├── Coordinator con collection state separado de queryState
 └── Outbox con familia PendingMutation discriminada

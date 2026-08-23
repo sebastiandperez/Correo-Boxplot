@@ -1,132 +1,164 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import {
+  createApplicationContext,
+  createMailApplicationController,
+} from '../../app/application'
+import { createSeededMemoryApplication } from '../../app/__tests__/application-fixture'
+import { useComposerStore } from '../../app/stores/composer'
+import { useMailStore } from '../../app/stores/mail'
+import { useRuntimeStore } from '../../app/stores/runtime'
+import {
+  applicationContextKey,
+  mailApplicationControllerKey,
+} from '../../app/vue-application-context'
+import Composer from '../composer/Composer.vue'
 import MailboxSidebar from '../mailbox/MailboxSidebar.vue'
 import MessageList from '../message-list/MessageList.vue'
 import MessageViewer from '../message-viewer/MessageViewer.vue'
-import Composer from '../composer/Composer.vue'
-import { useMailStore } from '../../app/stores/mail'
-import { useComposerStore } from '../../app/stores/composer'
 
-describe('Presentation & UI Shell Components (A-04, A-07)', () => {
-  beforeEach(() => {
+type TestDependencies = Awaited<
+  ReturnType<typeof createSeededMemoryApplication>
+> & {
+  context: ReturnType<typeof createApplicationContext>
+  controller: ReturnType<typeof createMailApplicationController>
+}
+
+let dependencies: TestDependencies
+
+function mountWithApplication(
+  component: Parameters<typeof mount>[0],
+): VueWrapper {
+  return mount(component, {
+    global: {
+      provide: {
+        [applicationContextKey as symbol]: dependencies.context,
+        [mailApplicationControllerKey as symbol]: dependencies.controller,
+      },
+    },
+  })
+}
+
+describe('Presentation and UI shell components', () => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
+    const seeded = await createSeededMemoryApplication()
+    const context = createApplicationContext(seeded.engine)
+    const controller = createMailApplicationController(
+      context,
+      useMailStore(),
+      useRuntimeStore(),
+    )
+    await controller.initialize()
+    dependencies = { ...seeded, context, controller }
   })
 
-  describe('MailboxSidebar.vue', () => {
-    it('renders the brand title, folders, and runtime status badge', () => {
-      const wrapper = mount(MailboxSidebar)
+  describe('MailboxSidebar', () => {
+    it('renders committed mailboxes and runtime status', () => {
+      const wrapper = mountWithApplication(MailboxSidebar)
       expect(wrapper.text()).toContain('Boxplot Mail')
-      expect(wrapper.text()).toContain('Bandeja de entrada')
-      expect(wrapper.text()).toContain('Enviados')
+      expect(wrapper.text()).toContain(dependencies.fixtures.inboxA.name)
       expect(wrapper.text()).toContain('Redactar')
-
-      // Runtime UX check
       expect(wrapper.find('.mailbox-sidebar__runtime-status').exists()).toBe(
         true,
       )
     })
 
-    it('opens composer when clicking Redactar button', async () => {
-      const wrapper = mount(MailboxSidebar)
-      const composerStore = useComposerStore()
-
-      expect(composerStore.isOpen).toBe(false)
-      const composeBtn = wrapper.find('.mailbox-sidebar__compose')
-      await composeBtn.trigger('click')
-      expect(composerStore.isOpen).toBe(true)
+    it('opens the in-memory composer projection', async () => {
+      const wrapper = mountWithApplication(MailboxSidebar)
+      await wrapper.find('.mailbox-sidebar__compose').trigger('click')
+      expect(useComposerStore().isOpen).toBe(true)
     })
   })
 
-  describe('MessageList.vue', () => {
-    it('renders email items and unread indicators', () => {
-      const wrapper = mount(MessageList)
-      const mailStore = useMailStore()
-
-      expect(mailStore.emails.length).toBeGreaterThan(0)
-      const items = wrapper.findAll('.message-item')
-      expect(items.length).toBe(mailStore.emails.length)
+  describe('MessageList', () => {
+    it('renders the MailboxView window in its committed order', () => {
+      const wrapper = mountWithApplication(MessageList)
+      expect(wrapper.findAll('.message-item')).toHaveLength(2)
+      expect(wrapper.findAll('.message-item')[0].text()).toContain(
+        dependencies.fixtures.emailA1.subject,
+      )
     })
 
-    it('filters messages in real time when typing in search bar', async () => {
-      const wrapper = mount(MessageList)
-      const input = wrapper.find('.message-list__search-input')
-
-      await input.setValue('Reunión')
-      const filtered = wrapper.findAll('.message-item')
-      for (const item of filtered) {
-        expect(item.text().toLowerCase()).toContain('reunión')
-      }
+    it('filters the materialized local window without inventing coverage', async () => {
+      const wrapper = mountWithApplication(MessageList)
+      await wrapper.find('.message-list__search-input').setValue('subject-E2')
+      expect(wrapper.findAll('.message-item')).toHaveLength(1)
+      expect(wrapper.text()).toContain('subject-E2')
     })
 
-    it('displays empty state when search finds no results', async () => {
-      const wrapper = mount(MessageList)
-      const input = wrapper.find('.message-list__search-input')
-
-      await input.setValue('texto_inexistente_xyz_12345')
-      expect(wrapper.find('.empty-state').exists()).toBe(true)
-      expect(wrapper.text()).toContain('Sin resultados')
-    })
-
-    it('displays loading spinner when mailStore.loadState is loading', async () => {
+    it('shows explicit loading and not-cached states', async () => {
       const mailStore = useMailStore()
       mailStore.setLoadState('loading')
+      const wrapper = mountWithApplication(MessageList)
+      expect(wrapper.text()).toContain('Cargando mensajes')
 
-      const wrapper = mount(MessageList)
-      expect(wrapper.find('.message-list__loading-state').exists()).toBe(true)
-      expect(wrapper.text()).toContain('Cargando mensajes...')
+      mailStore.setLoadState('notCached')
+      mailStore.setEmails([])
+      await wrapper.vm.$nextTick()
+      expect(wrapper.text()).toContain('Vista no disponible en la caché local')
     })
   })
 
-  describe('MessageViewer.vue', () => {
-    it('renders empty placeholder when no email is selected', () => {
-      const mailStore = useMailStore()
-      mailStore.selectEmail(null)
-
-      const wrapper = mount(MessageViewer)
-      expect(wrapper.find('.empty-state').exists()).toBe(true)
-      expect(wrapper.text()).toContain('Selecciona un mensaje')
-    })
-
-    it('renders subject, metadata and sandboxed iframe when an email is selected', async () => {
-      const mailStore = useMailStore()
-      expect(mailStore.selectedEmail).not.toBeNull()
-
-      const wrapper = mount(MessageViewer)
-      expect(wrapper.find('.message-viewer__subject').text()).toBe(
-        mailStore.selectedEmail?.subject,
-      )
-
-      // Verified: renders iframe with sandbox attribute per security requirements
+  describe('MessageViewer', () => {
+    it('renders cached HTML through the sanitizer and sandboxed iframe', () => {
+      const wrapper = mountWithApplication(MessageViewer)
       const iframe = wrapper.find('iframe')
       expect(iframe.exists()).toBe(true)
-      expect(iframe.attributes('sandbox')).toBeDefined()
+      expect(iframe.attributes('sandbox')).toBe('allow-same-origin')
+      expect(iframe.attributes('srcdoc')).toContain('body-html-A1')
+    })
+
+    it('renders cached text safely and preserves cached null/null as complete', async () => {
+      const mailStore = useMailStore()
+      mailStore.setEmailBody(
+        {
+          emailId: dependencies.fixtures.emailA1.id,
+          text: '<unsafe>',
+          html: null,
+        },
+        'cached',
+      )
+      const wrapper = mountWithApplication(MessageViewer)
+      expect(wrapper.find('iframe').attributes('srcdoc')).toContain(
+        '&lt;unsafe&gt;',
+      )
+
+      mailStore.setEmailBody(dependencies.fixtures.nullBodyA1, 'cached')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('iframe').attributes('srcdoc')).toContain(
+        'Mensaje sin representación textual o HTML',
+      )
+    })
+
+    it('shows not-cached body without fabricating preview content', () => {
+      useMailStore().setEmailBody(null, 'notCached')
+      const wrapper = mountWithApplication(MessageViewer)
+      expect(wrapper.find('iframe').exists()).toBe(false)
+      expect(wrapper.text()).toContain(
+        'Contenido no disponible en la caché local',
+      )
+      expect(wrapper.text()).not.toContain(
+        dependencies.fixtures.emailA1.preview,
+      )
     })
   })
 
-  describe('Composer.vue', () => {
-    it('does not render modal when composerStore.isOpen is false', () => {
-      const wrapper = mount(Composer)
-      expect(wrapper.find('.composer').exists()).toBe(false)
-    })
-
-    it('renders form and allows editing fields when composerStore.isOpen is true', async () => {
-      const composerStore = useComposerStore()
-      composerStore.open({
-        to: 'destinatario@prueba.com',
-        subject: 'Asunto de prueba',
-        body: 'Cuerpo del mensaje',
+  describe('Composer', () => {
+    it('renders and edits only its memory-resident draft', () => {
+      useComposerStore().open({
+        to: 'recipient@example.test',
+        subject: 'Draft subject',
+        body: 'Draft body',
       })
-
-      const wrapper = mount(Composer)
+      const wrapper = mountWithApplication(Composer)
       expect(wrapper.find('.composer').exists()).toBe(true)
       expect(
         (wrapper.find('input[type="email"]').element as HTMLInputElement).value,
-      ).toBe('destinatario@prueba.com')
-      expect(
-        (wrapper.find('input[type="text"]').element as HTMLInputElement).value,
-      ).toBe('Asunto de prueba')
+      ).toBe('recipient@example.test')
     })
   })
 })
