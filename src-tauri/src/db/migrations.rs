@@ -4,7 +4,8 @@ use crate::persistence::PersistenceError;
 
 const INITIAL: &str = include_str!("migrations/0001_initial.sql");
 const PERSIST_01: &str = include_str!("migrations/0002_persist_01.sql");
-const LATEST_VERSION: i64 = 2;
+const FTS5_03: &str = include_str!("migrations/0003_fts5.sql");
+const LATEST_VERSION: i64 = 3;
 
 pub(super) fn migrate(connection: &mut Connection) -> Result<(), PersistenceError> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -35,6 +36,12 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<(), PersistenceErro
             .execute_batch(PERSIST_01)
             .map_err(|error| PersistenceError::Migration(error.to_string()))?;
         transaction.commit()?;
+    }
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version == 2 {
+        connection
+            .execute_batch(FTS5_03)
+            .map_err(|error| PersistenceError::Migration(error.to_string()))?;
     }
     Ok(())
 }

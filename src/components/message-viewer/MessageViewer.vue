@@ -1,11 +1,10 @@
-<script setup lang="ts">
-import { computed, ref } from 'vue'
+﻿<script setup lang="ts">
+import { computed } from 'vue'
 import {
   createSandboxedIframeSrcDoc,
   escapeEmailText,
   sanitizeEmailHtml,
 } from '../../security/sanitizer'
-import { openSafeExternalUrl } from '../../security/external-links'
 import { useMailStore } from '../../app/stores/mail'
 import { useComposerStore } from '../../app/stores/composer'
 import { useMailApplicationController } from '../../app/vue-application-context'
@@ -14,7 +13,6 @@ import type { EmailAddressList } from '../../domain/address'
 const mailStore = useMailStore()
 const composerStore = useComposerStore()
 const controller = useMailApplicationController()
-const bodyFrame = ref<HTMLIFrameElement | null>(null)
 
 const email = computed(() => mailStore.selectedEmail)
 
@@ -64,7 +62,7 @@ function handleReply() {
   composerStore.open({
     to: fromAddr,
     subject,
-    body: `\n\n--- En fecha ${formatDate(email.value.receivedAt)}, ${formatAddressList(email.value.from)} escribió:\n> ${email.value.preview}`,
+    body: `\n\n--- En fecha ${formatDate(email.value.receivedAt)}, ${formatAddressList(email.value.from)} escribiÃ³:\n> ${email.value.preview}`,
   })
 }
 
@@ -100,25 +98,13 @@ const iframeDocument = computed(() => {
       ? body.html
       : body.text !== null
         ? `<pre>${escapeEmailText(body.text)}</pre>`
-        : '<p><em>(Mensaje sin representación textual o HTML)</em></p>'
+        : '<p><em>(Mensaje sin representaciÃ³n textual o HTML)</em></p>'
 
   const cleanHtml = sanitizeEmailHtml(rawHtml)
   return createSandboxedIframeSrcDoc(cleanHtml)
 })
 
-function handleBodyFrameLoad() {
-  const document = bodyFrame.value?.contentDocument
-  if (document === null || document === undefined) return
 
-  document.addEventListener('click', (event) => {
-    const target = event.target
-    if (!(target instanceof Element)) return
-    const anchor = target.closest('a[href]')
-    if (!(anchor instanceof HTMLAnchorElement)) return
-    event.preventDefault()
-    void openSafeExternalUrl(anchor.href)
-  })
-}
 </script>
 
 <template>
@@ -179,11 +165,11 @@ function handleBodyFrameLoad() {
               <span>{{ isFlagged ? 'Destacado' : 'Destacar' }}</span>
             </button>
 
-            <!-- Marcar No Leído / Leído -->
+            <!-- Marcar No LeÃ­do / LeÃ­do -->
             <button
               class="message-viewer__action-btn"
               type="button"
-              :title="isSeen ? 'Marcar como no leído' : 'Marcar como leído'"
+              :title="isSeen ? 'Marcar como no leÃ­do' : 'Marcar como leÃ­do'"
               @click="handleToggleSeen"
             >
               <!-- Sobre abierto si isSeen -->
@@ -220,7 +206,7 @@ function handleBodyFrameLoad() {
                 />
                 <polyline points="22,6 12,13 2,6" />
               </svg>
-              <span>{{ isSeen ? 'Leído' : 'No leído' }}</span>
+              <span>{{ isSeen ? 'LeÃ­do' : 'No leÃ­do' }}</span>
             </button>
 
             <!-- Marcar Spam -->
@@ -309,21 +295,21 @@ function handleBodyFrameLoad() {
         <iframe
           v-if="mailStore.bodyLoadState === 'cached'"
           ref="bodyFrame"
-          sandbox="allow-same-origin"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
           :srcdoc="iframeDocument"
           class="message-viewer__iframe"
           title="Contenido del mensaje"
-          @load="handleBodyFrameLoad"
+          
         />
         <div v-else class="empty-state">
           <h2 v-if="mailStore.bodyLoadState === 'loading'">
-            Cargando contenido local…
+            Cargando contenido localâ€¦
           </h2>
           <h2 v-else-if="mailStore.bodyLoadState === 'notCached'">
-            Contenido no disponible en la caché local
+            Contenido no disponible en la cachÃ© local
           </h2>
           <h2 v-else-if="mailStore.bodyLoadState === 'ownerAbsent'">
-            El mensaje ya no existe en la caché local
+            El mensaje ya no existe en la cachÃ© local
           </h2>
           <h2 v-else-if="mailStore.bodyLoadState === 'error'">
             No se pudo leer el contenido local
@@ -351,7 +337,7 @@ function handleBodyFrameLoad() {
         <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
       </svg>
       <h2 id="message-viewer-title">Selecciona un mensaje</h2>
-      <p>El contenido del correo aparecerá aquí.</p>
+      <p>El contenido del correo aparecerÃ¡ aquÃ­.</p>
     </div>
   </section>
 </template>

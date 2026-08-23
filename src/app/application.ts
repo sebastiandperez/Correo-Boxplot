@@ -1,4 +1,4 @@
-import type { Email } from '../domain/email'
+﻿import type { Email } from '../domain/email'
 import type { AccountKey, ScopedEmailId, ScopedMailboxId } from '../domain/ids'
 import {
   mutationIdFromString,
@@ -26,7 +26,10 @@ import type { SyncPort } from '../ports/sync-port'
 import type { useMailStore } from './stores/mail'
 import type { useRuntimeStore } from './stores/runtime'
 
+import { JmapWorkerClient } from './worker-client'
+
 export interface ApplicationContext {
+  readonly workerClient?: JmapWorkerClient
   readonly readRepository: ReadRepository
   readonly syncPort: SyncPort
   readonly localChangeSource: LocalChangeSource
@@ -39,6 +42,7 @@ export function createApplicationContext(
     readRepository: dependencies.readRepository,
     syncPort: dependencies.syncPort,
     localChangeSource: dependencies.localChangeSource,
+    workerClient: dependencies.workerClient,
   }
 }
 
@@ -82,7 +86,7 @@ export class MailApplicationController {
       this.runtimeStore.setLocal('error')
       this.mailStore.setLoadState(
         'error',
-        'El almacenamiento local no está disponible.',
+        'El almacenamiento local no estÃ¡ disponible.',
       )
       throw new Error('LocalChangeSource is unavailable')
     }
@@ -222,6 +226,20 @@ export class MailApplicationController {
     await this.refreshMailboxWindow()
   }
 
+    async syncSelectedAccount(): Promise<void> {
+    const accountKey = this.mailStore.selectedAccountKey;
+    if (!accountKey) return;
+    try {
+      this.runtimeStore.setLocal('opening');
+      // En un entorno real se extrae jmapAccountId del Account, aquí usamos mock
+      this.context.workerClient?.syncAccount(accountKey, 'mock-jmap-account', 'state-1');
+      this.runtimeStore.setLocal('ready');
+    } catch (e) {
+      console.error(e);
+      this.runtimeStore.setLocal('error');
+    }
+  }
+
   async refreshMailboxWindow(): Promise<void> {
     const mailboxId = this.mailStore.selectedMailboxId
     const generation = ++this.mailboxViewGeneration
@@ -244,14 +262,14 @@ export class MailApplicationController {
     if (!viewResult.ok) {
       this.mailStore.setLoadState(
         'error',
-        'No se pudo leer la vista local del buzón.',
+        'No se pudo leer la vista local del buzÃ³n.',
       )
       return
     }
     if (viewResult.value.kind === 'ownerAbsent') {
       this.mailStore.setMailboxView(null)
       this.mailStore.setEmails([])
-      this.mailStore.setLoadState('error', 'El buzón local ya no existe.')
+      this.mailStore.setLoadState('error', 'El buzÃ³n local ya no existe.')
       return
     }
     if (viewResult.value.kind === 'notCached') {
@@ -388,6 +406,27 @@ export class MailApplicationController {
     }
   }
 
+    async sendEmail(intent: import('../domain/send-intent').SendIntent): Promise<void> {
+    const accountKey = this.mailStore.selectedAccountKey;
+    if (!accountKey) throw new Error('No account selected');
+    
+    // Generar la mutación pendiente (esto se conectará con Composer)
+    const mutation = {
+      kind: 'send',
+      mutationId: nextMutationId(),
+      accountKey,
+      createdAt: nowMutationInstant(),
+      intent,
+      lifecycle: { status: 'pending', attemptCount: 0 }
+    } as import('../domain/pending-mutation').SendMutation;
+    
+    // Primero, persistimos en SQLite optimistamente (en un escenario real)
+    // await this.context.syncPort.replacePendingMutationIfCurrent(...)
+    
+    // Delegamos al Outbox el proceso de red que garantiza consistencia eventual
+    this.context.workerClient?.sendEmail(accountKey, 'mock-jmap-account', mutation);
+  }
+
   private scheduleInvalidation(batch: LocalChangeBatch): void {
     this.pendingHints.push(...batch.hints)
     if (this.invalidationScheduled) return
@@ -455,3 +494,6 @@ export function createMailApplicationController(
 ): MailApplicationController {
   return new MailApplicationController(context, mailStore, runtimeStore)
 }
+
+
+

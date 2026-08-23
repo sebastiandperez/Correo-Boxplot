@@ -176,6 +176,19 @@ impl PersistentLocalEngine {
             .collect::<Result<_, _>>()?;
         Ok(OwnedSnapshot::Present(values))
     }
+
+    pub fn search_emails(&self, account: &str, query: &str) -> PersistResult<Vec<String>> {
+        let connection = self.database.connect()?;
+        if !account_exists(&connection, account)? {
+            return Ok(Vec::new());
+        }
+        let mut statement = connection.prepare(
+            "SELECT email_jmap_id FROM emails_fts WHERE account_key=?1 AND emails_fts MATCH ?2 ORDER BY rank"
+        )?;
+        let ids = statement.query_map(params![account, query], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(ids)
+    }
     pub fn read_email_body(
         &self,
         account: &str,

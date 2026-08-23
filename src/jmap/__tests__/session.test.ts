@@ -1,16 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { JamClientAdapter } from '../adapter'
 import { JmapAuthError, JmapMethodError, JmapNetworkError } from '../errors'
 
 describe('JamClientAdapter - openSession', () => {
-  let originalFetch: typeof globalThis.fetch
-
   beforeEach(() => {
-    originalFetch = globalThis.fetch
+    // Use vi.stubGlobal instead of raw globalThis.fetch assignment.
+    // This ensures Vitest properly restores the original after each test
+    // and prevents cross-test token/fetch leakage.
   })
 
   afterEach(() => {
-    globalThis.fetch = originalFetch
+    vi.restoreAllMocks()
   })
 
   it('should successfully discover a valid session', async () => {
@@ -40,13 +40,13 @@ describe('JamClientAdapter - openSession', () => {
       state: 'state-1',
     }
 
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       url: 'https://example.com/.well-known/jmap',
       json: async () => mockSessionResponse,
       text: async () => JSON.stringify(mockSessionResponse),
-    } as unknown as Response)
+    } as unknown as Response))
 
     const adapter = new JamClientAdapter(
       'https://example.com/.well-known/jmap',
@@ -65,7 +65,7 @@ describe('JamClientAdapter - openSession', () => {
   })
 
   it('should throw JmapAuthError on 401 response', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
       url: 'https://example.com/.well-known/jmap',
@@ -73,7 +73,7 @@ describe('JamClientAdapter - openSession', () => {
         throw new Error('401 Unauthorized')
       },
       text: async () => '401 Unauthorized',
-    } as unknown as Response)
+    } as unknown as Response))
 
     const adapter = new JamClientAdapter(
       'https://example.com/.well-known/jmap',
@@ -87,9 +87,7 @@ describe('JamClientAdapter - openSession', () => {
   })
 
   it('should throw JmapNetworkError on network failure', async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockRejectedValue(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
 
     const adapter = new JamClientAdapter(
       'https://example.com/.well-known/jmap',
@@ -118,13 +116,13 @@ describe('JamClientAdapter - openSession', () => {
       apiUrl: 'https://example.com/api',
     }
 
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       url: 'https://example.com/.well-known/jmap',
       json: async () => mockSessionResponse,
       text: async () => JSON.stringify(mockSessionResponse),
-    } as unknown as Response)
+    } as unknown as Response))
 
     const adapter = new JamClientAdapter(
       'https://example.com/.well-known/jmap',
@@ -145,22 +143,20 @@ describe('JamClientAdapter - openSession', () => {
       capabilities: {
         'urn:ietf:params:jmap:mail': {},
       },
-      accounts: {
-        // Empty accounts object!
-      },
+      accounts: {},
       primaryAccounts: {
         'urn:ietf:params:jmap:mail': 'missing-account',
       },
       apiUrl: 'https://example.com/api',
     }
 
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       url: 'https://example.com/.well-known/jmap',
       json: async () => mockSessionResponse,
       text: async () => JSON.stringify(mockSessionResponse),
-    } as unknown as Response)
+    } as unknown as Response))
 
     const adapter = new JamClientAdapter(
       'https://example.com/.well-known/jmap',

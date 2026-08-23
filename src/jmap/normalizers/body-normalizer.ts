@@ -1,4 +1,4 @@
-import type { JmapEmailBody } from '../types'
+﻿import type { JmapEmailBody } from '../types'
 import type {
   RawJmapEmailBodyPart,
   RawJmapEmailBodyValue,
@@ -17,6 +17,17 @@ function findPartIdsByType(part: RawJmapEmailBodyPart, type: string): string[] {
   return ids
 }
 
+/**
+ * Extracts a normalized EmailBody from a JMAP bodyStructure + bodyValues.
+ *
+ * D-09 compliance: A truncated or encoding-problem body part is NEVER
+ * silently returned as valid content. If the only available parts have
+ * isEncodingProblem or isTruncated, this function returns null and the
+ * caller MUST NOT produce an EmailBody entity from it.
+ *
+ * D-10 compliance: Attachment metadata extraction is handled separately
+ * in attachment-normalizer.ts; this function only produces text/html bodies.
+ */
 export function extractEmailBody(
   emailId: string,
   bodyStructure: RawJmapEmailBodyPart,
@@ -27,17 +38,31 @@ export function extractEmailBody(
 
   let html: string | null = null
   let text: string | null = null
+  let hasEncodingProblem = false
+  let hasTruncation = false
 
-  // Helper to extract text from a part, respecting truncation/encoding constraints
   const extractFromPartId = (partId: string): string | null => {
     const valueData = bodyValues[partId]
     if (!valueData) return null
-    if (valueData.isEncodingProblem || valueData.isTruncated) return null
+
+    // D-09: Track encoding/truncation problems explicitly
+    if (valueData.isEncodingProblem) {
+      hasEncodingProblem = true
+      return null
+    }
+    if (valueData.isTruncated) {
+      hasTruncation = true
+      return null
+    }
+
+    // Reject empty string bodies as non-content
+    if (typeof valueData.value !== 'string' || valueData.value.length === 0) {
+      return null
+    }
+
     return valueData.value
   }
 
-  // JMAP structures might have multiple text/html or text/plain parts.
-  // We simply extract the first valid one we find, or join them (typically just one for simple emails)
   for (const pid of htmlPartIds) {
     const val = extractFromPartId(pid)
     if (val !== null) {
@@ -54,7 +79,17 @@ export function extractEmailBody(
     }
   }
 
+  // D-09: If we found NO usable body parts at all, return null.
+  // A truncated or encoding-problem result MUST NOT produce an EmailBody.
   if (html === null && text === null) {
+    if (hasEncodingProblem || hasTruncation) {
+      // Log for diagnostics but do not fabricate partial content
+      console.warn(
+        `[body-normalizer] Email ${emailId}: body extraction failed ` +
+        `(encodingProblem=${hasEncodingProblem}, truncated=${hasTruncation}). ` +
+        `No EmailBody produced per D-09.`
+      )
+    }
     return null
   }
 

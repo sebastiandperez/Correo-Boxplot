@@ -169,7 +169,7 @@ fn pdb_mig_fresh_and_reopen_reach_latest_schema() {
     assert_eq!(
         c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        2
+        3
     );
     drop(c);
     engine(&db);
@@ -187,7 +187,7 @@ fn pdb_mig_upgrades_real_0001_and_refuses_future_or_legacy_outbox() {
         raw(&db.0, KEY)
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        2
+        3
     );
     let future = TempDb::new("future");
     let c = raw(&future.0, KEY);
@@ -761,3 +761,5 @@ fn pdb_txn_membership_conflict_rolls_back_projection_and_mutation() {
         OwnedOptional::Absent
     );
 }
+
+
