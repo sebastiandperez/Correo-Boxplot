@@ -53,7 +53,9 @@ Linux x86_64:
 
 The verified Linux package is the generated Development DEB. Its extracted payload passed exact runtime diagnostics, real Secret Service smoke, semantic seed/reopen and encrypted-header inspection. AppImage was also attempted: the release binary compiled, but Tauri's downloaded linuxdeploy tooling cannot package this Arch host's current RELR libraries and gdk-pixbuf 2.44 built-in-loader layout. That tooling issue does not alter the verified DEB or native SQLCipher linkage.
 
-Windows x86_64 MSVC requires the Rust MSVC target and Visual Studio C++ build tools. On that host run the same locked checks, `pnpm native:doctor`, `pnpm native:doctor:smoke`, `pnpm native:package:dev:windows`, Development bootstrap/reopen acceptance and PE dependency inspection. Confirm `CRED_PERSIST_LOCAL_MACHINE`, absence of external `sqlcipher.dll`, `sqlite3.dll` and OpenSSL DLLs, encrypted DB header, restart persistence and untouched Production namespace. A Linux cross-check is not Windows certification.
+Windows x86_64 MSVC was certified by WINDOWS-NATIVE-ACCEPTANCE-01 on 23 August 2026. Locked MSVC builds, exact runtime diagnostics, Credential Manager Local persistence, Development bootstrap/reopen, wrong-key rejection, the 179/179 production conformance suite plus 5/5 smokes, NSIS creation and execution of the installed application all passed. `dumpbin /DEPENDENTS` on the x64 release PE showed only Windows/UCRT dependencies: there was no external `sqlcipher.dll`, `sqlite3.dll`, `libcrypto` or `libssl`. The installed DB header was encrypted and the Production namespace remained outside the acceptance flow. The exact commands and evidence are in [windows-native-acceptance.md](windows-native-acceptance.md).
+
+MSVC may emit LNK4099 warnings because the vendored OpenSSL static archive does not ship its `ossl_static.pdb`. This removes dependency debug symbols only; it is not a link failure or a runtime DLL dependency. Builds, Clippy, tests, package execution and PE inspection must still complete successfully.
 
 ## Upstream issue review
 

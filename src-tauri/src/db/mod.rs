@@ -12,11 +12,21 @@ use crate::{persistence::PersistenceError, security::Dek};
 
 pub(crate) const EXPECTED_SQLCIPHER_VERSION: &str = "4.17.0 community";
 pub(crate) const EXPECTED_SQLITE_VERSION: &str = "3.53.3";
+#[cfg(feature = "local-env-doctor")]
+pub(crate) const EXPECTED_CIPHER_PROVIDER: &str = "openssl";
+#[cfg(feature = "local-env-doctor")]
+pub(crate) const EXPECTED_CIPHER_PROVIDER_VERSION: &str = "OpenSSL 3.6.3 9 Jun 2026";
 
 #[cfg(feature = "local-env-doctor")]
-pub(crate) fn native_database_runtime() -> Result<(String, String), PersistenceError> {
-    let connection = Connection::open_in_memory()?;
-    query_native_database_runtime(&connection)
+pub(crate) fn native_database_diagnostics()
+-> Result<(String, String, String, String), PersistenceError> {
+    let key = Dek::generate().map_err(|_| PersistenceError::EncryptionUnavailable)?;
+    let connection = open_keyed_connection(Path::new(":memory:"), key.expose())?;
+    let (sqlcipher, sqlite) = query_native_database_runtime(&connection)?;
+    let provider = connection.query_row("PRAGMA cipher_provider", [], |row| row.get(0))?;
+    let provider_version =
+        connection.query_row("PRAGMA cipher_provider_version", [], |row| row.get(0))?;
+    Ok((sqlcipher, sqlite, provider, provider_version))
 }
 
 fn query_native_database_runtime(

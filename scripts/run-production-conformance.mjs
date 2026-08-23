@@ -1,14 +1,23 @@
 import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
+const isWindows = process.platform === 'win32'
 const driverPort = 55222
 const nativeDriverPort = 55223
 const driver =
-  process.env.TAURI_DRIVER ?? resolve(homedir(), '.cargo/bin/tauri-driver')
-const nativeDriver = process.env.WEBKIT_WEBDRIVER ?? '/usr/bin/WebKitWebDriver'
-const application = resolve(root, 'src-tauri/target/debug/correo-boxplot')
+  process.env.TAURI_DRIVER ??
+  resolve(homedir(), `.cargo/bin/tauri-driver${isWindows ? '.exe' : ''}`)
+const nativeDriver =
+  process.env.TAURI_NATIVE_WEBDRIVER ??
+  process.env.WEBKIT_WEBDRIVER ??
+  (isWindows ? 'msedgedriver.exe' : '/usr/bin/WebKitWebDriver')
+const application = resolve(
+  root,
+  `src-tauri/target/debug/correo-boxplot${isWindows ? '.exe' : ''}`,
+)
 
 function run(command, args, cwd = root) {
   execFileSync(command, args, { cwd, stdio: 'inherit' })
@@ -54,12 +63,27 @@ async function webdriver(sessionId, endpoint, body) {
   return result.value
 }
 
-run('node_modules/.bin/vite', [
+async function waitForResult(sessionId) {
+  const deadline = Date.now() + 900_000
+  while (Date.now() < deadline) {
+    const result = await webdriver(sessionId, 'execute/sync', {
+      script: 'return window.__PROD_CONFORMANCE_RESULT__ ?? null;',
+      args: [],
+    })
+    if (result !== null) return result
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250))
+  }
+  throw new Error('production conformance did not complete within 15 minutes')
+}
+
+run(process.execPath, [
+  resolve(root, 'node_modules/vite/bin/vite.js'),
   'build',
   '--config',
   'tests/production-conformance/vite.config.ts',
 ])
-run('node_modules/.bin/tauri', [
+run(process.execPath, [
+  resolve(root, 'node_modules/@tauri-apps/cli/tauri.js'),
   'build',
   '--debug',
   '--no-bundle',
@@ -91,16 +115,7 @@ try {
       `WebDriver returned no session ID: ${JSON.stringify(session)}`,
     )
   }
-  await webdriver(sessionId, 'timeouts', { script: 900_000 })
-  const result = await webdriver(sessionId, 'execute/async', {
-    script: `
-      const done = arguments[arguments.length - 1];
-      const finish = () => done(window.__PROD_CONFORMANCE_RESULT__);
-      if (window.__PROD_CONFORMANCE_RESULT__ !== undefined) finish();
-      else window.addEventListener('prod-conformance-complete', finish, { once: true });
-    `,
-    args: [],
-  })
+  const result = await waitForResult(sessionId)
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   const contractsPass =
     result?.contracts?.defined === 179 &&
@@ -124,5 +139,11 @@ try {
       method: 'DELETE',
     }).catch(() => undefined)
   }
-  driverProcess.kill('SIGTERM')
+  if (driverProcess.exitCode === null) {
+    driverProcess.kill('SIGTERM')
+    await Promise.race([
+      once(driverProcess, 'exit'),
+      new Promise((resolveWait) => setTimeout(resolveWait, 5_000)),
+    ])
+  }
 }

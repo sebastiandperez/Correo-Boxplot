@@ -42,7 +42,9 @@ Development and release builds use the same repository-pinned SQLCipher `4.17.0 
 
 ## Windows
 
-Windows uses Windows Credential Manager. Entries have explicit target `<credential-service>/sqlcipher-dek-v1`, native binary 32-byte content and `Local` (`CRED_PERSIST_LOCAL_MACHINE`) persistence. Development and Production targets differ. An existing Session or Enterprise entry is migrated by preserving the same DEK, rewriting it as Local and verifying the attribute; migration failure stops bootstrap. On an actual x86_64 Windows/MSVC host, use locked dependencies, `pnpm native:doctor`, `pnpm native:doctor:smoke` and `pnpm native:package:dev:windows`, then run the Development seed/reopen flow and inspect the NSIS package for external SQLite/SQLCipher/OpenSSL DLLs. Windows runtime and installer acceptance remain pending; Linux cross-checks do not certify them.
+Windows uses Windows Credential Manager. Entries have explicit target `<credential-service>/sqlcipher-dek-v1`, native binary 32-byte content and `Local` (`CRED_PERSIST_LOCAL_MACHINE`) persistence. Development and Production targets differ. An existing Session or Enterprise entry is migrated by preserving the same DEK, rewriting it as Local and verifying the attribute; migration failure stops bootstrap.
+
+WINDOWS-NATIVE-ACCEPTANCE-01 completed on 23 August 2026 on a real x86_64 Windows/MSVC host. The doctor reported SQLCipher `4.17.0 community`, SQLite `3.53.3`, provider `openssl`, provider version `OpenSSL 3.6.3 9 Jun 2026`, and Credential Manager persistence `Local`. The Development NSIS application completed seed, process exit, fresh-process reopen and semantic read from its Tauri-derived local-data root. The encrypted database header was not SQLite plaintext, the release PE had no external SQLite/SQLCipher/OpenSSL DLL dependency, and the Production identity was not selected or mutated. See [windows-native-acceptance.md](windows-native-acceptance.md) for the reproducible runbook and recorded evidence.
 
 ## Test identity policy
 

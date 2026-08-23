@@ -1,4 +1,7 @@
-use std::{fmt::Write, process::Command};
+use std::fmt::Write;
+
+#[cfg(target_os = "linux")]
+use std::process::Command;
 
 use crate::security::{
     CREDENTIAL_USER, CredentialIdentity, DEVELOPMENT_IDENTIFIER, Dek, DekLookup, DekStore,
@@ -23,6 +26,15 @@ pub fn maybe_run_development_acceptance(app: &tauri::App) {
         if app.config().identifier != DEVELOPMENT_IDENTIFIER {
             return Err("acceptance requires the Development Tauri identifier");
         }
+        let local_data = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| "could not resolve Development app-local-data")?;
+        println!("DEVELOPMENT_APP_LOCAL_DATA: {}", local_data.display());
+        println!(
+            "DEVELOPMENT_DATABASE: {}",
+            local_data.join("mail-cache.sqlite3").display()
+        );
         let lifecycle = app.state::<crate::ipc::ManagedLocalEngine>();
         let engine = lifecycle
             .lease()
@@ -93,12 +105,16 @@ fn check() -> i32 {
     println!("sqlite_expected: {}", crate::db::EXPECTED_SQLITE_VERSION);
     println!("sqlcipher_packaging: PINNED/BUNDLED");
     println!("sqlcipher_crypto_provider: OpenSSL (vendored)");
-    let runtime_matches = match crate::db::native_database_runtime() {
-        Ok((sqlcipher, sqlite)) => {
+    let runtime_matches = match crate::db::native_database_diagnostics() {
+        Ok((sqlcipher, sqlite, provider, provider_version)) => {
             println!("sqlcipher_actual: {sqlcipher}");
             println!("sqlite_actual: {sqlite}");
+            println!("sqlcipher_crypto_provider_actual: {provider}");
+            println!("sqlcipher_crypto_provider_version_actual: {provider_version}");
             sqlcipher == crate::db::EXPECTED_SQLCIPHER_VERSION
                 && sqlite == crate::db::EXPECTED_SQLITE_VERSION
+                && provider == crate::db::EXPECTED_CIPHER_PROVIDER
+                && provider_version == crate::db::EXPECTED_CIPHER_PROVIDER_VERSION
         }
         Err(_) => {
             println!("sqlcipher_actual: unavailable");
@@ -199,6 +215,14 @@ fn smoke() -> i32 {
                 println!("comparison: PASS");
             }
             _ => return Err(crate::security::DekStoreError::Corrupt),
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let persistence = store.windows_persistence()?;
+            println!("persistence: {persistence}");
+            if persistence != "Local" {
+                return Err(crate::security::DekStoreError::Configuration);
+            }
         }
         store.delete()?;
         println!("delete: PASS");

@@ -32,6 +32,17 @@ impl OsDekStore {
             .build(&self.identity.service, &self.identity.user, None)
             .map_err(classify_operation_error)
     }
+
+    #[cfg(all(target_os = "windows", feature = "local-env-doctor"))]
+    pub(crate) fn windows_persistence(&self) -> Result<String, DekStoreError> {
+        let _access = self.access.lock().map_err(|_| DekStoreError::Unavailable)?;
+        self.entry()?
+            .get_attributes()
+            .map_err(classify_operation_error)?
+            .get("persistence")
+            .cloned()
+            .ok_or(DekStoreError::Configuration)
+    }
 }
 
 impl DekStore for OsDekStore {
