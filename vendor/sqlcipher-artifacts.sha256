@@ -1,0 +1,8 @@
+e247c395aa3e0d55bec71aab7714c4fc6d7775b34c0378ad421e221be66ae718  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/Cargo.toml
+e7d147ac83e91eb40189dd7ed5fc2ac5006a75d4ca567ec6a1a1a74c62ad6c38  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/build.rs
+a3a2d0ca1e7b58b3ec2fa6cac6fca799ae8b554942b08fea4a435cfc22739477  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/sqlcipher/sqlite3.c
+e564d0492e7556a8ad2f30c8ec645b5a6abb89f32f7b40465a3032d937596401  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/sqlcipher/sqlite3.h
+ac9645e5c9ff0cf176efdd6e75cb5e98f46295d38e02db5c4d208826a39ab4be  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/sqlcipher/sqlite3ext.h
+d902e5fb9fd91ae8b7dd8babe5d46717b239190ec987d551b6a7c446edaacdb7  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/sqlcipher/bindgen_bundled_version.rs
+2a2826f6acf46fa650730cf42cbb22a642be33a7ef119c9c4f4bf6daf3bef48e  vendor/libsqlite3-sys-0.38.2-sqlcipher-4.17/sqlcipher/LICENSE
+21da850a93544bca7dc94ac3fe65b84c2d390ff2f82f55f4db8097e618893848  src-tauri/tests/fixtures/sqlcipher-4.14.0.db

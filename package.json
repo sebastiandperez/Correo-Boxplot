@@ -10,6 +10,11 @@
   },
   "scripts": {
     "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "native:doctor": "cargo run --manifest-path src-tauri/Cargo.toml --locked --features local-env-doctor --bin local-env-doctor -- check",
+    "native:doctor:smoke": "cargo run --manifest-path src-tauri/Cargo.toml --locked --features local-env-doctor --bin local-env-doctor -- smoke",
+    "native:vendor:check": "bash scripts/check-sqlcipher-vendor.sh",
+    "native:package:dev:linux": "tauri build --config src-tauri/tauri.dev.conf.json --bundles deb --features local-env-doctor -- --locked",
+    "native:package:dev:windows": "tauri build --config src-tauri/tauri.dev.conf.json --bundles nsis --features local-env-doctor -- --locked",
     "dev:frontend": "vite",
     "build": "tauri build",
     "build:frontend": "vue-tsc --noEmit && vite build",
