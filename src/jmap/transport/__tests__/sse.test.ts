@@ -16,11 +16,11 @@ describe('JMAP SSE Transport (fetch based)', () => {
     const mockStateChange = {
       '@type': 'StateChange',
       changed: {
-        'acc1': {
+        acc1: {
           Email: 'state123',
-          Mailbox: 'state456'
-        }
-      }
+          Mailbox: 'state456',
+        },
+      },
     }
 
     // Mock fetch to simulate an SSE stream
@@ -28,19 +28,19 @@ describe('JMAP SSE Transport (fetch based)', () => {
       ok: true,
       body: {
         getReader: () => {
-          let chunks = [
+          const chunks = [
             `event: state\ndata: ${JSON.stringify(mockStateChange)}\n\n`,
-            null // EOF
+            null, // EOF
           ]
           return {
             read: async () => {
               const chunk = chunks.shift()
               if (chunk === null) return { done: true }
               return { done: false, value: new TextEncoder().encode(chunk) }
-            }
+            },
           }
-        }
-      }
+        },
+      },
     })
 
     const onStateChange = vi.fn()
@@ -50,16 +50,16 @@ describe('JMAP SSE Transport (fetch based)', () => {
       eventSourceUrl: 'https://test/events',
       auth: { type: 'Bearer', token: 'test-token' },
       onStateChange,
-      onError
+      onError,
     })
 
     // Wait a bit for the async reader loop to process the chunks
-    await new Promise(r => setTimeout(r, 10))
+    await new Promise((r) => setTimeout(r, 10))
 
     expect(onStateChange).toHaveBeenCalledTimes(1)
     expect(onStateChange).toHaveBeenCalledWith(mockStateChange)
     expect(onError).not.toHaveBeenCalled()
-    
+
     cleanup()
   })
 
@@ -68,20 +68,20 @@ describe('JMAP SSE Transport (fetch based)', () => {
       ok: true,
       body: {
         getReader: () => {
-          let chunks = [
+          const chunks = [
             `event: ping\ndata: 123\n\n`, // ignore ping
             `event: state\ndata: { bad json }\n\n`, // ignore bad json
-            null // EOF
+            null, // EOF
           ]
           return {
             read: async () => {
               const chunk = chunks.shift()
               if (chunk === null) return { done: true }
               return { done: false, value: new TextEncoder().encode(chunk) }
-            }
+            },
           }
-        }
-      }
+        },
+      },
     })
 
     const onStateChange = vi.fn()
@@ -89,10 +89,10 @@ describe('JMAP SSE Transport (fetch based)', () => {
     connectSSE({
       eventSourceUrl: 'https://test/events',
       auth: { type: 'Basic', token: 'test-token' },
-      onStateChange
+      onStateChange,
     })
 
-    await new Promise(r => setTimeout(r, 10))
+    await new Promise((r) => setTimeout(r, 10))
 
     expect(onStateChange).not.toHaveBeenCalled()
   })
