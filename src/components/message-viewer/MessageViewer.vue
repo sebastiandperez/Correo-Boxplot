@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import DOMPurify from 'dompurify'
+import {
+  createSandboxedIframeSrcDoc,
+  sanitizeEmailHtml,
+} from '../../security/sanitizer'
 import { useMailStore } from '../../app/stores/mail'
 import { useComposerStore } from '../../app/stores/composer'
 import type { EmailAddressList } from '../../domain/address'
@@ -87,43 +90,11 @@ const iframeDocument = computed(() => {
   if (!email.value) return ''
 
   const rawHtml = email.value.preview
-    ? `<p style="font-size: 15px; line-height: 1.6; color: #1e293b;">${email.value.preview}</p>`
+    ? `<p>${email.value.preview}</p>`
     : '<p><em>(Sin contenido de mensaje)</em></p>'
 
-  const cleanHtml = DOMPurify.sanitize(rawHtml, {
-    FORBID_TAGS: [
-      'script',
-      'iframe',
-      'object',
-      'embed',
-      'form',
-      'svg',
-      'math',
-      'style',
-    ],
-    FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick', 'onmouseover'],
-    ALLOW_DATA_ATTR: false,
-  })
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
-  <style>
-    body {
-      margin: 0;
-      padding: 24px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.65;
-      color: #0f172a;
-      word-break: break-word;
-    }
-  </style>
-</head>
-<body>${cleanHtml}</body>
-</html>`
+  const cleanHtml = sanitizeEmailHtml(rawHtml)
+  return createSandboxedIframeSrcDoc(cleanHtml)
 })
 </script>
 

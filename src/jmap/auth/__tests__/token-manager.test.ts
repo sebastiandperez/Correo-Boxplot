@@ -22,7 +22,7 @@ describe('TokenManager (Memory Only)', () => {
   it('should clear token without notifying listeners', () => {
     const spy = vi.fn()
     manager.onTokenExpired(spy)
-    
+
     manager.setToken('test-token')
     manager.clearToken()
 
@@ -67,13 +67,15 @@ describe('TokenManager (Memory Only)', () => {
     unsubscribe()
 
     vi.advanceTimersByTime(60 * 1000)
-    
+
     expect(manager.getToken()).toBeNull()
     expect(spy).not.toHaveBeenCalled() // because we unsubscribed
   })
 
   it('should survive if a listener throws an error', () => {
-    const badSpy = vi.fn().mockImplementation(() => { throw new Error('Boom') })
+    const badSpy = vi.fn().mockImplementation(() => {
+      throw new Error('Boom')
+    })
     const goodSpy = vi.fn()
 
     manager.onTokenExpired(badSpy)

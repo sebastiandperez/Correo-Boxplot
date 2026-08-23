@@ -1,23 +1,22 @@
 /**
- * send-service.ts — Caso de uso: Enviar un correo.
+ * send-service.ts — Caso de uso: Enviar un correo (Epic A-06).
  *
- * Orquesta el flujo completo:
- *   composerStore (UI) → SendIntent (dominio) → stageSendMutation (engine)
- *                      → optimistic UI update (mailStore)
- *
- * Regla: este servicio vive en Application (src/app/services/). Puede
- * importar de domain/, app/stores/, y app/engine.ts.
- * NUNCA importa de components/.
+ * Orquesta el flujo de envío seguro:
+ *   composerStore.setPhase('queueing')
+ *   → SendIntent (dominio inmutable)
+ *   → stageSendMutation (SyncPort)
+ *   → Si éxito: limpia composerStore.reset() y actualiza mailStore
+ *   → Si falla: conserva composerStore.setPhase('error', msg) con el texto intacto
  */
 
 import { sendIntent } from '../../domain/send-intent'
 import {
-  sendMutation,
   mutationInstantFromString,
+  sendMutation,
 } from '../../domain/pending-mutation'
 import { emailAddress } from '../../domain/address'
 import { mutationIdFromString } from '../../domain/ids'
-import { getEngine, DEMO_IDENTITY } from '../engine'
+import { DEMO_IDENTITY, getEngine } from '../engine'
 import { useComposerStore } from '../stores/composer'
 import { useMailStore } from '../stores/mail'
 
@@ -52,30 +51,42 @@ function parseRecipients(rawTo: string) {
 
 /**
  * Toma el estado actual del composerStore, construye un SendMutation
- * correctamente tipado y lo persiste en el MemoryLocalEngine.
+ * correctamente tipado y lo persiste en el SyncPort.
  *
- * También actualiza el mailStore de forma optimista para que la UI
- * refleje el correo en Enviados inmediatamente.
+ * Sigue la semántica de cola de Epic A-06:
+ * - Falla conserva el texto y pasa a phase='error'.
+ * - Éxito limpia el compositor y pasa a phase='idle'.
  */
 export async function executeSend(): Promise<SendResult> {
   const composerStore = useComposerStore()
   const mailStore = useMailStore()
 
-  // 1. Validar que el engine esté listo
+  // 1. Marcar fase de encolamiento
+  composerStore.setPhase('queueing')
+
+  // 2. Validar destinatarios
+  const toAddresses = parseRecipients(composerStore.to)
+  if (toAddresses.length === 0) {
+    composerStore.setPhase(
+      'error',
+      'El campo destinatario (Para) no puede estar vacío.',
+    )
+    return { ok: false, error: 'emptyRecipient' }
+  }
+
+  // 3. Validar que el engine esté disponible
   let engine
   try {
     engine = await getEngine()
   } catch {
+    composerStore.setPhase(
+      'error',
+      'El motor local de almacenamiento no está listo.',
+    )
     return { ok: false, error: 'notReady' }
   }
 
-  // 2. Parsear destinatarios
-  const toAddresses = parseRecipients(composerStore.to)
-  if (toAddresses.length === 0) {
-    return { ok: false, error: 'emptyRecipient' }
-  }
-
-  // 3. Construir el SendIntent usando el dominio
+  // 4. Construir el SendIntent usando el dominio inmutable
   let intent
   try {
     intent = sendIntent({
@@ -91,10 +102,14 @@ export async function executeSend(): Promise<SendResult> {
     })
   } catch (err) {
     console.warn('[send-service] SendIntent inválido:', err)
+    composerStore.setPhase(
+      'error',
+      'Formato de dirección de correo electrónico inválido.',
+    )
     return { ok: false, error: 'invalidAddress' }
   }
 
-  // 4. Construir y persistir la SendMutation en el engine
+  // 5. Construir y persistir la SendMutation en el engine vía SyncPort
   const mutation = sendMutation({
     mutationId: mutationIdFromString(generateMutationId()),
     accountKey: DEMO_IDENTITY.id.accountKey,
@@ -106,15 +121,20 @@ export async function executeSend(): Promise<SendResult> {
 
   if (!result.ok) {
     console.error('[send-service] stageSendMutation falló:', result.error)
+    composerStore.setPhase(
+      'error',
+      'Error al persistir la mutación de envío en la base local.',
+    )
     return { ok: false, error: 'engineError' }
   }
 
-  // 5. Actualizar la UI de forma optimista: agregar a Enviados en mailStore
+  // 6. Si el commit fue exitoso: actualizar UI optimista y resetear composer
   mailStore.sendEmail(
     composerStore.to,
     composerStore.subject,
     composerStore.body,
   )
 
+  composerStore.reset()
   return { ok: true }
 }

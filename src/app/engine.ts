@@ -12,11 +12,9 @@
 import { account, remoteAccountRef } from '../domain/account'
 import { identity } from '../domain/identity'
 import {
-  accountKeyFromString,
   jmapAccountIdFromString,
   jmapIdentityIdFromString,
   jmapMailboxIdFromString,
-  mutationIdFromString,
   scopedIdentityId,
   scopedMailboxId,
   serviceKeyFromString,
@@ -30,7 +28,12 @@ import {
   createMockMailboxes,
   DEMO_ACCOUNT_KEY,
 } from './mock-data'
-import { collectionSyncCursor } from '../domain/sync-cursor'
+import {
+  collectionSyncCursor,
+  collectionSyncStateFromString,
+} from '../domain/sync-cursor'
+
+export { DEMO_ACCOUNT_KEY }
 
 // ─── Constantes de la cuenta demo ────────────────────────────────────────────
 
@@ -46,13 +49,6 @@ export const DEMO_IDENTITY = identity({
   email: 'juan@correo.local',
   replyTo: null,
   bcc: null,
-})
-
-// ─── Cursor inicial (primera sincronización) ──────────────────────────────────
-
-const INITIAL_CURSOR = collectionSyncCursor({
-  position: 'initial',
-  value: 'v0',
 })
 
 // ─── Seed del engine ──────────────────────────────────────────────────────────
@@ -72,7 +68,11 @@ async function seedEngine(engine: MemoryLocalEngine): Promise<void> {
     kind: 'identity',
     mode: 'replace',
     expectedCursor: { kind: 'absent' },
-    nextCursor: INITIAL_CURSOR,
+    nextCursor: collectionSyncCursor({
+      accountKey: DEMO_ACCOUNT_KEY,
+      dataType: 'identity',
+      state: collectionSyncStateFromString('v0'),
+    }),
     snapshot: [DEMO_IDENTITY],
   })
 
@@ -82,7 +82,11 @@ async function seedEngine(engine: MemoryLocalEngine): Promise<void> {
     kind: 'mailbox',
     mode: 'replace',
     expectedCursor: { kind: 'absent' },
-    nextCursor: INITIAL_CURSOR,
+    nextCursor: collectionSyncCursor({
+      accountKey: DEMO_ACCOUNT_KEY,
+      dataType: 'mailbox',
+      state: collectionSyncStateFromString('v0'),
+    }),
     snapshot: mailboxes,
   })
 
@@ -108,7 +112,11 @@ async function seedEngine(engine: MemoryLocalEngine): Promise<void> {
     kind: 'email',
     mode: 'replace',
     expectedCursor: { kind: 'absent' },
-    nextCursor: INITIAL_CURSOR,
+    nextCursor: collectionSyncCursor({
+      accountKey: DEMO_ACCOUNT_KEY,
+      dataType: 'email',
+      state: collectionSyncStateFromString('v0'),
+    }),
     snapshot: allEmails,
   })
 }

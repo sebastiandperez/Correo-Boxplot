@@ -1,6 +1,5 @@
 import {
   accountKeyFromString,
-  jmapAccountIdFromString,
   jmapBlobIdFromString,
   jmapEmailIdFromString,
   jmapMailboxIdFromString,

@@ -35,6 +35,7 @@ const filteredEmails = computed(() => {
 })
 
 const messagesCount = computed(() => {
+  if (mailStore.loadState === 'loading') return 'Cargando...'
   const count = filteredEmails.value.length
   if (count === 0) return 'Sin mensajes'
   if (count === 1) return '1 mensaje'
@@ -134,7 +135,17 @@ function handleDelete(e: Event, emailId: ScopedEmailId) {
       </div>
     </header>
 
-    <ul v-if="filteredEmails.length > 0" class="message-list__items">
+    <!-- Estado de Carga -->
+    <div
+      v-if="mailStore.loadState === 'loading'"
+      class="message-list__loading-state"
+    >
+      <span class="message-list__spinner"></span>
+      <p>Cargando mensajes...</p>
+    </div>
+
+    <!-- Lista de Correos -->
+    <ul v-else-if="filteredEmails.length > 0" class="message-list__items">
       <li v-for="msg in filteredEmails" :key="msg.id.jmapId">
         <button
           class="message-item"
@@ -266,6 +277,7 @@ function handleDelete(e: Event, emailId: ScopedEmailId) {
       </li>
     </ul>
 
+    <!-- Estado Vacío -->
     <div v-else class="empty-state">
       <svg
         class="empty-state__icon"

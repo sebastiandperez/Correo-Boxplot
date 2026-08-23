@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useMailStore } from '../mail'
-import {
-  accountKeyFromString,
-  jmapMailboxIdFromString,
-  scopedMailboxId,
-} from '../../../domain/ids'
+import { jmapMailboxIdFromString, scopedMailboxId } from '../../../domain/ids'
 import { DEMO_ACCOUNT_KEY } from '../../mock-data'
 
 describe('useMailStore', () => {

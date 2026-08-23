@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useMailStore } from '../../app/stores/mail'
 import { useComposerStore } from '../../app/stores/composer'
+import { useRuntimeStore } from '../../app/stores/runtime'
 import {
   accountKeyFromString,
   jmapMailboxIdFromString,
@@ -10,6 +11,7 @@ import {
 
 const mailStore = useMailStore()
 const composerStore = useComposerStore()
+const runtimeStore = useRuntimeStore()
 
 const defaultAccount = accountKeyFromString('juan@correo.local')
 
@@ -21,6 +23,10 @@ onMounted(() => {
     mailStore.selectMailbox(
       scopedMailboxId(defaultAccount, jmapMailboxIdFromString('inbox')),
     )
+  }
+  // Initialize runtime state as local ready
+  if (runtimeStore.local === 'opening') {
+    runtimeStore.setLocal('ready')
   }
 })
 
@@ -69,6 +75,18 @@ const accountLabel = computed(() => {
   return mailStore.selectedAccountKey
     ? String(mailStore.selectedAccountKey)
     : 'Cuenta activa'
+})
+
+const runtimeStatusText = computed(() => {
+  if (runtimeStore.local === 'error') return 'Error de almacenamiento'
+  if (runtimeStore.connectivity === 'online') return 'En línea'
+  return 'Local / Sin conexión'
+})
+
+const runtimeDotClass = computed(() => {
+  if (runtimeStore.local === 'error') return 'dot--error'
+  if (runtimeStore.connectivity === 'online') return 'dot--online'
+  return 'dot--offline'
 })
 </script>
 
@@ -232,36 +250,48 @@ const accountLabel = computed(() => {
       </button>
     </nav>
 
-    <div class="mailbox-sidebar__account">
-      <div class="mailbox-sidebar__account-avatar">
-        {{ accountLabel.slice(0, 1).toUpperCase() }}
+    <div class="mailbox-sidebar__footer">
+      <div class="mailbox-sidebar__runtime-status">
+        <span
+          class="mailbox-sidebar__status-dot"
+          :class="runtimeDotClass"
+        ></span>
+        <span class="mailbox-sidebar__status-text">{{
+          runtimeStatusText
+        }}</span>
       </div>
-      <div class="mailbox-sidebar__account-info">
-        <span class="mailbox-sidebar__account-name">Mi Cuenta</span>
-        <span class="mailbox-sidebar__account-email">{{ accountLabel }}</span>
-      </div>
-      <button
-        class="mailbox-sidebar__reset-btn"
-        type="button"
-        title="Restablecer datos demo originales"
-        @click="mailStore.resetToDemoDefaults()"
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+
+      <div class="mailbox-sidebar__account">
+        <div class="mailbox-sidebar__account-avatar">
+          {{ accountLabel.slice(0, 1).toUpperCase() }}
+        </div>
+        <div class="mailbox-sidebar__account-info">
+          <span class="mailbox-sidebar__account-name">Mi Cuenta</span>
+          <span class="mailbox-sidebar__account-email">{{ accountLabel }}</span>
+        </div>
+        <button
+          class="mailbox-sidebar__reset-btn"
+          type="button"
+          title="Restablecer datos demo originales"
+          @click="mailStore.resetToDemoDefaults()"
         >
-          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-          <path d="M21 3v5h-5" />
-          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-          <path d="M3 21v-5h5" />
-        </svg>
-      </button>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+            <path d="M3 21v-5h5" />
+          </svg>
+        </button>
+      </div>
     </div>
   </aside>
 </template>
