@@ -65,3 +65,23 @@ export interface RawJmapChangesResponse {
   updated: string[]
   destroyed: string[]
 }
+
+export interface RawJmapEmailBodyPart {
+  partId?: string
+  blobId?: string
+  size?: number
+  name?: string
+  type: string
+  charset?: string
+  disposition?: string
+  cid?: string
+  language?: string[]
+  location?: string
+  subParts?: RawJmapEmailBodyPart[]
+}
+
+export interface RawJmapEmailBodyValue {
+  value: string
+  isEncodingProblem?: boolean
+  isTruncated?: boolean
+}
