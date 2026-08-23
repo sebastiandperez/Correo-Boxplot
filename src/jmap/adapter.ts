@@ -22,15 +22,23 @@ import { patchEmailKeywords, patchEmailMailboxes } from './mail/mutations'
 import { submitEmail } from './mail/submission'
 import type { SendIntent } from '../domain/send-intent'
 
+import { connectSSE } from './transport/sse'
+
 export class JamClientAdapter implements JmapClient {
   private readonly jam: JamClient
+  private readonly auth: AuthConfig
+  private eventSourceUrl: string | null = null
 
   constructor(sessionUrl: string, auth: AuthConfig) {
     this.jam = createJamClient(sessionUrl, auth)
+    this.auth = auth
   }
 
   async openSession(): Promise<JmapSession> {
-    return discoverSession(this.jam)
+    const session = await discoverSession(this.jam)
+    // Extract eventSourceUrl from jmap-jam's session
+    this.eventSourceUrl = (await this.jam.session)?.eventSourceUrl || null
+    return session
   }
 
   async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
@@ -101,7 +109,14 @@ export class JamClientAdapter implements JmapClient {
     return submitEmail(this.jam, accountId, intent, rawIdentityId)
   }
 
-  onStateChange(_callback: (change: JmapStateChange) => void): void {
-    throw new Error('Method not implemented yet.')
+  onStateChange(callback: (change: JmapStateChange) => void): void {
+    if (!this.eventSourceUrl) {
+      throw new Error('Session has not been opened yet, eventSourceUrl is missing')
+    }
+    connectSSE({
+      eventSourceUrl: this.eventSourceUrl,
+      auth: this.auth,
+      onStateChange: callback,
+    })
   }
 }
