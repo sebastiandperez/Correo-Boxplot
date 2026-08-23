@@ -11,23 +11,30 @@ import type {
   JmapDelta,
   JmapEmailBody,
   JmapStateChange,
+  JmapQueryResult,
+  JmapQueryChanges,
+  JmapIdentity,
+  JmapEmailDraft,
+  JmapAttachment,
 } from './types'
 
 import { getMailboxes } from './mail/mailbox'
 import { queryEmails } from './mail/email-query'
 import { getEmails } from './mail/email-get'
 import { getEmailChanges } from './mail/email-changes'
+import { getEmailQueryChanges } from './mail/email-query-changes'
 import { extractEmailBody } from './normalizers/body-normalizer'
+import { extractAttachments } from './normalizers/attachment-normalizer'
 import { patchEmailKeywords, patchEmailMailboxes } from './mail/mutations'
 import { submitEmail } from './mail/submission'
-import type { SendIntent } from '../domain/send-intent'
+import { getIdentities } from './mail/identity'
 
-import { connectSSE } from './transport/sse'
+import { connectWebSocket } from './transport/websocket'
 
 export class JamClientAdapter implements JmapClient {
   private readonly jam: JamClient
   private readonly auth: AuthConfig
-  private eventSourceUrl: string | null = null
+  private sessionData: JmapSession | null = null
 
   constructor(sessionUrl: string, auth: AuthConfig) {
     this.jam = createJamClient(sessionUrl, auth)
@@ -36,20 +43,37 @@ export class JamClientAdapter implements JmapClient {
 
   async openSession(): Promise<JmapSession> {
     const session = await discoverSession(this.jam)
-    // Extract eventSourceUrl from jmap-jam's session
-    this.eventSourceUrl = (await this.jam.session)?.eventSourceUrl || null
+    this.sessionData = session
     return session
+  }
+
+  private get apiUrl(): string {
+    if (!this.sessionData?.apiUrl) {
+      throw new Error('Session has not been opened or apiUrl is missing')
+    }
+    return this.sessionData.apiUrl
+  }
+
+  private get eventSourceUrl(): string {
+    if (!this.sessionData?.eventSourceUrl) {
+      throw new Error('Session has not been opened or eventSourceUrl is missing')
+    }
+    return this.sessionData.eventSourceUrl
   }
 
   async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
     return getMailboxes(this.jam, accountId)
   }
 
+  async getIdentities(accountId: string): Promise<JmapIdentity[]> {
+    return getIdentities(this.jam, accountId)
+  }
+
   async queryEmails(
     accountId: string,
     mailboxId: string,
     filter?: unknown,
-  ): Promise<string[]> {
+  ): Promise<JmapQueryResult> {
     return queryEmails(this.jam, accountId, mailboxId, filter)
   }
 
@@ -64,7 +88,19 @@ export class JamClientAdapter implements JmapClient {
     return getEmailChanges(this.jam, accountId, sinceState)
   }
 
-  // --- The following methods are stubs to satisfy JmapClient, to be implemented in C-05 through C-07 ---
+  async getEmailQueryChanges(
+    accountId: string,
+    mailboxId: string,
+    sinceQueryState: string,
+  ): Promise<JmapQueryChanges> {
+    return getEmailQueryChanges(
+      this.apiUrl,
+      this.auth,
+      accountId,
+      mailboxId,
+      sinceQueryState,
+    )
+  }
 
   async getEmailBody(
     accountId: string,
@@ -110,9 +146,6 @@ export class JamClientAdapter implements JmapClient {
       )
     }
 
-    // Since our interface JmapClient currently only returns JmapEmailBody,
-    // we extract the body. Attachments can be extracted by consumers if we expand the interface,
-    // or we can attach them to a compound type if needed. For now, we fulfill the JmapEmailBody interface.
     const emailBody = extractEmailBody(emailId, bodyStructure, bodyValues)
 
     if (!emailBody) {
@@ -126,12 +159,58 @@ export class JamClientAdapter implements JmapClient {
     return emailBody
   }
 
+  async getEmailAttachments(
+    accountId: string,
+    emailId: string,
+  ): Promise<JmapAttachment[]> {
+    let response
+    try {
+      const [result] = await this.jam.request([
+        'Email/get',
+        {
+          accountId,
+          ids: [emailId],
+          properties: ['bodyStructure'],
+        },
+      ])
+      response = result
+    } catch (err: unknown) {
+      throw new JmapMethodError(
+        'Email/get (attachments)',
+        'networkOrServerFail',
+        err instanceof Error ? err.message : String(err),
+      )
+    }
+
+    const list = response.list
+    if (!list || list.length === 0) {
+      throw new JmapMethodError(
+        'Email/get (attachments)',
+        'notFound',
+        'Email not found',
+      )
+    }
+
+    const rawEmail = list[0]
+    const bodyStructure = rawEmail.bodyStructure
+
+    if (!bodyStructure) {
+      throw new JmapMethodError(
+        'Email/get (attachments)',
+        'missingBodyStructure',
+        'Email lacks bodyStructure',
+      )
+    }
+
+    return extractAttachments(bodyStructure)
+  }
+
   async updateEmailKeywords(
     accountId: string,
     emailId: string,
     keywords: Record<string, boolean>,
   ): Promise<void> {
-    return patchEmailKeywords(this.jam, accountId, emailId, keywords)
+    return patchEmailKeywords(this.apiUrl, this.auth, accountId, emailId, keywords)
   }
 
   async updateEmailMailboxes(
@@ -139,25 +218,20 @@ export class JamClientAdapter implements JmapClient {
     emailId: string,
     mailboxIds: Record<string, boolean>,
   ): Promise<void> {
-    return patchEmailMailboxes(this.jam, accountId, emailId, mailboxIds)
+    return patchEmailMailboxes(this.apiUrl, this.auth, accountId, emailId, mailboxIds)
   }
 
   async submitEmail(
     accountId: string,
-    intent: SendIntent,
+    draft: JmapEmailDraft,
     rawIdentityId: string,
   ): Promise<{ emailId: string; submissionId: string }> {
-    return submitEmail(this.jam, accountId, intent, rawIdentityId)
+    return submitEmail(this.apiUrl, this.auth, accountId, draft, rawIdentityId)
   }
 
-  onStateChange(callback: (change: JmapStateChange) => void): void {
-    if (!this.eventSourceUrl) {
-      throw new Error(
-        'Session has not been opened yet, eventSourceUrl is missing',
-      )
-    }
-    connectSSE({
-      eventSourceUrl: this.eventSourceUrl,
+  onStateChange(callback: (change: JmapStateChange) => void): () => void {
+    return connectWebSocket({
+      wsUrl: this.eventSourceUrl, // Using eventSourceUrl as wsUrl since Stalwart provides the WS URL there
       auth: this.auth,
       onStateChange: callback,
     })

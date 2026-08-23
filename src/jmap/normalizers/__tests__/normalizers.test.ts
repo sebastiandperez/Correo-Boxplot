@@ -83,6 +83,7 @@ describe('JMAP Normalizers', () => {
           },
           {
             type: 'image/jpeg',
+            partId: 'p3',
             blobId: 'b1',
             size: 1000,
             cid: 'image001',
@@ -90,6 +91,7 @@ describe('JMAP Normalizers', () => {
           },
           {
             type: 'application/pdf',
+            partId: 'p4',
             blobId: 'b2',
             size: 5000,
             name: 'document.pdf',
@@ -109,15 +111,17 @@ describe('JMAP Normalizers', () => {
       expect(attachments).toHaveLength(3)
 
       const inlineImage = attachments.find((a) => a.blobId === 'b1')
-      expect(inlineImage?.isInline).toBe(true)
+      expect(inlineImage?.disposition).toBe('inline')
       expect(inlineImage?.cid).toBe('image001')
+      expect(inlineImage?.partId).toBe('p3')
 
       const pdf = attachments.find((a) => a.blobId === 'b2')
       expect(pdf?.name).toBe('document.pdf')
-      expect(pdf?.isInline).toBe(false)
+      expect(pdf?.disposition).toBe('attachment')
+      expect(pdf?.mediaType).toBe('application/pdf')
 
       const unknown = attachments.find((a) => a.blobId === 'b3')
-      expect(unknown?.isInline).toBe(false)
+      expect(unknown?.disposition).toBeNull()
     })
   })
 })

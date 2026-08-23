@@ -1,21 +1,13 @@
-import type { JamClient } from 'jmap-jam'
+import type { AuthConfig } from '../transport/http'
+import { fetchJmapRaw } from '../transport/http'
 import { JmapMethodError } from '../errors'
 import type { QueryOptions } from './email-query'
 import type { JmapEmail } from '../types'
 import type { RawJmapEmail, RawJmapEmailAddress } from './types-raw'
 
-type BatchGetResponse = Readonly<{
-  list?: readonly RawJmapEmail[]
-}>
-
-type BatchResponseEntry = readonly [string, BatchGetResponse, string]
-
-type BatchRequest = (
-  methodCalls: readonly unknown[],
-) => Promise<readonly BatchResponseEntry[]>
-
 export async function queryAndGetEmails(
-  jam: JamClient,
+  apiUrl: string,
+  auth: AuthConfig,
   accountId: string,
   mailboxId: string,
   filter?: unknown,
@@ -69,16 +61,13 @@ export async function queryAndGetEmails(
       },
       'g1',
     ],
-  ]
+  ] as const
 
   let requestResult
   try {
-    const requestBatch = jam.request.bind(jam) as unknown as BatchRequest
-    const response = await requestBatch(methodCalls)
-    // response is an array of method responses, each like [name, result, clientId]
-    // We want the 'g1' result
+    const response = await fetchJmapRaw(apiUrl, auth, methodCalls)
     const getResponseEntry = response.find((entry) => entry[2] === 'g1')
-    requestResult = getResponseEntry ? getResponseEntry[1] : {}
+    requestResult = getResponseEntry ? (getResponseEntry[1] as { list?: RawJmapEmail[] }) : {}
   } catch (err: unknown) {
     throw new JmapMethodError(
       'Email/query+get',
@@ -90,13 +79,6 @@ export async function queryAndGetEmails(
   const list = requestResult.list || []
 
   return list.map((raw) => {
-    const keywordsSet = new Set<string>()
-    if (raw.keywords) {
-      for (const [kw, isSet] of Object.entries(raw.keywords)) {
-        if (isSet) keywordsSet.add(kw)
-      }
-    }
-
     const mapAddresses = (
       rawAddrs: readonly RawJmapEmailAddress[] | null | undefined,
     ) => {
@@ -124,7 +106,7 @@ export async function queryAndGetEmails(
       size: raw.size ?? 0,
       preview: raw.preview ?? '',
       hasAttachment: raw.hasAttachment ?? false,
-      keywords: Object.freeze(keywordsSet),
+      keywords: Object.freeze({ ...(raw.keywords || {}) }),
     })
   })
 }

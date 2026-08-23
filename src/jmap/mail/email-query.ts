@@ -1,10 +1,7 @@
 import type { JamClient } from 'jmap-jam'
-import { JmapMethodError } from '../errors'
+import type { JmapQueryResult } from '../types'
 import type { RawJmapQueryResponse } from './types-raw'
-
-type EmailQueryRequest = (
-  call: readonly unknown[],
-) => Promise<readonly [RawJmapQueryResponse]>
+import { JmapMethodError } from '../errors'
 
 export interface QueryOptions {
   position?: number
@@ -19,27 +16,28 @@ export async function queryEmails(
   mailboxId: string,
   filter?: unknown,
   options?: QueryOptions,
-): Promise<string[]> {
+): Promise<JmapQueryResult> {
   const queryFilter =
     typeof filter === 'object' && filter !== null
       ? { inMailbox: mailboxId, ...filter }
       : { inMailbox: mailboxId }
 
-  const args: Record<string, unknown> = {
+  const requestBody: Record<string, unknown> = {
     accountId,
     filter: queryFilter,
   }
 
-  if (options?.position !== undefined) args.position = options.position
-  if (options?.limit !== undefined) args.limit = options.limit
-  if (options?.anchor !== undefined) args.anchor = options.anchor
-  if (options?.anchorOffset !== undefined)
-    args.anchorOffset = options.anchorOffset
+  if (options?.position !== undefined) requestBody.position = options.position
+  if (options?.limit !== undefined) requestBody.limit = options.limit
+  if (options?.anchor !== undefined) requestBody.anchor = options.anchor
+  if (options?.anchorOffset !== undefined) requestBody.anchorOffset = options.anchorOffset
 
   let response: RawJmapQueryResponse
   try {
-    const requestQuery = jam.request.bind(jam) as unknown as EmailQueryRequest
-    const [result] = await requestQuery(['Email/query', args])
+    const [result] = await jam.request([
+      'Email/query',
+      requestBody,
+    ])
     response = result as RawJmapQueryResponse
   } catch (err: unknown) {
     throw new JmapMethodError(
@@ -49,5 +47,11 @@ export async function queryEmails(
     )
   }
 
-  return response.ids || []
+  return {
+    ids: response.ids || [],
+    queryState: response.queryState || '',
+    total: response.total ?? 0,
+    position: response.position ?? 0,
+    canCalculateChanges: response.canCalculateChanges ?? false,
+  }
 }

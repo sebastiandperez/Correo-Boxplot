@@ -52,8 +52,26 @@ class FakeJmapClient implements JmapClient {
     ]
   }
 
-  async queryEmails(): Promise<string[]> {
-    return ['email-1', 'email-2']
+  async queryEmails(): Promise<import('../types').JmapQueryResult> {
+    return {
+      ids: ['email-1', 'email-2'],
+      queryState: 'state-1',
+      total: 2,
+      position: 0,
+      canCalculateChanges: true,
+    }
+  }
+
+  async getEmailQueryChanges(): Promise<import('../types').JmapQueryChanges> {
+    throw new Error('Method not implemented.')
+  }
+
+  async getIdentities(): Promise<import('../types').JmapIdentity[]> {
+    throw new Error('Method not implemented.')
+  }
+
+  async getEmailAttachments(): Promise<import('../types').JmapAttachment[]> {
+    throw new Error('Method not implemented.')
   }
 
   async getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
@@ -74,7 +92,7 @@ class FakeJmapClient implements JmapClient {
       size: 1024,
       preview: 'Hello world',
       hasAttachment: false,
-      keywords: new Set(['$seen']),
+      keywords: { '$seen': true },
     }))
   }
 
@@ -106,9 +124,9 @@ class FakeJmapClient implements JmapClient {
     throw new Error('Method not implemented.')
   }
 
-  onStateChange(callback: (change: JmapStateChange) => void): void {
+  onStateChange(callback: (change: JmapStateChange) => void): () => void {
     // Fake implementation that simulates an immediate state change
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       callback({
         changed: {
           'account-1': {
@@ -117,6 +135,7 @@ class FakeJmapClient implements JmapClient {
         },
       })
     }, 10)
+    return () => clearTimeout(timer)
   }
 }
 
@@ -147,7 +166,7 @@ describe('FakeJmapClient contract tests', () => {
     const client = new FakeJmapClient()
     const emails = await client.getEmails('account-1', ['email-1'])
     expect(emails).toHaveLength(1)
-    expect((emails[0].keywords as Set<string>).has('$seen')).toBe(true)
+    expect(emails[0].keywords['$seen']).toBe(true)
   })
 
   it('should trigger state change callback', async () => {

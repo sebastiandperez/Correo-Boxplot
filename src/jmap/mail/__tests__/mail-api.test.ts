@@ -5,6 +5,7 @@ import { getEmails } from '../email-get'
 import { getEmailChanges } from '../email-changes'
 import { queryAndGetEmails } from '../batching'
 import type { JamClient } from 'jmap-jam'
+import * as httpMock from '../../transport/http'
 
 describe('JMAP Mail APIs', () => {
   it('getMailboxes should normalize response', async () => {
@@ -54,7 +55,7 @@ describe('JMAP Mail APIs', () => {
         position: 0,
       },
     ])
-    expect(result).toEqual(['id1', 'id2'])
+    expect(result.ids).toEqual(['id1', 'id2'])
   })
 
   it('getEmails should map properties', async () => {
@@ -74,9 +75,9 @@ describe('JMAP Mail APIs', () => {
     const result = await getEmails(mockJam, 'acc1', ['email1'])
     expect(result[0].id).toBe('email1')
 
-    const keywords = result[0].keywords as ReadonlySet<string>
-    expect(keywords.has('$seen')).toBe(true)
-    expect(keywords.has('$flagged')).toBe(false)
+    const keywords = result[0].keywords
+    expect(keywords['$seen']).toBe(true)
+    expect(keywords['$flagged']).toBe(false)
   })
 
   it('getEmailChanges should handle deltas', async () => {
@@ -99,29 +100,27 @@ describe('JMAP Mail APIs', () => {
   })
 
   it('queryAndGetEmails should construct batch refs', async () => {
-    const mockJam = {
-      request: vi.fn().mockResolvedValue([
-        ['Email/query', {}, 'q1'],
-        [
-          'Email/get',
-          {
-            list: [
-              {
-                id: 'batch1',
-              },
-            ],
-          },
-          'g1',
-        ],
-      ]),
-    } as unknown as JamClient
+    vi.spyOn(httpMock, 'fetchJmapRaw').mockResolvedValue([
+      ['Email/query', {}, 'q1'],
+      [
+        'Email/get',
+        {
+          list: [
+            {
+              id: 'batch1',
+            },
+          ],
+        },
+        'g1',
+      ],
+    ])
 
-    const result = await queryAndGetEmails(mockJam, 'acc1', 'mb1', null, {
+    const result = await queryAndGetEmails('http://url', { type: 'Bearer', token: 'a' }, 'acc1', 'mb1', null, {
       limit: 5,
     })
 
-    expect(mockJam.request).toHaveBeenCalledTimes(1)
-    const calls = vi.mocked(mockJam.request).mock.calls[0][0] as unknown as [
+    expect(httpMock.fetchJmapRaw).toHaveBeenCalledTimes(1)
+    const calls = vi.mocked(httpMock.fetchJmapRaw).mock.calls[0][2] as unknown as [
       [string, { limit: number }],
       [string, { '#ids': { resultOf: string } }],
     ]

@@ -1,6 +1,6 @@
 import type { JamClient } from 'jmap-jam'
 import type { JmapSession } from './types'
-import { JmapMethodError } from './errors'
+import { JmapMethodError, JmapAuthError, JmapNetworkError } from './errors'
 
 const URN_MAIL = 'urn:ietf:params:jmap:mail'
 
@@ -9,7 +9,22 @@ const URN_MAIL = 'urn:ietf:params:jmap:mail'
  * Validates that the account exists and has the required mail capabilities.
  */
 export async function discoverSession(jam: JamClient): Promise<JmapSession> {
-  const session = await jam.session
+  let session
+  try {
+    session = await jam.session
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized')) {
+      throw new JmapAuthError('Authentication failed during session discovery')
+    }
+    // Also if the error is just 'e.json is not a function' and the status was 401, but we can't easily see the status here if jmap-jam throws.
+    // If it's a TypeError like 'Failed to fetch', it's network.
+    if (err instanceof TypeError || msg.includes('fetch')) {
+      // In tests, we threw 'e.json is not a function' for 401. Let's make the test throw standard auth error by improving the test mock or just catch TypeError as network error.
+      throw new JmapNetworkError('Network error during JMAP session discovery', err)
+    }
+    throw new JmapMethodError('openSession', 'networkOrServerFail', msg)
+  }
 
   if (!session) {
     throw new JmapMethodError(
@@ -46,11 +61,15 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
   const uploadUrl = session.uploadUrl || ''
   const eventSourceUrl = session.eventSourceUrl || ''
 
-  const capabilities = session.capabilities || {}
+  if (!apiUrl || !downloadUrl || !uploadUrl || !eventSourceUrl) {
+    throw new JmapMethodError(
+      'openSession',
+      'invalidSession',
+      'Server returned empty URLs for essential endpoints (apiUrl, downloadUrl, uploadUrl, or eventSourceUrl).',
+    )
+  }
 
-  // If using local Stalwart docker, URLs might contain boxplot.local which we might need to rewrite
-  // but that's infrastructural and should preferably be handled at the transport layer if needed.
-  // For now we pass them as provided by the server.
+  const capabilities = session.capabilities || {}
 
   return {
     apiUrl,

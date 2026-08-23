@@ -1,22 +1,24 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { patchEmailKeywords, patchEmailMailboxes } from '../mutations'
-import type { JamClient } from 'jmap-jam'
 import { JmapMethodError } from '../../errors'
+import * as httpMock from '../../transport/http'
 
 describe('JMAP Mutations', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
   describe('patchEmailKeywords', () => {
     it('should send an update patch for keywords', async () => {
-      const mockJam = {
-        request: vi.fn().mockResolvedValue([{}]),
-      } as unknown as JamClient
+      vi.spyOn(httpMock, 'fetchJmapRaw').mockResolvedValue([['Email/set', {}, 'e1']])
 
-      await patchEmailKeywords(mockJam, 'acc1', 'email1', {
+      await patchEmailKeywords('http://url', { type: 'Bearer', token: 'a' }, 'acc1', 'email1', {
         $seen: true,
         $flagged: false,
       })
 
-      expect(mockJam.request).toHaveBeenCalledTimes(1)
-      const call = vi.mocked(mockJam.request).mock.calls[0][0] as unknown as [
+      expect(httpMock.fetchJmapRaw).toHaveBeenCalledTimes(1)
+      const call = vi.mocked(httpMock.fetchJmapRaw).mock.calls[0][2][0] as unknown as [
         string,
         {
           update: Record<string, { keywords: Record<string, boolean> }>
@@ -28,39 +30,39 @@ describe('JMAP Mutations', () => {
     })
 
     it('should throw JmapMethodError on stateMismatch', async () => {
-      const mockJam = {
-        request: vi.fn().mockResolvedValue([
+      vi.spyOn(httpMock, 'fetchJmapRaw').mockResolvedValue([
+        [
+          'Email/set',
           {
             notUpdated: {
               email1: { type: 'stateMismatch', description: 'mismatch' },
             },
           },
-        ]),
-      } as unknown as JamClient
+          'e1',
+        ],
+      ])
 
       await expect(
-        patchEmailKeywords(mockJam, 'acc1', 'email1', { $seen: true }),
+        patchEmailKeywords('http://url', { type: 'Bearer', token: 'a' }, 'acc1', 'email1', { $seen: true }),
       ).rejects.toThrowError(JmapMethodError)
 
       await expect(
-        patchEmailKeywords(mockJam, 'acc1', 'email1', { $seen: true }),
+        patchEmailKeywords('http://url', { type: 'Bearer', token: 'a' }, 'acc1', 'email1', { $seen: true }),
       ).rejects.toMatchObject({ type: 'stateMismatch' })
     })
   })
 
   describe('patchEmailMailboxes', () => {
     it('should send an update patch for mailboxIds', async () => {
-      const mockJam = {
-        request: vi.fn().mockResolvedValue([{}]),
-      } as unknown as JamClient
+      vi.spyOn(httpMock, 'fetchJmapRaw').mockResolvedValue([['Email/set', {}, 'e1']])
 
-      await patchEmailMailboxes(mockJam, 'acc1', 'email1', {
+      await patchEmailMailboxes('http://url', { type: 'Bearer', token: 'a' }, 'acc1', 'email1', {
         mbx1: true,
         mbx2: false,
       })
 
-      expect(mockJam.request).toHaveBeenCalledTimes(1)
-      const call = vi.mocked(mockJam.request).mock.calls[0][0] as unknown as [
+      expect(httpMock.fetchJmapRaw).toHaveBeenCalledTimes(1)
+      const call = vi.mocked(httpMock.fetchJmapRaw).mock.calls[0][2][0] as unknown as [
         string,
         {
           update: Record<string, { mailboxIds: Record<string, boolean> }>
