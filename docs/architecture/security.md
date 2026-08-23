@@ -119,7 +119,7 @@ Logout y expiración eliminan la referencia en memoria y detienen nuevas llamada
 
 En el primer provisioning, Rust genera una DEK criptográficamente aleatoria de 32 bytes. La guarda mediante el secure store del sistema operativo y la aplica a SQLCipher antes de cualquier acceso a la base.
 
-La baseline nativa usa `rusqlite 0.40.2` con feature `sqlcipher`; el runtime local verificado sigue en SQLCipher `4.14.0` community/SQLite `3.51.3`, mientras el artefacto objetivo exige SQLCipher `4.17.0`/SQLite `3.53.3`. Ese provisioning cross-platform sigue **OPEN**. `bundled-sqlcipher` y SQLite plaintext están prohibidos como atajos de bootstrap.
+La baseline nativa conserva `rusqlite 0.40.2` y selecciona `bundled-sqlcipher-vendored-openssl` mediante el patch local y auditable de `libsqlite3-sys 0.38.2`. Linux usa source SQLCipher `4.17.0 community`/SQLite `3.53.3` y OpenSSL vendored, con identidad runtime exacta fail-closed; no descubre SQLCipher/OpenSSL del host ni admite SQLite plaintext. La aceptación Windows/MSVC del mismo source pin permanece pendiente en host Windows real.
 
 Invariantes:
 

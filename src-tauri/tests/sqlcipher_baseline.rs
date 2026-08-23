@@ -62,25 +62,13 @@ fn sqlcipher_runtime_is_available_and_supported() -> TestResult {
     println!("SQLCipher: {cipher_version}");
     println!("SQLite: {sqlite_version}");
 
-    assert!(
-        !cipher_version.trim().is_empty(),
-        "PRAGMA cipher_version returned an empty value"
-    );
-
-    let major_version = cipher_version
-        .trim()
-        .split('.')
-        .next()
-        .and_then(|component| component.parse::<u8>().ok());
     assert_eq!(
-        major_version,
-        Some(4),
-        "development requires an external SQLCipher 4.x runtime, detected: {cipher_version}"
+        cipher_version, "4.17.0 community",
+        "the native package must use the pinned SQLCipher runtime"
     );
-
-    assert!(
-        !sqlite_version.trim().is_empty(),
-        "SELECT sqlite_version() returned an empty value"
+    assert_eq!(
+        sqlite_version, "3.53.3",
+        "the native package must use the pinned SQLite baseline"
     );
 
     Ok(())

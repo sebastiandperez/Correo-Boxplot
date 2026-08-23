@@ -10,6 +10,36 @@ use zeroize::Zeroizing;
 
 use crate::{persistence::PersistenceError, security::Dek};
 
+pub(crate) const EXPECTED_SQLCIPHER_VERSION: &str = "4.17.0 community";
+pub(crate) const EXPECTED_SQLITE_VERSION: &str = "3.53.3";
+
+#[cfg(feature = "local-env-doctor")]
+pub(crate) fn native_database_runtime() -> Result<(String, String), PersistenceError> {
+    let connection = Connection::open_in_memory()?;
+    query_native_database_runtime(&connection)
+}
+
+fn query_native_database_runtime(
+    connection: &Connection,
+) -> Result<(String, String), PersistenceError> {
+    let sqlcipher = connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
+    let sqlite = connection.query_row("SELECT sqlite_version()", [], |row| row.get(0))?;
+    Ok((sqlcipher, sqlite))
+}
+
+fn assert_expected_native_runtime(connection: &Connection) -> Result<(), PersistenceError> {
+    let (sqlcipher, sqlite) = query_native_database_runtime(connection)?;
+    if native_runtime_matches(&sqlcipher, &sqlite) {
+        Ok(())
+    } else {
+        Err(PersistenceError::EncryptionUnavailable)
+    }
+}
+
+fn native_runtime_matches(sqlcipher: &str, sqlite: &str) -> bool {
+    sqlcipher == EXPECTED_SQLCIPHER_VERSION && sqlite == EXPECTED_SQLITE_VERSION
+}
+
 pub(crate) struct EncryptedDatabase {
     path: PathBuf,
     key: Dek,
@@ -32,9 +62,7 @@ impl EncryptedDatabase {
 
     pub fn runtime_versions(&self) -> Result<(String, String), PersistenceError> {
         let connection = self.connect()?;
-        let cipher = connection.query_row("PRAGMA cipher_version", [], |row| row.get(0))?;
-        let sqlite = connection.query_row("SELECT sqlite_version()", [], |row| row.get(0))?;
-        Ok((cipher, sqlite))
+        query_native_database_runtime(&connection)
     }
 }
 
@@ -53,12 +81,7 @@ fn open_keyed_connection(path: &Path, key: &[u8; 32]) -> Result<Connection, Pers
     key_pragma.push_str("'\";");
     connection.execute_batch(key_pragma.as_str())?;
 
-    let cipher: Option<String> = connection
-        .query_row("PRAGMA cipher_version", [], |row| row.get(0))
-        .optional()?;
-    if cipher.as_deref().is_none_or(str::is_empty) {
-        return Err(PersistenceError::EncryptionUnavailable);
-    }
+    assert_expected_native_runtime(&connection)?;
 
     // Force key verification before any migration or schema access.
     connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
@@ -73,4 +96,16 @@ fn open_keyed_connection(path: &Path, key: &[u8; 32]) -> Result<Connection, Pers
     Ok(connection)
 }
 
-use rusqlite::OptionalExtension;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_runtime_identity_is_exact_and_future_versions_do_not_auto_upgrade() {
+        assert!(native_runtime_matches("4.17.0 community", "3.53.3"));
+        assert!(!native_runtime_matches("4.17.1 community", "3.53.3"));
+        assert!(!native_runtime_matches("4.18.0 community", "3.53.3"));
+        assert!(!native_runtime_matches("4.17.0 community", "3.53.4"));
+        assert!(!native_runtime_matches("", "3.53.3"));
+    }
+}

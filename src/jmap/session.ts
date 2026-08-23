@@ -12,7 +12,11 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
   const session = await jam.session
 
   if (!session) {
-    throw new JmapMethodError('openSession', 'invalidSession', 'Failed to retrieve JMAP session object.')
+    throw new JmapMethodError(
+      'openSession',
+      'invalidSession',
+      'Failed to retrieve JMAP session object.',
+    )
   }
 
   // Find the primary account for mail
@@ -41,7 +45,7 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
   const downloadUrl = session.downloadUrl || ''
   const uploadUrl = session.uploadUrl || ''
   const eventSourceUrl = session.eventSourceUrl || ''
-  
+
   const capabilities = session.capabilities || {}
 
   // If using local Stalwart docker, URLs might contain boxplot.local which we might need to rewrite

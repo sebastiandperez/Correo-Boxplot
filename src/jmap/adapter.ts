@@ -45,7 +45,11 @@ export class JamClientAdapter implements JmapClient {
     return getMailboxes(this.jam, accountId)
   }
 
-  async queryEmails(accountId: string, mailboxId: string, filter?: unknown): Promise<string[]> {
+  async queryEmails(
+    accountId: string,
+    mailboxId: string,
+    filter?: unknown,
+  ): Promise<string[]> {
     return queryEmails(this.jam, accountId, mailboxId, filter)
   }
 
@@ -53,28 +57,45 @@ export class JamClientAdapter implements JmapClient {
     return getEmails(this.jam, accountId, emailIds)
   }
 
-  async getEmailChanges(accountId: string, sinceState: string): Promise<JmapDelta> {
+  async getEmailChanges(
+    accountId: string,
+    sinceState: string,
+  ): Promise<JmapDelta> {
     return getEmailChanges(this.jam, accountId, sinceState)
   }
 
   // --- The following methods are stubs to satisfy JmapClient, to be implemented in C-05 through C-07 ---
 
-  async getEmailBody(accountId: string, emailId: string): Promise<JmapEmailBody> {
+  async getEmailBody(
+    accountId: string,
+    emailId: string,
+  ): Promise<JmapEmailBody> {
     let response
     try {
-      const requestResult = await this.jam.request(['Email/get', {
-        accountId,
-        ids: [emailId],
-        properties: ['bodyStructure', 'bodyValues']
-      } as any]) // Bypassing Strict Jmap-jam typings
-      response = requestResult[0]
+      const [result] = await this.jam.request([
+        'Email/get',
+        {
+          accountId,
+          ids: [emailId],
+          properties: ['bodyStructure', 'bodyValues'],
+        },
+      ])
+      response = result
     } catch (err: unknown) {
-      throw new JmapMethodError('Email/get (body)', 'networkOrServerFail', err instanceof Error ? err.message : String(err))
+      throw new JmapMethodError(
+        'Email/get (body)',
+        'networkOrServerFail',
+        err instanceof Error ? err.message : String(err),
+      )
     }
 
-    const list = (response as any).list
+    const list = response.list
     if (!list || list.length === 0) {
-      throw new JmapMethodError('Email/get (body)', 'notFound', 'Email not found')
+      throw new JmapMethodError(
+        'Email/get (body)',
+        'notFound',
+        'Email not found',
+      )
     }
 
     const rawEmail = list[0]
@@ -82,36 +103,58 @@ export class JamClientAdapter implements JmapClient {
     const bodyValues = rawEmail.bodyValues || {}
 
     if (!bodyStructure) {
-      throw new JmapMethodError('Email/get (body)', 'missingBodyStructure', 'Email lacks bodyStructure')
+      throw new JmapMethodError(
+        'Email/get (body)',
+        'missingBodyStructure',
+        'Email lacks bodyStructure',
+      )
     }
 
-    // Since our interface JmapClient currently only returns JmapEmailBody, 
+    // Since our interface JmapClient currently only returns JmapEmailBody,
     // we extract the body. Attachments can be extracted by consumers if we expand the interface,
     // or we can attach them to a compound type if needed. For now, we fulfill the JmapEmailBody interface.
     const emailBody = extractEmailBody(emailId, bodyStructure, bodyValues)
-    
+
     if (!emailBody) {
-      throw new JmapMethodError('Email/get (body)', 'invalidBody', 'Could not extract a valid HTML or Text body from the email.')
+      throw new JmapMethodError(
+        'Email/get (body)',
+        'invalidBody',
+        'Could not extract a valid HTML or Text body from the email.',
+      )
     }
 
     return emailBody
   }
 
-  async updateEmailKeywords(accountId: string, emailId: string, keywords: Record<string, boolean>): Promise<void> {
+  async updateEmailKeywords(
+    accountId: string,
+    emailId: string,
+    keywords: Record<string, boolean>,
+  ): Promise<void> {
     return patchEmailKeywords(this.jam, accountId, emailId, keywords)
   }
 
-  async updateEmailMailboxes(accountId: string, emailId: string, mailboxIds: Record<string, boolean>): Promise<void> {
+  async updateEmailMailboxes(
+    accountId: string,
+    emailId: string,
+    mailboxIds: Record<string, boolean>,
+  ): Promise<void> {
     return patchEmailMailboxes(this.jam, accountId, emailId, mailboxIds)
   }
 
-  async submitEmail(accountId: string, intent: SendIntent, rawIdentityId: string): Promise<{ emailId: string; submissionId: string }> {
+  async submitEmail(
+    accountId: string,
+    intent: SendIntent,
+    rawIdentityId: string,
+  ): Promise<{ emailId: string; submissionId: string }> {
     return submitEmail(this.jam, accountId, intent, rawIdentityId)
   }
 
   onStateChange(callback: (change: JmapStateChange) => void): void {
     if (!this.eventSourceUrl) {
-      throw new Error('Session has not been opened yet, eventSourceUrl is missing')
+      throw new Error(
+        'Session has not been opened yet, eventSourceUrl is missing',
+      )
     }
     connectSSE({
       eventSourceUrl: this.eventSourceUrl,

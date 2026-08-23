@@ -24,16 +24,17 @@ export class JmapMethodError extends JmapError {
 }
 
 export class JmapStateError extends JmapError {
-  constructor(
-    message = 'State mismatch or cannot calculate changes',
-  ) {
+  constructor(message = 'State mismatch or cannot calculate changes') {
     super(message)
     this.name = 'JmapStateError'
   }
 }
 
 export class JmapNetworkError extends JmapError {
-  constructor(message: string, public readonly originalError?: unknown) {
+  constructor(
+    message: string,
+    public readonly originalError?: unknown,
+  ) {
     super(message)
     this.name = 'JmapNetworkError'
   }

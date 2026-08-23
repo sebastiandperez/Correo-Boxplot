@@ -9,41 +9,41 @@
  * Run: JMAP_TEST_RECIPIENT=test@example.com pnpm spike:jmap src/jmap/spike/06-submission.ts
  */
 
-import { createClient, requireEnv, report } from './_config.ts';
+import { createClient, requireEnv, report } from './_config.ts'
 
 async function main(): Promise<void> {
-  const jam = createClient();
-  const accountId = await jam.getPrimaryAccount();
-  const testRecipient = requireEnv('JMAP_TEST_RECIPIENT');
+  const jam = createClient()
+  const accountId = await jam.getPrimaryAccount()
+  const testRecipient = requireEnv('JMAP_TEST_RECIPIENT')
 
   // 1. Find Drafts mailbox
-  const [mailboxes] = await jam.api.Mailbox.get({ accountId });
+  const [mailboxes] = await jam.api.Mailbox.get({ accountId })
   const drafts = mailboxes.list.find(
     (mb) => mb.role?.toLowerCase() === 'drafts',
-  );
+  )
 
   if (!drafts) {
-    report('JM-05', 'FAIL', 'Drafts mailbox not found.');
-    return;
+    report('JM-05', 'FAIL', 'Drafts mailbox not found.')
+    return
   }
 
   // 2. Find sender Identity
-  const [identities] = await jam.api.Identity.get({ accountId });
-  const senderIdentity = identities.list[0];
+  const [identities] = await jam.api.Identity.get({ accountId })
+  const senderIdentity = identities.list[0]
 
   if (!senderIdentity) {
-    report('JM-05', 'FAIL', 'No Identity found for the account.');
-    return;
+    report('JM-05', 'FAIL', 'No Identity found for the account.')
+    return
   }
 
-  console.log(`Sender identity: ${senderIdentity.email}`);
-  console.log(`Test recipient: ${testRecipient}`);
+  console.log(`Sender identity: ${senderIdentity.email}`)
+  console.log(`Test recipient: ${testRecipient}`)
 
   // 3. Create draft + submit in a single batched request
   //    We use request() / requestMany() with raw method calls to avoid
   //    jmap-jam's strict Email/set typing that requires fields we don't
   //    need for draft creation (size, isEncodingProblem, isTruncated).
-  const timestamp = new Date().toISOString();
+  const timestamp = new Date().toISOString()
 
   const [emailSetResult] = await jam.api.Email.set({
     accountId,
@@ -63,17 +63,21 @@ async function main(): Promise<void> {
         },
       },
     },
-  });
+  })
 
   const emailSetAny = emailSetResult as unknown as {
-    created?: Record<string, { id: string }>;
-    notCreated?: unknown;
-  };
-  const createdEmail = emailSetAny.created?.draft1;
+    created?: Record<string, { id: string }>
+    notCreated?: unknown
+  }
+  const createdEmail = emailSetAny.created?.draft1
 
   if (!createdEmail) {
-    report('JM-05', 'FAIL', `Email/set failed.\nErrors: ${JSON.stringify(emailSetAny.notCreated, null, 2)}`);
-    return;
+    report(
+      'JM-05',
+      'FAIL',
+      `Email/set failed.\nErrors: ${JSON.stringify(emailSetAny.notCreated, null, 2)}`,
+    )
+    return
   }
 
   // EmailSubmission/set — submit the draft sequentially using the real ID
@@ -85,28 +89,28 @@ async function main(): Promise<void> {
         identityId: senderIdentity.id,
       },
     },
-  });
+  })
 
-  console.log(`\nCreated email ID: ${createdEmail.id}`);
+  console.log(`\nCreated email ID: ${createdEmail.id}`)
 
   // 5. Validate EmailSubmission/set response
   const submissionAny = submissionResult as unknown as {
-    created?: Record<string, { id: string }>;
-    notCreated?: unknown;
-  };
-  const createdSubmission = submissionAny.created?.sub1;
+    created?: Record<string, { id: string }>
+    notCreated?: unknown
+  }
+  const createdSubmission = submissionAny.created?.sub1
 
   if (!createdSubmission) {
-    const errors = submissionAny.notCreated;
+    const errors = submissionAny.notCreated
     report(
       'JM-05',
       'FAIL',
       `EmailSubmission/set failed.\nEmail was created (${createdEmail.id}) but submission failed.\nErrors: ${JSON.stringify(errors, null, 2)}`,
-    );
-    return;
+    )
+    return
   }
 
-  console.log(`Submission ID: ${createdSubmission.id}`);
+  console.log(`Submission ID: ${createdSubmission.id}`)
 
   report(
     'JM-05',
@@ -118,10 +122,10 @@ async function main(): Promise<void> {
       `recipient: ${testRecipient}`,
       `subject: [SPIKE TEST] jmap-jam submission — ${timestamp}`,
     ].join('\n'),
-  );
+  )
 }
 
 main().catch((err: unknown) => {
-  console.error('Unhandled error:', err);
-  process.exit(1);
-});
+  console.error('Unhandled error:', err)
+  process.exit(1)
+})

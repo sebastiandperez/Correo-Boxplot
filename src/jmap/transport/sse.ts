@@ -21,17 +21,18 @@ export function connectSSE(options: SseOptions): () => void {
 
   async function start() {
     try {
-      const authHeader = options.auth.type === 'Basic' 
-        ? `Basic ${btoa(options.auth.token)}`
-        : `Bearer ${options.auth.token}`
+      const authHeader =
+        options.auth.type === 'Basic'
+          ? `Basic ${btoa(options.auth.token)}`
+          : `Bearer ${options.auth.token}`
 
       const response = await fetch(options.eventSourceUrl, {
         method: 'GET',
         headers: {
-          'Accept': 'text/event-stream',
-          'Authorization': authHeader
+          Accept: 'text/event-stream',
+          Authorization: authHeader,
         },
-        signal: abortController.signal
+        signal: abortController.signal,
       })
 
       if (!response.ok) {
@@ -52,7 +53,7 @@ export function connectSSE(options: SseOptions): () => void {
 
         buffer += decoder.decode(value, { stream: true })
         const events = buffer.split('\n\n')
-        
+
         // The last element is either an empty string (if it ended exactly with \n\n)
         // or a partial chunk. We leave it in the buffer.
         buffer = events.pop() || ''
@@ -76,12 +77,16 @@ export function connectSSE(options: SseOptions): () => void {
           if (eventType === 'state' && eventData) {
             try {
               const parsed = JSON.parse(eventData)
-              
+
               // Validate shape roughly to match JmapStateChange
-              if (parsed && typeof parsed === 'object' && parsed['@type'] === 'StateChange') {
+              if (
+                parsed &&
+                typeof parsed === 'object' &&
+                parsed['@type'] === 'StateChange'
+              ) {
                 options.onStateChange(parsed as JmapStateChange)
               }
-            } catch (err) {
+            } catch {
               // Ignore malformed JSON payloads to prevent crashing the worker
             }
           }

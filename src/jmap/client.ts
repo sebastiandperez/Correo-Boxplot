@@ -47,12 +47,20 @@ export interface JmapClient {
   /**
    * Updates keywords (e.g. read, flagged) for a specific email.
    */
-  updateEmailKeywords(accountId: string, emailId: string, keywords: Record<string, boolean>): Promise<void>
+  updateEmailKeywords(
+    accountId: string,
+    emailId: string,
+    keywords: Record<string, boolean>,
+  ): Promise<void>
 
   /**
    * Updates the mailboxes (folders) an email belongs to.
    */
-  updateEmailMailboxes(accountId: string, emailId: string, mailboxIds: Record<string, boolean>): Promise<void>
+  updateEmailMailboxes(
+    accountId: string,
+    emailId: string,
+    mailboxIds: Record<string, boolean>,
+  ): Promise<void>
 
   /**
    * Submits a draft email for sending.
