@@ -18,7 +18,9 @@ describe('JMAP Submission', () => {
 
   it('should successfully batch create and submit email', async () => {
     vi.spyOn(httpMock, 'fetchJmapRaw')
-      .mockResolvedValueOnce([['Mailbox/query', { ids: ['drafts-mbx-1'] }, 'm1']])
+      .mockResolvedValueOnce([
+        ['Mailbox/query', { ids: ['drafts-mbx-1'] }, 'm1'],
+      ])
       .mockResolvedValueOnce([
         ['Email/set', { created: { draft1: { id: 'real-email-id' } } }, 'e1'],
         [
@@ -28,7 +30,13 @@ describe('JMAP Submission', () => {
         ],
       ])
 
-    const result = await submitEmail('http://url', { type: 'Bearer', token: 'a' }, 'acc1', dummyDraft, 'raw-id-123')
+    const result = await submitEmail(
+      'http://url',
+      { type: 'Bearer', token: 'a' },
+      'acc1',
+      dummyDraft,
+      'raw-id-123',
+    )
 
     expect(result.emailId).toBe('real-email-id')
     expect(result.submissionId).toBe('real-sub-id')
@@ -54,7 +62,9 @@ describe('JMAP Submission', () => {
 
   it('should throw JmapMethodError if email creation is too large', async () => {
     vi.spyOn(httpMock, 'fetchJmapRaw')
-      .mockResolvedValueOnce([['Mailbox/query', { ids: ['drafts-mbx-1'] }, 'm1']])
+      .mockResolvedValueOnce([
+        ['Mailbox/query', { ids: ['drafts-mbx-1'] }, 'm1'],
+      ])
       .mockResolvedValueOnce([
         [
           'Email/set',
@@ -68,16 +78,30 @@ describe('JMAP Submission', () => {
         ['EmailSubmission/set', {}, 's1'], // Will fail downstream but Email/set fails first
       ])
 
-    const errorPromise = submitEmail('http://url', { type: 'Bearer', token: 'a' }, 'acc1', dummyDraft, 'raw-id-123')
+    const errorPromise = submitEmail(
+      'http://url',
+      { type: 'Bearer', token: 'a' },
+      'acc1',
+      dummyDraft,
+      'raw-id-123',
+    )
     await expect(errorPromise).rejects.toThrowError(JmapMethodError)
     await expect(errorPromise).rejects.toMatchObject({ type: 'tooLarge' })
   })
 
   it('should throw if Drafts mailbox is not found', async () => {
-    vi.spyOn(httpMock, 'fetchJmapRaw').mockResolvedValueOnce([['Mailbox/query', { ids: [] }, 'm1']])
+    vi.spyOn(httpMock, 'fetchJmapRaw').mockResolvedValueOnce([
+      ['Mailbox/query', { ids: [] }, 'm1'],
+    ])
 
     await expect(
-      submitEmail('http://url', { type: 'Bearer', token: 'a' }, 'acc1', dummyDraft, 'raw-id-123'),
+      submitEmail(
+        'http://url',
+        { type: 'Bearer', token: 'a' },
+        'acc1',
+        dummyDraft,
+        'raw-id-123',
+      ),
     ).rejects.toMatchObject({ type: 'notFound' })
   })
 })

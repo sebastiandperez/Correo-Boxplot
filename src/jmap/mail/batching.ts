@@ -67,7 +67,9 @@ export async function queryAndGetEmails(
   try {
     const response = await fetchJmapRaw(apiUrl, auth, methodCalls)
     const getResponseEntry = response.find((entry) => entry[2] === 'g1')
-    requestResult = getResponseEntry ? (getResponseEntry[1] as { list?: RawJmapEmail[] }) : {}
+    requestResult = getResponseEntry
+      ? (getResponseEntry[1] as { list?: RawJmapEmail[] })
+      : {}
   } catch (err: unknown) {
     throw new JmapMethodError(
       'Email/query+get',

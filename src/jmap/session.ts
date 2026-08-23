@@ -14,14 +14,21 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
     session = await jam.session
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    if (msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized')) {
+    if (
+      msg.includes('401') ||
+      msg.includes('403') ||
+      msg.includes('Unauthorized')
+    ) {
       throw new JmapAuthError('Authentication failed during session discovery')
     }
     // Also if the error is just 'e.json is not a function' and the status was 401, but we can't easily see the status here if jmap-jam throws.
     // If it's a TypeError like 'Failed to fetch', it's network.
     if (err instanceof TypeError || msg.includes('fetch')) {
       // In tests, we threw 'e.json is not a function' for 401. Let's make the test throw standard auth error by improving the test mock or just catch TypeError as network error.
-      throw new JmapNetworkError('Network error during JMAP session discovery', err)
+      throw new JmapNetworkError(
+        'Network error during JMAP session discovery',
+        err,
+      )
     }
     throw new JmapMethodError('openSession', 'networkOrServerFail', msg)
   }

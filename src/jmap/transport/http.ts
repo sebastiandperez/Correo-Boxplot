@@ -2,8 +2,7 @@ import { JamClient } from 'jmap-jam'
 import { JmapAuthError, JmapNetworkError } from '../errors'
 
 export type AuthConfig =
-  | { type: 'Bearer'; token: string }
-  | { type: 'Basic'; token: string }
+  { type: 'Bearer'; token: string } | { type: 'Basic'; token: string }
 
 /**
  * Creates a fetch wrapper that injects Authorization headers ONLY for
@@ -74,13 +73,17 @@ export function createJamClient(
 export async function fetchJmapRaw(
   apiUrl: string,
   auth: AuthConfig,
-  methodCalls: ReadonlyArray<readonly [string, Record<string, unknown>, string]>,
-  using: string[] = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission'],
+  methodCalls: ReadonlyArray<
+    readonly [string, Record<string, unknown>, string]
+  >,
+  using: string[] = [
+    'urn:ietf:params:jmap:core',
+    'urn:ietf:params:jmap:mail',
+    'urn:ietf:params:jmap:submission',
+  ],
 ): Promise<ReadonlyArray<readonly [string, Record<string, unknown>, string]>> {
   const authHeader =
-    auth.type === 'Basic'
-      ? `Basic ${btoa(auth.token)}`
-      : `Bearer ${auth.token}`
+    auth.type === 'Basic' ? `Basic ${btoa(auth.token)}` : `Bearer ${auth.token}`
 
   let response: Response
   try {

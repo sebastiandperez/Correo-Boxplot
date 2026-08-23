@@ -92,7 +92,7 @@ class FakeJmapClient implements JmapClient {
       size: 1024,
       preview: 'Hello world',
       hasAttachment: false,
-      keywords: { '$seen': true },
+      keywords: { $seen: true },
     }))
   }
 

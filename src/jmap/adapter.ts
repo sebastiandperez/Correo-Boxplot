@@ -56,7 +56,9 @@ export class JamClientAdapter implements JmapClient {
 
   private get eventSourceUrl(): string {
     if (!this.sessionData?.eventSourceUrl) {
-      throw new Error('Session has not been opened or eventSourceUrl is missing')
+      throw new Error(
+        'Session has not been opened or eventSourceUrl is missing',
+      )
     }
     return this.sessionData.eventSourceUrl
   }
@@ -210,7 +212,13 @@ export class JamClientAdapter implements JmapClient {
     emailId: string,
     keywords: Record<string, boolean>,
   ): Promise<void> {
-    return patchEmailKeywords(this.apiUrl, this.auth, accountId, emailId, keywords)
+    return patchEmailKeywords(
+      this.apiUrl,
+      this.auth,
+      accountId,
+      emailId,
+      keywords,
+    )
   }
 
   async updateEmailMailboxes(
@@ -218,7 +226,13 @@ export class JamClientAdapter implements JmapClient {
     emailId: string,
     mailboxIds: Record<string, boolean>,
   ): Promise<void> {
-    return patchEmailMailboxes(this.apiUrl, this.auth, accountId, emailId, mailboxIds)
+    return patchEmailMailboxes(
+      this.apiUrl,
+      this.auth,
+      accountId,
+      emailId,
+      mailboxIds,
+    )
   }
 
   async submitEmail(

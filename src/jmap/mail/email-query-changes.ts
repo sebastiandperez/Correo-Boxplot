@@ -54,10 +54,10 @@ export async function getEmailQueryChanges(
     accountId,
     oldQueryState: (result['oldQueryState'] as string) || sinceQueryState,
     newQueryState: (result['newQueryState'] as string) || '',
-    added: ((result['added'] as Array<{ id: string; index: number }>) || []).map(
-      (a) => Object.freeze({ id: a.id, index: a.index }),
-    ),
-    removed: ((result['removed'] as string[]) || []),
+    added: (
+      (result['added'] as Array<{ id: string; index: number }>) || []
+    ).map((a) => Object.freeze({ id: a.id, index: a.index })),
+    removed: (result['removed'] as string[]) || [],
     total: (result['total'] as number) ?? 0,
   }
 }

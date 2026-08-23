@@ -22,22 +22,20 @@ export async function queryEmails(
       ? { inMailbox: mailboxId, ...filter }
       : { inMailbox: mailboxId }
 
-  const requestBody: Record<string, unknown> = {
+  const requestBody = {
     accountId,
     filter: queryFilter,
+    ...(options?.position !== undefined ? { position: options.position } : {}),
+    ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+    ...(options?.anchor !== undefined ? { anchor: options.anchor } : {}),
+    ...(options?.anchorOffset !== undefined
+      ? { anchorOffset: options.anchorOffset }
+      : {}),
   }
-
-  if (options?.position !== undefined) requestBody.position = options.position
-  if (options?.limit !== undefined) requestBody.limit = options.limit
-  if (options?.anchor !== undefined) requestBody.anchor = options.anchor
-  if (options?.anchorOffset !== undefined) requestBody.anchorOffset = options.anchorOffset
 
   let response: RawJmapQueryResponse
   try {
-    const [result] = await jam.request([
-      'Email/query',
-      requestBody,
-    ])
+    const [result] = await jam.request(['Email/query', requestBody])
     response = result as RawJmapQueryResponse
   } catch (err: unknown) {
     throw new JmapMethodError(

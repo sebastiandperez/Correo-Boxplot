@@ -45,7 +45,7 @@ export function connectWebSocket(options: WebSocketPushOptions): () => void {
 
     try {
       ws = new WebSocket(buildWsUrl())
-    } catch (err: unknown) {
+    } catch {
       scheduleReconnect()
       return
     }
@@ -70,9 +70,7 @@ export function connectWebSocket(options: WebSocketPushOptions): () => void {
         const parsed = JSON.parse(event.data) as Record<string, unknown>
 
         if (parsed['@type'] === 'StateChange' && parsed['changed']) {
-          options.onStateChange(
-            parsed as unknown as JmapStateChange,
-          )
+          options.onStateChange(parsed as unknown as JmapStateChange)
         }
         // Silently ignore other message types (e.g. Response, RequestError)
       } catch {

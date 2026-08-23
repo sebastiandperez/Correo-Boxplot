@@ -104,7 +104,5 @@ export interface JmapClient {
    * Registers a callback to receive push notifications via JMAP WebSocket.
    * Returns a disconnect function.
    */
-  onStateChange(
-    callback: (change: JmapStateChange) => void,
-  ): () => void
+  onStateChange(callback: (change: JmapStateChange) => void): () => void
 }

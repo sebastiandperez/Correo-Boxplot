@@ -115,12 +115,20 @@ describe('JMAP Mail APIs', () => {
       ],
     ])
 
-    const result = await queryAndGetEmails('http://url', { type: 'Bearer', token: 'a' }, 'acc1', 'mb1', null, {
-      limit: 5,
-    })
+    const result = await queryAndGetEmails(
+      'http://url',
+      { type: 'Bearer', token: 'a' },
+      'acc1',
+      'mb1',
+      null,
+      {
+        limit: 5,
+      },
+    )
 
     expect(httpMock.fetchJmapRaw).toHaveBeenCalledTimes(1)
-    const calls = vi.mocked(httpMock.fetchJmapRaw).mock.calls[0][2] as unknown as [
+    const calls = vi.mocked(httpMock.fetchJmapRaw).mock
+      .calls[0][2] as unknown as [
       [string, { limit: number }],
       [string, { '#ids': { resultOf: string } }],
     ]

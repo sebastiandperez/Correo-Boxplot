@@ -69,8 +69,10 @@ describe('JamClientAdapter - openSession', () => {
       ok: false,
       status: 401,
       url: 'https://example.com/.well-known/jmap',
-      json: async () => { throw new Error('401 Unauthorized') },
-      text: async () => '401 Unauthorized'
+      json: async () => {
+        throw new Error('401 Unauthorized')
+      },
+      text: async () => '401 Unauthorized',
     } as unknown as Response)
 
     const adapter = new JamClientAdapter(

@@ -117,9 +117,13 @@ export async function submitEmail(
   }
 
   const emailSetResponse =
-    (batchResponse.find((entry) => entry[2] === 'e1')?.[1] as RawJmapSetResponse) || {}
+    (batchResponse.find(
+      (entry) => entry[2] === 'e1',
+    )?.[1] as RawJmapSetResponse) || {}
   const subSetResponse =
-    (batchResponse.find((entry) => entry[2] === 's1')?.[1] as RawJmapSetResponse) || {}
+    (batchResponse.find(
+      (entry) => entry[2] === 's1',
+    )?.[1] as RawJmapSetResponse) || {}
 
   const emailNotCreated = emailSetResponse.notCreated?.['draft1']
   if (emailNotCreated) {
