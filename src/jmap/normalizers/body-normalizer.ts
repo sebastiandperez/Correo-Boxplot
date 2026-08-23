@@ -1,10 +1,10 @@
 import type { JmapEmailBody } from '../types'
-import type { RawJmapEmailBodyPart, RawJmapEmailBodyValue } from '../mail/types-raw'
+import type {
+  RawJmapEmailBodyPart,
+  RawJmapEmailBodyValue,
+} from '../mail/types-raw'
 
-function findPartIdsByType(
-  part: RawJmapEmailBodyPart,
-  type: string
-): string[] {
+function findPartIdsByType(part: RawJmapEmailBodyPart, type: string): string[] {
   const ids: string[] = []
   if (part.type === type && part.partId) {
     ids.push(part.partId)
@@ -20,7 +20,7 @@ function findPartIdsByType(
 export function extractEmailBody(
   emailId: string,
   bodyStructure: RawJmapEmailBodyPart,
-  bodyValues: Record<string, RawJmapEmailBodyValue>
+  bodyValues: Record<string, RawJmapEmailBodyValue>,
 ): JmapEmailBody | null {
   const htmlPartIds = findPartIdsByType(bodyStructure, 'text/html')
   const textPartIds = findPartIdsByType(bodyStructure, 'text/plain')

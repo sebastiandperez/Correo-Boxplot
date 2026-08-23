@@ -3,20 +3,27 @@ import type { JmapMailbox, JmapMailboxRights } from '../types'
 import type { RawJmapMailbox } from './types-raw'
 import { JmapMethodError } from '../errors'
 
-export async function getMailboxes(jam: JamClient, accountId: string): Promise<JmapMailbox[]> {
+export async function getMailboxes(
+  jam: JamClient,
+  accountId: string,
+): Promise<JmapMailbox[]> {
   let response
   try {
-    const requestResult = await jam.request(['Mailbox/get', { accountId }])
-    response = requestResult[0] // method response is at index 0
+    const [result] = await jam.request(['Mailbox/get', { accountId }])
+    response = result
   } catch (err: unknown) {
-    throw new JmapMethodError('Mailbox/get', 'networkOrServerFail', err instanceof Error ? err.message : String(err))
+    throw new JmapMethodError(
+      'Mailbox/get',
+      'networkOrServerFail',
+      err instanceof Error ? err.message : String(err),
+    )
   }
 
   // JMAP successful responses return an object with a "list" property.
   // We need to carefully map these RawJmapMailboxes to our normalized JmapMailboxes.
-  const list: RawJmapMailbox[] = (response as any).list || []
+  const list = (response.list || []) as readonly RawJmapMailbox[]
 
-  return list.map(raw => {
+  return list.map((raw) => {
     // According to RFC 8621, myRights might be missing if we requested specific properties
     // but by default it returns it. We supply defaults just in case.
     const rights: JmapMailboxRights = {

@@ -83,5 +83,5 @@ export type JmapSession = Readonly<{
   uploadUrl: string
   eventSourceUrl: string
   primaryAccounts: Record<string, string> // { capability: accountId }
-  capabilities: Record<string, any>
+  capabilities: Record<string, unknown>
 }>

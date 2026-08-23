@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { JamClientAdapter } from '../adapter'
 import { JmapAuthError, JmapMethodError, JmapNetworkError } from '../errors'
 
-
 describe('JamClientAdapter - openSession', () => {
   let originalFetch: typeof globalThis.fetch
 
@@ -49,15 +48,20 @@ describe('JamClientAdapter - openSession', () => {
       text: async () => JSON.stringify(mockSessionResponse),
     } as unknown as Response)
 
-    const adapter = new JamClientAdapter('https://example.com/.well-known/jmap', {
-      type: 'Bearer',
-      token: 'valid-token',
-    })
+    const adapter = new JamClientAdapter(
+      'https://example.com/.well-known/jmap',
+      {
+        type: 'Bearer',
+        token: 'valid-token',
+      },
+    )
 
     const session = await adapter.openSession()
 
     expect(session.apiUrl).toBe('https://example.com/api')
-    expect(session.primaryAccounts['urn:ietf:params:jmap:mail']).toBe('account-1')
+    expect(session.primaryAccounts['urn:ietf:params:jmap:mail']).toBe(
+      'account-1',
+    )
   })
 
   it('should throw JmapAuthError on 401 response', async () => {
@@ -67,21 +71,29 @@ describe('JamClientAdapter - openSession', () => {
       url: 'https://example.com/.well-known/jmap',
     } as unknown as Response)
 
-    const adapter = new JamClientAdapter('https://example.com/.well-known/jmap', {
-      type: 'Basic',
-      token: 'user:pass',
-    })
+    const adapter = new JamClientAdapter(
+      'https://example.com/.well-known/jmap',
+      {
+        type: 'Basic',
+        token: 'user:pass',
+      },
+    )
 
     await expect(adapter.openSession()).rejects.toThrow(JmapAuthError)
   })
 
   it('should throw JmapNetworkError on network failure', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Failed to fetch'))
 
-    const adapter = new JamClientAdapter('https://example.com/.well-known/jmap', {
-      type: 'Bearer',
-      token: 'valid-token',
-    })
+    const adapter = new JamClientAdapter(
+      'https://example.com/.well-known/jmap',
+      {
+        type: 'Bearer',
+        token: 'valid-token',
+      },
+    )
 
     await expect(adapter.openSession()).rejects.toThrow(JmapNetworkError)
   })
@@ -110,13 +122,18 @@ describe('JamClientAdapter - openSession', () => {
       text: async () => JSON.stringify(mockSessionResponse),
     } as unknown as Response)
 
-    const adapter = new JamClientAdapter('https://example.com/.well-known/jmap', {
-      type: 'Bearer',
-      token: 'valid-token',
-    })
+    const adapter = new JamClientAdapter(
+      'https://example.com/.well-known/jmap',
+      {
+        type: 'Bearer',
+        token: 'valid-token',
+      },
+    )
 
     await expect(adapter.openSession()).rejects.toThrow(JmapMethodError)
-    await expect(adapter.openSession()).rejects.toThrow(/Server does not support JMAP Mail/)
+    await expect(adapter.openSession()).rejects.toThrow(
+      /Server does not support JMAP Mail/,
+    )
   })
 
   it('should throw JmapMethodError when primary account is not found in accounts object', async () => {
@@ -141,12 +158,17 @@ describe('JamClientAdapter - openSession', () => {
       text: async () => JSON.stringify(mockSessionResponse),
     } as unknown as Response)
 
-    const adapter = new JamClientAdapter('https://example.com/.well-known/jmap', {
-      type: 'Bearer',
-      token: 'valid-token',
-    })
+    const adapter = new JamClientAdapter(
+      'https://example.com/.well-known/jmap',
+      {
+        type: 'Bearer',
+        token: 'valid-token',
+      },
+    )
 
     await expect(adapter.openSession()).rejects.toThrow(JmapMethodError)
-    await expect(adapter.openSession()).rejects.toThrow(/Primary account missing-account not found/)
+    await expect(adapter.openSession()).rejects.toThrow(
+      /Primary account missing-account not found/,
+    )
   })
 })

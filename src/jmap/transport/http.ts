@@ -2,17 +2,22 @@ import { JamClient } from 'jmap-jam'
 import { JmapAuthError, JmapNetworkError } from '../errors'
 
 export type AuthConfig =
-  | { type: 'Bearer'; token: string }
-  | { type: 'Basic'; token: string }
+  { type: 'Bearer'; token: string } | { type: 'Basic'; token: string }
 
-export function createJamClient(sessionUrl: string, auth: AuthConfig): JamClient {
+export function createJamClient(
+  sessionUrl: string,
+  auth: AuthConfig,
+): JamClient {
   const originalFetch = globalThis.fetch
 
   // We override globalThis.fetch because jmap-jam's JamClient.loadSession
   // hardcodes a call to the global fetch and ignores the 'fetch' option.
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
     const urlStr = input.toString()
-    
+
     // Only intercept requests to our JMAP server
     if (!urlStr.startsWith(sessionUrl) && !urlStr.includes('/jmap/')) {
       return originalFetch(input, init)
@@ -38,7 +43,9 @@ export function createJamClient(sessionUrl: string, auth: AuthConfig): JamClient
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new JmapAuthError(`Authentication failed with status ${response.status}`)
+      throw new JmapAuthError(
+        `Authentication failed with status ${response.status}`,
+      )
     }
 
     return response

@@ -20,31 +20,46 @@ const EMAIL_PROPERTIES = [
   'preview',
   'hasAttachment',
   'keywords',
-]
+] as const
 
-function mapAddresses(raw: RawJmapEmailAddress[] | null | undefined): readonly JmapEmailAddress[] | null {
+function mapAddresses(
+  raw: RawJmapEmailAddress[] | null | undefined,
+): readonly JmapEmailAddress[] | null {
   if (!raw || raw.length === 0) return null
-  return Object.freeze(raw.map(addr => Object.freeze({ name: addr.name, email: addr.email })))
+  return Object.freeze(
+    raw.map((addr) => Object.freeze({ name: addr.name, email: addr.email })),
+  )
 }
 
-export async function getEmails(jam: JamClient, accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
+export async function getEmails(
+  jam: JamClient,
+  accountId: string,
+  emailIds: string[],
+): Promise<JmapEmail[]> {
   if (emailIds.length === 0) return []
 
   let response
   try {
-    const requestResult = await jam.request(['Email/get', {
-      accountId,
-      ids: emailIds,
-      properties: EMAIL_PROPERTIES as any,
-    }])
-    response = requestResult[0]
+    const [result] = await jam.request([
+      'Email/get',
+      {
+        accountId,
+        ids: emailIds,
+        properties: EMAIL_PROPERTIES,
+      },
+    ])
+    response = result
   } catch (err: unknown) {
-    throw new JmapMethodError('Email/get', 'networkOrServerFail', err instanceof Error ? err.message : String(err))
+    throw new JmapMethodError(
+      'Email/get',
+      'networkOrServerFail',
+      err instanceof Error ? err.message : String(err),
+    )
   }
 
-  const list: RawJmapEmail[] = (response as any).list || []
+  const list = (response.list || []) as RawJmapEmail[]
 
-  return list.map(raw => {
+  return list.map((raw) => {
     // Keywords might be an object { "$seen": true, "$flagged": true }
     // We convert it to a Set, or just keep it as a readonly Set if we map it
     const keywordsSet = new Set<string>()

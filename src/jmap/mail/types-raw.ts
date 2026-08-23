@@ -66,6 +66,17 @@ export interface RawJmapChangesResponse {
   destroyed: string[]
 }
 
+export interface RawJmapSetError {
+  type?: string
+  description?: string
+}
+
+export interface RawJmapSetResponse {
+  created?: Record<string, { id?: string }>
+  notCreated?: Record<string, RawJmapSetError>
+  notUpdated?: Record<string, RawJmapSetError>
+}
+
 export interface RawJmapEmailBodyPart {
   partId?: string
   blobId?: string

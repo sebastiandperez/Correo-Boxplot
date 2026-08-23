@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { JmapClient } from '../client'
-import type { JmapSession, JmapMailbox, JmapEmail, JmapDelta, JmapEmailBody, JmapStateChange } from '../types'
+import type {
+  JmapSession,
+  JmapMailbox,
+  JmapEmail,
+  JmapDelta,
+  JmapEmailBody,
+  JmapStateChange,
+} from '../types'
 import { JmapAuthError, JmapMethodError } from '../errors'
 
 // Implement a Fake JmapClient to satisfy contract tests
@@ -22,7 +29,8 @@ class FakeJmapClient implements JmapClient {
   }
 
   async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
-    if (accountId !== 'account-1') throw new JmapMethodError('Mailbox/get', 'accountNotFound')
+    if (accountId !== 'account-1')
+      throw new JmapMethodError('Mailbox/get', 'accountNotFound')
     return [
       {
         id: 'mb-1',
@@ -44,12 +52,13 @@ class FakeJmapClient implements JmapClient {
     ]
   }
 
-  async queryEmails(_accountId: string, _mailboxId: string): Promise<string[]> {
+  async queryEmails(): Promise<string[]> {
     return ['email-1', 'email-2']
   }
 
-  async getEmails(_accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
-    return emailIds.map(id => ({
+  async getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
+    void accountId
+    return emailIds.map((id) => ({
       id,
       blobId: `blob-${id}`,
       threadId: `thread-${id}`,
@@ -69,7 +78,10 @@ class FakeJmapClient implements JmapClient {
     }))
   }
 
-  async getEmailChanges(accountId: string, sinceState: string): Promise<JmapDelta> {
+  async getEmailChanges(
+    accountId: string,
+    sinceState: string,
+  ): Promise<JmapDelta> {
     return {
       accountId,
       oldState: sinceState,
@@ -81,16 +93,16 @@ class FakeJmapClient implements JmapClient {
     }
   }
 
-  async getEmailBody(_accountId: string, _emailId: string): Promise<JmapEmailBody> {
+  async getEmailBody(): Promise<JmapEmailBody> {
     throw new Error('Method not implemented.')
   }
-  async updateEmailKeywords(_accountId: string, _emailId: string, _keywords: Record<string, boolean>): Promise<void> {
+  async updateEmailKeywords(): Promise<void> {
     throw new Error('Method not implemented.')
   }
-  async updateEmailMailboxes(_accountId: string, _emailId: string, _mailboxIds: Record<string, boolean>): Promise<void> {
+  async updateEmailMailboxes(): Promise<void> {
     throw new Error('Method not implemented.')
   }
-  async submitEmail(_accountId: string, _intent: unknown, _rawIdentityId: string): Promise<{ emailId: string; submissionId: string }> {
+  async submitEmail(): Promise<{ emailId: string; submissionId: string }> {
     throw new Error('Method not implemented.')
   }
 
@@ -112,7 +124,9 @@ describe('FakeJmapClient contract tests', () => {
   it('should successfully open session and return typed data', async () => {
     const client = new FakeJmapClient()
     const session = await client.openSession()
-    expect(session.primaryAccounts['urn:ietf:params:jmap:mail']).toBe('account-1')
+    expect(session.primaryAccounts['urn:ietf:params:jmap:mail']).toBe(
+      'account-1',
+    )
   })
 
   it('should throw JmapAuthError when authentication fails', async () => {
@@ -139,12 +153,12 @@ describe('FakeJmapClient contract tests', () => {
   it('should trigger state change callback', async () => {
     const client = new FakeJmapClient()
     const callback = vi.fn()
-    
+
     client.onStateChange(callback)
-    
+
     // Wait for the simulated setTimeout in FakeJmapClient
-    await new Promise(resolve => setTimeout(resolve, 20))
-    
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
     expect(callback).toHaveBeenCalledTimes(1)
     expect(callback).toHaveBeenCalledWith({
       changed: {
