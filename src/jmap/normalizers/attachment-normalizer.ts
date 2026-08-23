@@ -20,11 +20,12 @@ export function extractAttachments(
       attachments.push(
         Object.freeze({
           blobId: part.blobId,
+          partId: part.partId ?? null,
           name: part.name ?? null,
-          type: part.type,
+          mediaType: part.type,
           size: part.size ?? 0,
           cid: part.cid ?? null,
-          isInline: isInlineDisposition,
+          disposition: part.disposition ?? null,
         }),
       )
     }

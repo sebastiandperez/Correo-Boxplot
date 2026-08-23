@@ -4,9 +4,13 @@ import type {
   JmapEmail,
   JmapDelta,
   JmapEmailBody,
+  JmapAttachment,
+  JmapQueryResult,
+  JmapQueryChanges,
+  JmapIdentity,
+  JmapEmailDraft,
   JmapStateChange,
 } from './types'
-import type { SendIntent } from '../domain/send-intent'
 
 export interface JmapClient {
   /**
@@ -21,13 +25,18 @@ export interface JmapClient {
   getMailboxes(accountId: string): Promise<JmapMailbox[]>
 
   /**
-   * Queries emails in a specific mailbox, returning an array of email IDs.
+   * Retrieves all identities for the given account.
+   */
+  getIdentities(accountId: string): Promise<JmapIdentity[]>
+
+  /**
+   * Queries emails in a specific mailbox, returning IDs + query metadata.
    */
   queryEmails(
     accountId: string,
     mailboxId: string,
     filter?: unknown,
-  ): Promise<string[]>
+  ): Promise<JmapQueryResult>
 
   /**
    * Retrieves the metadata for the requested email IDs.
@@ -40,9 +49,26 @@ export interface JmapClient {
   getEmailChanges(accountId: string, sinceState: string): Promise<JmapDelta>
 
   /**
+   * Retrieves changes to an email query since a specific query state.
+   */
+  getEmailQueryChanges(
+    accountId: string,
+    mailboxId: string,
+    sinceQueryState: string,
+  ): Promise<JmapQueryChanges>
+
+  /**
    * Retrieves the full structural body of an email.
    */
   getEmailBody(accountId: string, emailId: string): Promise<JmapEmailBody>
+
+  /**
+   * Retrieves attachments metadata for an email.
+   */
+  getEmailAttachments(
+    accountId: string,
+    emailId: string,
+  ): Promise<JmapAttachment[]>
 
   /**
    * Updates keywords (e.g. read, flagged) for a specific email.
@@ -64,16 +90,21 @@ export interface JmapClient {
 
   /**
    * Submits a draft email for sending.
+   * Receives a JmapEmailDraft (JMAP-layer DTO, not Domain SendIntent).
+   * The Coordinator is responsible for converting SendIntent → JmapEmailDraft.
    * @returns an object containing the new emailId and submissionId.
    */
   submitEmail(
     accountId: string,
-    intent: SendIntent,
+    draft: JmapEmailDraft,
     rawIdentityId: string,
   ): Promise<{ emailId: string; submissionId: string }>
 
   /**
-   * Registers a callback to receive push notifications via WebSocket or SSE.
+   * Registers a callback to receive push notifications via JMAP WebSocket.
+   * Returns a disconnect function.
    */
-  onStateChange(callback: (change: JmapStateChange) => void): void
+  onStateChange(
+    callback: (change: JmapStateChange) => void,
+  ): () => void
 }

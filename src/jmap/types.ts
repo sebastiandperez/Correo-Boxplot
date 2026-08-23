@@ -15,7 +15,7 @@ export type JmapMailboxRights = Readonly<{
 }>
 
 export type JmapMailbox = Readonly<{
-  id: string // jmapMailboxId
+  id: string
   name: string
   parent: string | null
   role: string | null
@@ -26,7 +26,7 @@ export type JmapMailbox = Readonly<{
 }>
 
 export type JmapEmail = Readonly<{
-  id: string // jmapEmailId
+  id: string
   blobId: string
   threadId: string
 
@@ -45,7 +45,7 @@ export type JmapEmail = Readonly<{
   preview: string
   hasAttachment: boolean
 
-  keywords: ReadonlySet<string> | Record<string, boolean> // JMAP typically represents keywords as an object { [keyword]: true }
+  keywords: Record<string, boolean>
 }>
 
 export type JmapEmailBody = Readonly<{
@@ -56,11 +56,29 @@ export type JmapEmailBody = Readonly<{
 
 export type JmapAttachment = Readonly<{
   blobId: string
+  partId: string | null
   name: string | null
-  type: string
+  mediaType: string
   size: number
+  disposition: string | null
   cid: string | null
-  isInline: boolean
+}>
+
+export type JmapQueryResult = Readonly<{
+  ids: readonly string[]
+  queryState: string
+  total: number
+  position: number
+  canCalculateChanges: boolean
+}>
+
+export type JmapQueryChanges = Readonly<{
+  accountId: string
+  oldQueryState: string
+  newQueryState: string
+  added: ReadonlyArray<Readonly<{ id: string; index: number }>>
+  removed: readonly string[]
+  total: number
 }>
 
 export type JmapDelta = Readonly<{
@@ -68,13 +86,34 @@ export type JmapDelta = Readonly<{
   oldState: string
   newState: string
   hasMoreChanges: boolean
-  created: readonly string[] // emailIds
-  updated: readonly string[] // emailIds
-  destroyed: readonly string[] // emailIds
+  created: readonly string[]
+  updated: readonly string[]
+  destroyed: readonly string[]
+}>
+
+export type JmapIdentity = Readonly<{
+  id: string
+  name: string
+  email: string
+  replyTo: readonly JmapEmailAddress[] | null
+  bcc: readonly JmapEmailAddress[] | null
+  htmlSignature: string
+  textSignature: string
+}>
+
+export type JmapEmailDraft = Readonly<{
+  from: readonly JmapEmailAddress[]
+  to: readonly JmapEmailAddress[]
+  cc: readonly JmapEmailAddress[]
+  bcc: readonly JmapEmailAddress[]
+  replyTo: readonly JmapEmailAddress[]
+  subject: string
+  textBody: string | null
+  htmlBody: string | null
 }>
 
 export type JmapStateChange = Readonly<{
-  changed: Record<string, Record<string, string>> // { accountId: { type: state } }
+  changed: Record<string, Record<string, string>>
 }>
 
 export type JmapSession = Readonly<{
@@ -82,6 +121,6 @@ export type JmapSession = Readonly<{
   downloadUrl: string
   uploadUrl: string
   eventSourceUrl: string
-  primaryAccounts: Record<string, string> // { capability: accountId }
+  primaryAccounts: Record<string, string>
   capabilities: Record<string, unknown>
 }>

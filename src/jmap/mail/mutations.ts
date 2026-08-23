@@ -1,32 +1,31 @@
-import type { JamClient } from 'jmap-jam'
+import type { AuthConfig } from '../transport/http'
+import { fetchJmapRaw } from '../transport/http'
 import { JmapMethodError } from '../errors'
 import type { RawJmapSetResponse } from './types-raw'
 
-type EmailSetRequest = (
-  call: readonly unknown[],
-) => Promise<readonly [RawJmapSetResponse]>
-
 export async function patchEmailKeywords(
-  jam: JamClient,
+  apiUrl: string,
+  auth: AuthConfig,
   accountId: string,
   emailId: string,
   keywords: Record<string, boolean>,
 ): Promise<void> {
-  let response
+  let methodResponses
   try {
-    const requestSet = jam.request.bind(jam) as unknown as EmailSetRequest
-    const [result] = await requestSet([
-      'Email/set',
-      {
-        accountId,
-        update: {
-          [emailId]: {
-            keywords,
+    methodResponses = await fetchJmapRaw(apiUrl, auth, [
+      [
+        'Email/set',
+        {
+          accountId,
+          update: {
+            [emailId]: {
+              keywords,
+            },
           },
         },
-      },
+        'e1',
+      ],
     ])
-    response = result
   } catch (err: unknown) {
     throw new JmapMethodError(
       'Email/set',
@@ -35,7 +34,10 @@ export async function patchEmailKeywords(
     )
   }
 
-  const notUpdated = response.notUpdated
+  const response = methodResponses.find((r) => r[2] === 'e1')
+  const result = (response ? response[1] : {}) as RawJmapSetResponse
+
+  const notUpdated = result.notUpdated
   if (notUpdated && notUpdated[emailId]) {
     const errorDetails = notUpdated[emailId]
     if (errorDetails.type === 'stateMismatch') {
@@ -54,26 +56,28 @@ export async function patchEmailKeywords(
 }
 
 export async function patchEmailMailboxes(
-  jam: JamClient,
+  apiUrl: string,
+  auth: AuthConfig,
   accountId: string,
   emailId: string,
   mailboxIds: Record<string, boolean>,
 ): Promise<void> {
-  let response
+  let methodResponses
   try {
-    const requestSet = jam.request.bind(jam) as unknown as EmailSetRequest
-    const [result] = await requestSet([
-      'Email/set',
-      {
-        accountId,
-        update: {
-          [emailId]: {
-            mailboxIds,
+    methodResponses = await fetchJmapRaw(apiUrl, auth, [
+      [
+        'Email/set',
+        {
+          accountId,
+          update: {
+            [emailId]: {
+              mailboxIds,
+            },
           },
         },
-      },
+        'e1',
+      ],
     ])
-    response = result
   } catch (err: unknown) {
     throw new JmapMethodError(
       'Email/set',
@@ -82,7 +86,10 @@ export async function patchEmailMailboxes(
     )
   }
 
-  const notUpdated = response.notUpdated
+  const response = methodResponses.find((r) => r[2] === 'e1')
+  const result = (response ? response[1] : {}) as RawJmapSetResponse
+
+  const notUpdated = result.notUpdated
   if (notUpdated && notUpdated[emailId]) {
     const errorDetails = notUpdated[emailId]
     if (errorDetails.type === 'stateMismatch') {

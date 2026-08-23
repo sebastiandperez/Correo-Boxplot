@@ -1,19 +1,10 @@
-import type { JamClient } from 'jmap-jam'
+import type { AuthConfig } from '../transport/http'
+import { fetchJmapRaw } from '../transport/http'
 import { JmapMethodError } from '../errors'
-import type { SendIntent } from '../../domain/send-intent'
-import type { EmailAddress } from '../../domain/address'
+import type { JmapEmailDraft, JmapEmailAddress } from '../types'
 import type { RawJmapSetResponse } from './types-raw'
 
-type MailboxQueryResponse = Readonly<{ ids?: readonly string[] }>
-type MailboxQueryRequest = (
-  call: readonly unknown[],
-) => Promise<readonly [MailboxQueryResponse]>
-type SubmissionBatchEntry = readonly [string, RawJmapSetResponse, string]
-type SubmissionBatchRequest = (
-  calls: readonly unknown[],
-) => Promise<readonly SubmissionBatchEntry[]>
-
-function formatAddresses(addresses: readonly EmailAddress[]) {
+function formatAddresses(addresses: readonly JmapEmailAddress[]) {
   return addresses.map((addr) => ({
     name: addr.name || '',
     email: addr.email,
@@ -21,26 +12,27 @@ function formatAddresses(addresses: readonly EmailAddress[]) {
 }
 
 export async function submitEmail(
-  jam: JamClient,
+  apiUrl: string,
+  auth: AuthConfig,
   accountId: string,
-  intent: SendIntent,
+  draft: JmapEmailDraft,
   rawIdentityId: string,
 ): Promise<{ emailId: string; submissionId: string }> {
   // 1. We must find the Drafts mailbox to place the created email.
   let mailboxResponse
   try {
-    const requestMailboxQuery = jam.request.bind(
-      jam,
-    ) as unknown as MailboxQueryRequest
-    const mbxResult = await requestMailboxQuery([
-      'Mailbox/query',
-      {
-        accountId,
-        filter: { role: 'drafts' },
-        limit: 1,
-      },
+    const mbxResult = await fetchJmapRaw(apiUrl, auth, [
+      [
+        'Mailbox/query',
+        {
+          accountId,
+          filter: { role: 'drafts' },
+          limit: 1,
+        },
+        'm1',
+      ],
     ])
-    mailboxResponse = mbxResult[0]
+    mailboxResponse = mbxResult[0][1] as { ids?: string[] }
   } catch (err: unknown) {
     throw new JmapMethodError(
       'Mailbox/query',
@@ -64,26 +56,23 @@ export async function submitEmail(
   const textBody: Array<{ partId: string }> = []
   const htmlBody: Array<{ partId: string }> = []
 
-  if (intent.body.text) {
-    bodyValues['t1'] = { value: intent.body.text }
+  if (draft.textBody) {
+    bodyValues['t1'] = { value: draft.textBody }
     textBody.push({ partId: 't1' })
   }
-  if (intent.body.html) {
-    bodyValues['h1'] = { value: intent.body.html }
+  if (draft.htmlBody) {
+    bodyValues['h1'] = { value: draft.htmlBody }
     htmlBody.push({ partId: 'h1' })
   }
 
-  // If both are missing, JMAP typically requires at least one, but we pass what intent has.
-  // Actually, Domain SendIntent requires at least text or html, but usually both might exist.
-
   const emailCreateObj = {
     mailboxIds: { [draftsMailboxId]: true },
-    from: [formatAddresses([intent.from])[0]],
-    to: formatAddresses(intent.to),
-    cc: formatAddresses(intent.cc),
-    bcc: formatAddresses(intent.bcc),
-    replyTo: formatAddresses(intent.replyTo),
-    subject: intent.subject,
+    from: formatAddresses(draft.from),
+    to: formatAddresses(draft.to),
+    cc: formatAddresses(draft.cc),
+    bcc: formatAddresses(draft.bcc),
+    replyTo: formatAddresses(draft.replyTo),
+    subject: draft.subject,
     bodyValues,
     textBody,
     htmlBody,
@@ -114,15 +103,11 @@ export async function submitEmail(
       },
       's1',
     ],
-  ]
+  ] as const
 
   let batchResponse
   try {
-    const requestBatch = jam.request.bind(
-      jam,
-    ) as unknown as SubmissionBatchRequest
-    const requestResult = await requestBatch(methodCalls)
-    batchResponse = requestResult
+    batchResponse = await fetchJmapRaw(apiUrl, auth, methodCalls)
   } catch (err: unknown) {
     throw new JmapMethodError(
       'Email/set+EmailSubmission/set',
@@ -132,9 +117,9 @@ export async function submitEmail(
   }
 
   const emailSetResponse =
-    batchResponse.find((entry) => entry[2] === 'e1')?.[1] || {}
+    (batchResponse.find((entry) => entry[2] === 'e1')?.[1] as RawJmapSetResponse) || {}
   const subSetResponse =
-    batchResponse.find((entry) => entry[2] === 's1')?.[1] || {}
+    (batchResponse.find((entry) => entry[2] === 's1')?.[1] as RawJmapSetResponse) || {}
 
   const emailNotCreated = emailSetResponse.notCreated?.['draft1']
   if (emailNotCreated) {

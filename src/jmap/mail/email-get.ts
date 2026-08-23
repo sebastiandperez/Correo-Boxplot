@@ -58,17 +58,7 @@ export async function getEmails(
   }
 
   const list = (response.list || []) as RawJmapEmail[]
-
   return list.map((raw) => {
-    // Keywords might be an object { "$seen": true, "$flagged": true }
-    // We convert it to a Set, or just keep it as a readonly Set if we map it
-    const keywordsSet = new Set<string>()
-    if (raw.keywords) {
-      for (const [kw, isSet] of Object.entries(raw.keywords)) {
-        if (isSet) keywordsSet.add(kw)
-      }
-    }
-
     return Object.freeze({
       id: raw.id,
       blobId: raw.blobId,
@@ -85,7 +75,7 @@ export async function getEmails(
       size: raw.size ?? 0,
       preview: raw.preview ?? '',
       hasAttachment: raw.hasAttachment ?? false,
-      keywords: Object.freeze(keywordsSet),
+      keywords: Object.freeze({ ...(raw.keywords || {}) }),
     })
   })
 }

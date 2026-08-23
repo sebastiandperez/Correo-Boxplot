@@ -58,6 +58,21 @@ export class TokenManager {
     }
   }
 
+  /**
+   * Generates an AuthConfig object for the HTTP transport layer.
+   */
+  getAuthConfig(): import('../transport/http').AuthConfig | null {
+    if (!this.currentToken) return null
+    return { type: 'Bearer', token: this.currentToken }
+  }
+
+  /**
+   * Canary string to verify token closure.
+   */
+  getCanaryStatus(): string {
+    return this.currentToken === null ? 'TOKEN_CLEARED_OK' : 'TOKEN_LEAK_WARN'
+  }
+
   private notifyExpired(): void {
     for (const listener of this.listeners) {
       try {
