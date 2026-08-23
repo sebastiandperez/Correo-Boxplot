@@ -17,7 +17,7 @@ Los niveles congelados son:
 
 TEST-01 materializó harness, fixtures, assertions y notification recorder. TEST-02 materializó P-01; TEST-03A/TEST-03B, P-02; TEST-04, P-03; TEST-05, la composición sistémica reusable; TEST-06 endurece exclusivamente Memory. MEM-01 implementa los tres Ports sobre un único estado in-memory compartido y tiene conformance final. [PERSIST-01](../architecture/persistence-01-design.md) añade pruebas Rust nativas de migración, presencia, transacciones, reinicio, corrupción y SQLCipher. [IPC-00](../architecture/ipc-contract.md) congela y verifica el wire TypeScript↔Rust, los 25 comandos y el evento post-commit. TAURI-ADAPTERS-01 completa la traducción pura de P-01/P-02/P-03 mediante `LocalEngineIpcClient`. PROD-CONFORMANCE-01 ejecuta las mismas suites contra el webview Tauri, handlers Rust y base SQLCipher temporal reales: 179/179 PASS, más 5/5 smokes productivos. JMAP continúa fuera.
 
-La conformance productiva del runtime soportado se ejecuta con `pnpm test:production-conformance`. Requiere `tauri-driver`, `WebKitWebDriver` y SQLCipher disponibles en el host; no usa sleeps para `settle()` ni incorpora comandos de lifecycle al binario productivo normal.
+La conformance productiva del runtime soportado se ejecuta con `pnpm test:production-conformance`. Requiere `tauri-driver` y `WebKitWebDriver`; SQLCipher procede del source pin del repositorio, no de un paquete del host. No usa sleeps para `settle()` ni incorpora comandos de lifecycle al binario productivo normal.
 
 SECURE-BOOTSTRAP-01 añade pruebas Rust deterministas para la matriz DEK/DB, recuperación del marker de creación, reset reanudable en cada fase, lifecycle compartido/exclusivo, ordering commit→evento y lock real entre procesos. El smoke del credential store nativo se ejecuta separadamente con `cargo test --manifest-path src-tauri/Cargo.toml host_os_dek_store_smoke -- --ignored --nocapture`; usa un namespace de prueba único y siempre intenta cleanup. Un host sin D-Bus/Secret Service usable se registra como `ENVIRONMENT BLOCKED`, nunca activa un fallback.
 
@@ -57,8 +57,8 @@ cambios remotos + nuevo SyncCursor = una transacción
 
 La capacidad del entorno de desarrollo se prueba sin mocks:
 
-* `PRAGMA cipher_version` devuelve un valor no vacío de SQLCipher `4.x`;
-* `sqlite_version()` se consulta y muestra como diagnóstico, sin igualdad exacta local;
+* `PRAGMA cipher_version` es exactamente `4.17.0 community`;
+* `sqlite_version()` es exactamente `3.53.3`;
 * apertura con la clave correcta y rechazo con una incorrecta;
 * archivo no reconocible como SQLite plaintext;
 * close/reopen conservando datos;
@@ -66,7 +66,7 @@ La capacidad del entorno de desarrollo se prueba sin mocks:
 * rollback/atomicidad;
 * migraciones sobre fixtures cifradas de versiones anteriores.
 
-La aceptación del artefacto de **release** añade la comprobación exacta SQLCipher `4.17.0` + SQLite `3.53.3`. Su provisioning reproducible continúa **OPEN — SQLCipher provisioning PoC**. El test local está en `src-tauri/tests/sqlcipher_baseline.rs`; no se cambia a SQLite plaintext para hacerlo pasar.
+SQLCIPHER-PACKAGING-01 cerró el provisioning Linux: `src-tauri/tests/sqlcipher_baseline.rs` verifica identidad exacta/cifrado/wrong-key y `sqlcipher_compatibility.rs` abre una fixture real 4.14.0 con la misma DEK bajo 4.17.0, lee, escribe y reabre sin reset ni rekey. `scripts/check-sqlcipher-vendor.sh` valida hashes y drift del vendor. La aceptación DEB ejecutó doctor, Secret Service, write/restart/read y cabecera cifrada sobre el payload empaquetado. Windows conserva los mismos gates pendientes en host Windows/MSVC.
 
 ## JMAP
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-SECURE-BOOTSTRAP-01 is implemented for the Tauri MVP. The production Local Engine obtains one installation-scoped SQLCipher DEK from the native operating-system credential store entirely inside Rust. Domain, Ports and the 25-command IPC contract do not expose this lifecycle.
+SECURE-BOOTSTRAP-01 is implemented for the Tauri MVP. The production Local Engine obtains one installation-scoped SQLCipher DEK from the native operating-system credential store entirely inside Rust. Domain, Ports and the 25-command IPC contract do not expose this lifecycle. SQLCIPHER-PACKAGING-01 pins the native engine to SQLCipher `4.17.0 community` / SQLite `3.53.3` through the repository-local `libsqlite3-sys 0.38.2` patch and vendored OpenSSL; bootstrap fails closed on any runtime-version mismatch.
 
 LOCAL-SECURE-STORE-01 separates Production and Development as distinct Tauri application flavors. The Tauri `identifier` is the sole cache-flavor selector; environment variables, CLI inputs and frontend state cannot select a cache identity. The canonical identities are:
 
@@ -48,7 +48,7 @@ This identity is application/installation scoped. It does not contain an email a
 
 The DEK is exactly 32 bytes and is generated directly in a zeroizing Rust buffer using the OS random source through `getrandom`. The credential uses the binary `set_secret`/`get_secret` path. A retrieved buffer must have exactly 32 bytes; other lengths fail closed and are zeroized rather than padded, truncated, hashed or replaced.
 
-The DEK never appears in TypeScript, IPC DTOs, commands, results, events, logs, configuration or a filesystem secret file. SQLCipher's raw-key pragma is built in a short-lived zeroizing string. The keyed opener verifies that SQLCipher exists and performs a real schema read before migrations.
+The DEK never appears in TypeScript, IPC DTOs, commands, results, events, logs, configuration or a filesystem secret file. SQLCipher's raw-key pragma is built in a short-lived zeroizing string. The single keyed opener verifies exact SQLCipher/SQLite runtime identity and performs a real schema read before migrations. There is no system-SQLCipher, ordinary-SQLite or plaintext fallback.
 
 `zeroize` protects application-owned Rust buffers against compiler-elided clearing. It does not erase copies held internally by SQLCipher, native libraries or the OS, and it does not protect against debugger/process-memory inspection. No `mlock`, `VirtualLock` or hardware-backed-key guarantee is claimed.
 
@@ -140,4 +140,4 @@ The implementation selects explicit native backends for Windows, macOS and Linux
 * a signed macOS build using standard Keychain Services, including future sandbox/provisioning review;
 * a Linux desktop with a usable user D-Bus session and Secret Service provider.
 
-The current Arch Linux GNOME/Wayland developer session passed real Secret Service CHECK and isolated write/read/delete smoke through GNOME Keyring. The Development Tauri flavor also passed encrypted bootstrap, restart and semantic-state persistence against its real app-local database and credential. Production fails closed when no provider is usable and never installs or configures one. Windows runtime acceptance and SQLCipher 4.17.0 packaging remain separate release gates.
+The current Arch Linux GNOME/Wayland developer session passed real Secret Service CHECK and isolated write/read/delete smoke through GNOME Keyring. The Development Tauri flavor and its generated DEB payload passed exact SQLCipher `4.17.0 community` / SQLite `3.53.3` diagnostics, encrypted bootstrap, restart and semantic-state persistence against the real app-local database and credential; the DB header is not plaintext SQLite. Production fails closed when no provider is usable and never installs or configures one. Windows runtime, installer, dependency and Credential Manager acceptance remain pending on an actual Windows x86_64 MSVC host.

@@ -86,6 +86,26 @@ fn check() -> i32 {
     println!("database_filename: mail-cache.sqlite3");
     println!("cache_lock_filename: local-cache-v1.lock");
     println!("production_isolation_guard: enabled");
+    println!(
+        "sqlcipher_expected: {}",
+        crate::db::EXPECTED_SQLCIPHER_VERSION
+    );
+    println!("sqlite_expected: {}", crate::db::EXPECTED_SQLITE_VERSION);
+    println!("sqlcipher_packaging: PINNED/BUNDLED");
+    println!("sqlcipher_crypto_provider: OpenSSL (vendored)");
+    let runtime_matches = match crate::db::native_database_runtime() {
+        Ok((sqlcipher, sqlite)) => {
+            println!("sqlcipher_actual: {sqlcipher}");
+            println!("sqlite_actual: {sqlite}");
+            sqlcipher == crate::db::EXPECTED_SQLCIPHER_VERSION
+                && sqlite == crate::db::EXPECTED_SQLITE_VERSION
+        }
+        Err(_) => {
+            println!("sqlcipher_actual: unavailable");
+            println!("sqlite_actual: unavailable");
+            false
+        }
+    };
 
     #[cfg(target_os = "linux")]
     {
@@ -110,7 +130,7 @@ fn check() -> i32 {
             .and_then(|store| store.load())
             .is_ok();
         println!("default_collection_store: {}", available(store_usable));
-        if dbus && service_available && store_usable {
+        if dbus && service_available && store_usable && runtime_matches {
             println!("result: PASS");
             return 0;
         }
@@ -122,15 +142,25 @@ fn check() -> i32 {
     {
         println!("backend: Windows Credential Manager");
         println!("required_persistence: Local");
-        println!("result: PASS (logical configuration; run SMOKE for mutation)");
-        0
+        if runtime_matches {
+            println!("result: PASS (logical configuration; run SMOKE for mutation)");
+            0
+        } else {
+            println!("result: BLOCKED (native database runtime mismatch)");
+            1
+        }
     }
 
     #[cfg(target_os = "macos")]
     {
         println!("backend: macOS Keychain (acceptance outside this block)");
-        println!("result: PASS (configuration only)");
-        0
+        if runtime_matches {
+            println!("result: PASS (configuration only)");
+            0
+        } else {
+            println!("result: BLOCKED (native database runtime mismatch)");
+            1
+        }
     }
 }
 

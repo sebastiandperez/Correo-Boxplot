@@ -8,7 +8,7 @@
 
 `EncryptedDatabase` is the single canonical opener. It accepts a caller-owned 32-byte DEK, applies it before reading `sqlite_master`, verifies `PRAGMA cipher_version`, enables foreign keys, WAL, `synchronous=FULL`, and a bounded busy timeout, then runs migrations. There is no plaintext fallback, hard-coded production key, key logging, or Secure Store implementation in PERSIST-01.
 
-The validated development runtime currently resolves SQLCipher `4.14.0 community` with SQLite `3.51.3`. This is an environment variance from the packaging target SQLCipher `4.17.0`; it does not rewrite that target and remains a packaging/provisioning gate.
+The validated Linux Development and package runtime resolves the repository-pinned SQLCipher `4.17.0 community` with SQLite `3.53.3` and vendored OpenSSL. A preserved 4.14.0/3.51.3 encrypted fixture proves same-key read/write/reopen compatibility without reset or rekey. Windows/MSVC package and runtime acceptance remain a platform gate, not a persistence-contract change.
 
 Schema version is held in `PRAGMA user_version`. Known versions migrate deterministically; future versions fail. `0001` remains immutable. Migration `0002` rebuilds the early cache schema because `0001` cannot supply `AccountKey`, `ServiceKey`, complete Domain metadata, cache presence, or typed mutations without inventing meaning. The rebuild is allowed only when legacy `pending_mutations` is empty. A non-empty legacy outbox stops migration explicitly so unsent intent is never silently discarded.
 

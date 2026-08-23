@@ -1,6 +1,8 @@
 # 001 — SQLCipher externo, no bundled
 
-**Status:** Accepted; provisioning OPEN
+**Status:** Superseded by SQLCIPHER-PACKAGING-01
+
+This ADR records the previous system-linked development baseline. SQLCIPHER-PACKAGING-01 replaces it with repository-pinned SQLCipher `4.17.0 community` / SQLite `3.53.3` and vendored OpenSSL while retaining `rusqlite 0.40.2`; see `docs/development/sqlcipher-vendor.md`. The historical rationale below is preserved.
 
 ## Context
 
