@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::bootstrap::{BootstrapFailure, CachePaths};
 
-use super::{CREDENTIAL_USER, CacheFlavor, RuntimeMode};
+use super::{CREDENTIAL_USER, CacheFlavor, InstanceProfile, RuntimeMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialIdentity {
@@ -50,12 +50,13 @@ impl CacheIdentity {
         local_data_root: PathBuf,
         mode: RuntimeMode,
     ) -> Result<Self, BootstrapFailure> {
-        let flavor = CacheFlavor::resolve(tauri_identifier, mode)?;
+        let profile = InstanceProfile::resolve(tauri_identifier, mode)?;
+        let flavor = CacheFlavor::from_profile(profile);
         Ok(Self {
             flavor,
             tauri_identifier: tauri_identifier.to_owned(),
             credential: CredentialIdentity {
-                service: flavor.credential_service().to_owned(),
+                service: profile.cache_credential_service().to_owned(),
                 user: CREDENTIAL_USER.to_owned(),
             },
             paths: CachePaths::from_root(local_data_root),
@@ -111,11 +112,15 @@ mod tests {
     #[test]
     fn windows_logical_targets_are_explicit_local_and_distinct() {
         let production = CredentialIdentity {
-            service: CacheFlavor::Production.credential_service().to_owned(),
+            service: InstanceProfile::Production
+                .cache_credential_service()
+                .to_owned(),
             user: CREDENTIAL_USER.to_owned(),
         };
         let development = CredentialIdentity {
-            service: CacheFlavor::Development.credential_service().to_owned(),
+            service: InstanceProfile::Development
+                .cache_credential_service()
+                .to_owned(),
             user: CREDENTIAL_USER.to_owned(),
         };
         let test = CredentialIdentity::isolated_test("unique", "sqlcipher-dek-smoke-v1");

@@ -1,0 +1,8 @@
+{
+  "productName": "Correo Boxplot Dev Demo 2",
+  "identifier": "com.editorialhuellas.correoboxplot.dev.demo2",
+  "build": {
+    "beforeDevCommand": "pnpm exec vite --host 127.0.0.1 --port 1422 --strictPort",
+    "devUrl": "http://127.0.0.1:1422"
+  }
+}

@@ -10,6 +10,8 @@
   },
   "scripts": {
     "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev:demo1": "tauri dev --config src-tauri/tauri.demo1.conf.json",
+    "dev:demo2": "tauri dev --config src-tauri/tauri.demo2.conf.json",
     "native:doctor": "cargo run --manifest-path src-tauri/Cargo.toml --locked --features local-env-doctor --bin local-env-doctor -- check",
     "native:doctor:smoke": "cargo run --manifest-path src-tauri/Cargo.toml --locked --features local-env-doctor --bin local-env-doctor -- smoke",
     "native:vendor:check": "bash scripts/check-sqlcipher-vendor.sh",

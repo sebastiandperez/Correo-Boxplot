@@ -10,8 +10,10 @@ LOCAL-SECURE-STORE-01 separates Production and Development as distinct Tauri app
 | --- | --- | --- | --- |
 | Production | Correo Boxplot | `com.editorialhuellas.correoboxplot` | `com.editorialhuellas.correoboxplot.local-cache` |
 | Development | Correo Boxplot Dev | `com.editorialhuellas.correoboxplot.dev` | `com.editorialhuellas.correoboxplot.dev.local-cache` |
+| Demo 1 | Correo Boxplot Dev Demo 1 | `com.editorialhuellas.correoboxplot.dev.demo1` | `com.editorialhuellas.correoboxplot.dev.demo1.local-cache` |
+| Demo 2 | Correo Boxplot Dev Demo 2 | `com.editorialhuellas.correoboxplot.dev.demo2` | `com.editorialhuellas.correoboxplot.dev.demo2.local-cache` |
 
-Both use credential account `sqlcipher-dek-v1`. Their Tauri-derived `appLocalDataDir` values, databases, sidecars, locks and markers are disjoint. Automated and doctor-smoke credentials instead use a random `com.editorialhuellas.correoboxplot.test.<RUN_ID>.local-cache` service and never reuse either application namespace.
+All four fixed profiles use credential account `sqlcipher-dek-v1`. Their profile-specific Tauri-derived `appLocalDataDir` values, databases, sidecars, locks and markers are disjoint. Automated and doctor-smoke credentials instead use a random `com.editorialhuellas.correoboxplot.test.<RUN_ID>.local-cache` service and never reuse either application namespace.
 
 Raw development execution with the Production identifier fails before credential-store initialization or cache filesystem side effects. A debug build also cannot open Production state. Unknown identifiers fail closed; a Development identifier remains Development in both dev and packaged builds.
 

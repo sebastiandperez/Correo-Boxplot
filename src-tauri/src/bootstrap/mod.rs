@@ -13,6 +13,10 @@ pub(crate) use startup::{
 };
 
 #[cfg(test)]
+mod e2ee_reset_test;
+#[cfg(test)]
+mod profile_tests;
+#[cfg(test)]
 mod tests;
 
 pub fn initialize_tauri(app: &tauri::App) {

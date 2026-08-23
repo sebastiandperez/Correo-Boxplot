@@ -5,11 +5,19 @@ mod dek_store;
 #[cfg(target_os = "linux")]
 mod linux_dek_codec;
 mod os_dek_store;
+#[cfg(test)]
+mod profile_config_tests;
+#[cfg(test)]
+mod profile_tests;
 mod windows_credential;
 
-#[cfg(feature = "local-env-doctor")]
+#[cfg(any(test, feature = "e2ee-dev-tool", feature = "local-env-doctor"))]
 pub(crate) use cache_flavor::DEVELOPMENT_IDENTIFIER;
-pub(crate) use cache_flavor::{CREDENTIAL_USER, CacheFlavor, RuntimeMode};
+#[cfg(test)]
+pub(crate) use cache_flavor::PRODUCTION_IDENTIFIER;
+pub(crate) use cache_flavor::{CREDENTIAL_USER, CacheFlavor, InstanceProfile, RuntimeMode};
+#[cfg(any(test, feature = "e2ee-dev-tool"))]
+pub(crate) use cache_flavor::{DEMO1_IDENTIFIER, DEMO2_IDENTIFIER};
 pub(crate) use cache_identity::{CacheIdentity, CredentialIdentity};
 pub(crate) use dek::{Dek, DekGenerationError};
 pub(crate) use dek_store::{DekLookup, DekStore, DekStoreError};

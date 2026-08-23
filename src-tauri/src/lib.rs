@@ -2,6 +2,7 @@ mod bootstrap;
 #[cfg(feature = "conformance")]
 mod conformance;
 pub mod db;
+mod e2ee;
 pub mod errors;
 pub mod ipc;
 #[cfg(feature = "local-env-doctor")]
@@ -25,13 +26,20 @@ pub fn run_local_env_doctor(arguments: impl Iterator<Item = String>) -> i32 {
     local_env_doctor::run(arguments)
 }
 
+#[cfg(feature = "e2ee-dev-tool")]
+pub fn run_e2ee_key_tool(arguments: impl Iterator<Item = String>) -> i32 {
+    e2ee::run_development_tool(arguments)
+}
+
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(ipc::ManagedLocalEngine::default());
+        .manage(ipc::ManagedLocalEngine::default())
+        .manage(e2ee::ManagedE2eeService::default());
 
     #[cfg(not(feature = "conformance"))]
     let builder = builder.setup(|app| {
+        e2ee::initialize_tauri(app);
         bootstrap::initialize_tauri(app);
         #[cfg(feature = "local-env-doctor")]
         local_env_doctor::maybe_run_development_acceptance(app);
@@ -65,6 +73,11 @@ pub fn run() {
         ipc::commands::local_apply_optimistic_mailbox_membership_mutation,
         ipc::commands::local_replace_pending_mutation_if_current,
         ipc::commands::local_remove_confirmed_mutation,
+        e2ee::ipc::e2ee_ensure_local_identity,
+        e2ee::ipc::e2ee_trust_peer_public_key,
+        e2ee::ipc::e2ee_peer_key_status,
+        e2ee::ipc::e2ee_encrypt,
+        e2ee::ipc::e2ee_decrypt,
     ]);
 
     #[cfg(feature = "conformance")]
@@ -96,6 +109,11 @@ pub fn run() {
             ipc::commands::local_apply_optimistic_mailbox_membership_mutation,
             ipc::commands::local_replace_pending_mutation_if_current,
             ipc::commands::local_remove_confirmed_mutation,
+            e2ee::ipc::e2ee_ensure_local_identity,
+            e2ee::ipc::e2ee_trust_peer_public_key,
+            e2ee::ipc::e2ee_peer_key_status,
+            e2ee::ipc::e2ee_encrypt,
+            e2ee::ipc::e2ee_decrypt,
             conformance::conformance_create_runtime,
             conformance::conformance_dispose_runtime,
             conformance::conformance_settle,
