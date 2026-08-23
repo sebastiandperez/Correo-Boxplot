@@ -6,6 +6,7 @@ import type {
   JmapEmailBody,
   JmapStateChange,
 } from './types'
+import type { SendIntent } from '../domain/send-intent'
 
 export interface JmapClient {
   /**
@@ -44,12 +45,23 @@ export interface JmapClient {
   getEmailBody(accountId: string, emailId: string): Promise<JmapEmailBody>
 
   /**
+   * Updates keywords (e.g. read, flagged) for a specific email.
+   */
+  updateEmailKeywords(accountId: string, emailId: string, keywords: Record<string, boolean>): Promise<void>
+
+  /**
+   * Updates the mailboxes (folders) an email belongs to.
+   */
+  updateEmailMailboxes(accountId: string, emailId: string, mailboxIds: Record<string, boolean>): Promise<void>
+
+  /**
    * Submits a draft email for sending.
    * @returns an object containing the new emailId and submissionId.
    */
   submitEmail(
     accountId: string,
-    emailDraft: unknown,
+    intent: SendIntent,
+    rawIdentityId: string,
   ): Promise<{ emailId: string; submissionId: string }>
 
   /**

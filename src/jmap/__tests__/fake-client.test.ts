@@ -81,19 +81,17 @@ class FakeJmapClient implements JmapClient {
     }
   }
 
-  async getEmailBody(_accountId: string, emailId: string): Promise<JmapEmailBody> {
-    return {
-      emailId,
-      html: '<p>Hello world</p>',
-      text: 'Hello world',
-    }
+  async getEmailBody(_accountId: string, _emailId: string): Promise<JmapEmailBody> {
+    throw new Error('Method not implemented.')
   }
-
-  async submitEmail(_accountId: string, _emailDraft: unknown): Promise<{ emailId: string; submissionId: string }> {
-    return {
-      emailId: 'email-new',
-      submissionId: 'sub-new',
-    }
+  async updateEmailKeywords(_accountId: string, _emailId: string, _keywords: Record<string, boolean>): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+  async updateEmailMailboxes(_accountId: string, _emailId: string, _mailboxIds: Record<string, boolean>): Promise<void> {
+    throw new Error('Method not implemented.')
+  }
+  async submitEmail(_accountId: string, _intent: unknown, _rawIdentityId: string): Promise<{ emailId: string; submissionId: string }> {
+    throw new Error('Method not implemented.')
   }
 
   onStateChange(callback: (change: JmapStateChange) => void): void {

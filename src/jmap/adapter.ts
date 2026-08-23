@@ -18,6 +18,9 @@ import { queryEmails } from './mail/email-query'
 import { getEmails } from './mail/email-get'
 import { getEmailChanges } from './mail/email-changes'
 import { extractEmailBody } from './normalizers/body-normalizer'
+import { patchEmailKeywords, patchEmailMailboxes } from './mail/mutations'
+import { submitEmail } from './mail/submission'
+import type { SendIntent } from '../domain/send-intent'
 
 export class JamClientAdapter implements JmapClient {
   private readonly jam: JamClient
@@ -86,8 +89,16 @@ export class JamClientAdapter implements JmapClient {
     return emailBody
   }
 
-  async submitEmail(_accountId: string, _emailDraft: unknown): Promise<{ emailId: string; submissionId: string }> {
-    throw new Error('Method not implemented yet.')
+  async updateEmailKeywords(accountId: string, emailId: string, keywords: Record<string, boolean>): Promise<void> {
+    return patchEmailKeywords(this.jam, accountId, emailId, keywords)
+  }
+
+  async updateEmailMailboxes(accountId: string, emailId: string, mailboxIds: Record<string, boolean>): Promise<void> {
+    return patchEmailMailboxes(this.jam, accountId, emailId, mailboxIds)
+  }
+
+  async submitEmail(accountId: string, intent: SendIntent, rawIdentityId: string): Promise<{ emailId: string; submissionId: string }> {
+    return submitEmail(this.jam, accountId, intent, rawIdentityId)
   }
 
   onStateChange(_callback: (change: JmapStateChange) => void): void {
