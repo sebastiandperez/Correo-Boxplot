@@ -10,6 +10,7 @@ import type {
   JmapIdentity,
   JmapEmailDraft,
   JmapStateChange,
+  QueryOptions,
 } from './types'
 
 export interface JmapClient {
@@ -31,11 +32,14 @@ export interface JmapClient {
 
   /**
    * Queries emails in a specific mailbox, returning IDs + query metadata.
+   * `options` covers pagination (position/limit/anchor/anchorOffset) —
+   * without it, JMAP's own pagination is unreachable through this port.
    */
   queryEmails(
     accountId: string,
     mailboxId: string,
     filter?: unknown,
+    options?: QueryOptions,
   ): Promise<JmapQueryResult>
 
   /**

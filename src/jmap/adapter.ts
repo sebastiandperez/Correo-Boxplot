@@ -16,6 +16,7 @@ import type {
   JmapIdentity,
   JmapEmailDraft,
   JmapAttachment,
+  QueryOptions,
 } from './types'
 
 import { getMailboxes } from './mail/mailbox'
@@ -68,8 +69,9 @@ export class JamClientAdapter implements JmapClient {
     accountId: string,
     mailboxId: string,
     filter?: unknown,
+    options?: QueryOptions,
   ): Promise<JmapQueryResult> {
-    return queryEmails(this.jam, accountId, mailboxId, filter)
+    return queryEmails(this.jam, accountId, mailboxId, filter, options)
   }
 
   async getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]> {

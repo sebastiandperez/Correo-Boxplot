@@ -1,14 +1,9 @@
 import type { JamClient } from 'jmap-jam'
-import type { JmapQueryResult } from '../types'
+import type { JmapQueryResult, QueryOptions } from '../types'
 import type { RawJmapQueryResponse } from './types-raw'
 import { JmapMethodError } from '../errors'
 
-export interface QueryOptions {
-  position?: number
-  limit?: number
-  anchor?: string
-  anchorOffset?: number
-}
+export type { QueryOptions } from '../types'
 
 export async function queryEmails(
   jam: JamClient,

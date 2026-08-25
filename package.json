@@ -39,6 +39,7 @@
     "@tauri-apps/plugin-opener": "2.5.3",
     "@vue/devtools-api": "8.1.5",
     "dompurify": "3.4.13",
+    "jmap-jam": "0.13.3",
     "pinia": "4.0.3",
     "vue": "3.5.41"
   },
@@ -51,7 +52,6 @@
     "eslint": "10.8.1",
     "eslint-plugin-vue": "10.10.0",
     "happy-dom": "^20.11.6",
-    "jmap-jam": "0.13.3",
     "prettier": "3.9.6",
     "tsx": "4.19.4",
     "typescript": "6.0.3",

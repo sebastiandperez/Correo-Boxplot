@@ -115,6 +115,8 @@ El token de acceso o sesión JMAP vive únicamente en memoria del Worker TypeScr
 
 Logout y expiración eliminan la referencia en memoria y detienen nuevas llamadas JMAP. Cerrar la aplicación descarta el token; al relanzarla se requiere autenticación remota de nuevo, mientras la caché local continúa disponible.
 
+**Hallazgo abierto — CSP (CSP-01):** la CSP del webview (`src-tauri/tauri.conf.json`, heredada sin cambios por los perfiles `dev`/`demo1`/`demo2`) fija `connect-src 'self' ipc: http://ipc.localhost`, sin ningún origen `https:`/`wss:`. Mientras esto no cambie, el propio navegador bloquea cualquier `fetch`/`WebSocket` del Worker hacia un servidor JMAP externo — el `JamClientAdapter` real fallaría por CSP, no por un defecto de código. No se resuelve aquí porque el origen exacto depende del Servidor-Boxplot, que todavía no existe; hay que añadirlo explícitamente por perfil, nunca con un wildcard, antes de la primera prueba contra un servidor real (ver roadmap CSP-01).
+
 ### 5. Cifrado local con DEK aleatoria y SQLCipher
 
 En el primer provisioning, Rust genera una DEK criptográficamente aleatoria de 32 bytes. La guarda mediante el secure store del sistema operativo y la aplica a SQLCipher antes de cualquier acceso a la base.

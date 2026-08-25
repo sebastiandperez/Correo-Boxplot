@@ -27,7 +27,7 @@ describe('Outbox', () => {
     createdAt: '2023-01-01T00:00:00Z' as any,
     lifecycle: { status: 'pending', attemptCount: 0 } as any,
     intent: {
-      identityId: 'id-1' as any,
+      identityId: { accountKey: 'acc-key-1', jmapId: 'id-1' } as any,
       from: { name: 'Me', email: 'me@example.com' },
       to: [],
       cc: [],
@@ -38,7 +38,7 @@ describe('Outbox', () => {
     },
   }
 
-  it('should process SendMutation and map empty arrays to null per D-03 invariant', async () => {
+  it('should process SendMutation, delegate DTO mapping to draft-mapper, and confirm on success', async () => {
     mockClient.submitEmail = vi
       .fn()
       .mockResolvedValue({ emailId: 'e1', submissionId: 's1' })
@@ -48,7 +48,10 @@ describe('Outbox', () => {
     expect(mockClient.submitEmail).toHaveBeenCalledWith(
       'acc1',
       expect.objectContaining({
-        bcc: [], // D-03 invariant mapped
+        // draft-mapper.ts deliberately preserves empty recipient arrays as
+        // [] for the outbound JmapEmailDraft — D-03's null-for-empty rule
+        // applies to Domain Email address lists, not to this DTO.
+        bcc: [],
         cc: [],
       }),
       'id-1',

@@ -275,9 +275,10 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
 | AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |
 | STACK-01 | **LINUX + WINDOWS x86_64 MSVC COMPLETE · macOS OUT OF CURRENT SCOPE** | Source/provider deterministas y paquetes DEB/NSIS verificados; Windows incluye ejecución instalada e inspección PE. |
-| STACK-02 | **Durante 3-B** | Conformance de `jmap-jam 0.13.3`; candidato no instalado ni congelado. |
+| STACK-02 | **RESOLVED · ADR-006 (2026-08-22)** | `jmap-jam 0.13.3` adoptado, encapsulado en `src/jmap/`, movido a `dependencies` con versión exacta. Conformance contra un servidor real sigue pendiente para Sprint 2 (C2-16). |
 | STACK-03 | **Antes de release** | Versiones mínimas OS/WebView y target explícito de Vite. |
 | STACK-04 | **Durante 3-A / antes de aceptación** | Secret Service Linux y stores explícitos por plataforma. |
+| CSP-01 | **Antes del primer JMAP real · Fase 3-B** | `connect-src` de `tauri.conf.json` es hoy `'self' ipc: http://ipc.localhost`, sin `https:`/`wss:`. Un `JamClientAdapter` real (fetch/WebSocket) fallará por CSP, no por código, hasta añadir el origen exacto del servidor JMAP por perfil. No se resuelve aquí porque el servidor aún no existe; ver [security.md §4](../architecture/security.md#4-token-jmap-solo-en-memoria). |
 
 ## 12. Trabajo deliberadamente diferido
 

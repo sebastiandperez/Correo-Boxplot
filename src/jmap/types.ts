@@ -72,6 +72,13 @@ export type JmapQueryResult = Readonly<{
   canCalculateChanges: boolean
 }>
 
+export type QueryOptions = Readonly<{
+  position?: number
+  limit?: number
+  anchor?: string
+  anchorOffset?: number
+}>
+
 export type JmapQueryChanges = Readonly<{
   accountId: string
   oldQueryState: string

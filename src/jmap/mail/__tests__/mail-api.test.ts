@@ -4,6 +4,7 @@ import { queryEmails } from '../email-query'
 import { getEmails } from '../email-get'
 import { getEmailChanges } from '../email-changes'
 import { queryAndGetEmails } from '../batching'
+import { JmapMethodError } from '../../errors'
 import type { JamClient } from 'jmap-jam'
 import * as httpMock from '../../transport/http'
 
@@ -65,6 +66,9 @@ describe('JMAP Mail APIs', () => {
           list: [
             {
               id: 'email1',
+              blobId: 'blob1',
+              threadId: 'thread1',
+              receivedAt: '2026-01-01T00:00:00Z',
               keywords: { $seen: true, $flagged: false },
             },
           ],
@@ -97,6 +101,26 @@ describe('JMAP Mail APIs', () => {
     const result = await getEmailChanges(mockJam, 'acc1', 's1')
     expect(result.newState).toBe('s2')
     expect(result.created).toEqual(['new1'])
+  })
+
+  it('getEmailChanges should throw cannotCalculateChanges when the server signals it', async () => {
+    // RFC 8621: Email/changes may respond with cannotCalculateChanges
+    // instead of a delta when sinceState is too old/unknown.
+    const mockJam = {
+      request: vi.fn().mockResolvedValue([
+        {
+          type: 'cannotCalculateChanges',
+          cannotCalculateChanges: true,
+        },
+      ]),
+    } as unknown as JamClient
+
+    await expect(
+      getEmailChanges(mockJam, 'acc1', 'stale-state'),
+    ).rejects.toThrow(JmapMethodError)
+    await expect(
+      getEmailChanges(mockJam, 'acc1', 'stale-state'),
+    ).rejects.toMatchObject({ type: 'cannotCalculateChanges' })
   })
 
   it('queryAndGetEmails should construct batch refs', async () => {
