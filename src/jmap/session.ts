@@ -1,38 +1,64 @@
-import type { JamClient } from 'jmap-jam'
 import type { JmapSession } from './types'
+import type { AuthConfig } from './transport/http'
+import { createAuthenticatedFetch } from './transport/http'
 import { JmapMethodError, JmapAuthError, JmapNetworkError } from './errors'
 
 const URN_MAIL = 'urn:ietf:params:jmap:mail'
+const URN_WEBSOCKET = 'urn:ietf:params:jmap:websocket'
 
 /**
- * Discovers and validates the JMAP session for the given client.
- * Validates that the account exists and has the required mail capabilities.
+ * Discovers and validates the JMAP session at sessionUrl.
+ *
+ * Deliberately does NOT use JamClient.session: jmap-jam@0.13.3 ignores any
+ * injected fetch (its ClientConfig has no `fetch` option) and its
+ * loadSession() never checks response.ok before parsing the body, so a real
+ * 401/403 with a valid JSON error body would be silently treated as if it
+ * were the session object. Performing the fetch here, through
+ * createAuthenticatedFetch, makes the auth/network error classification and
+ * the "never mutate globalThis.fetch" invariant actually apply to session
+ * discovery.
  */
-export async function discoverSession(jam: JamClient): Promise<JmapSession> {
-  let session
+export async function discoverSession(
+  sessionUrl: string,
+  auth: AuthConfig,
+): Promise<JmapSession> {
+  const authenticatedFetch = createAuthenticatedFetch(sessionUrl, auth)
+
+  let response: Response
   try {
-    session = await jam.session
+    response = await authenticatedFetch(sessionUrl, {
+      headers: { Accept: 'application/json' },
+    })
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (
-      msg.includes('401') ||
-      msg.includes('403') ||
-      msg.includes('Unauthorized')
-    ) {
-      throw new JmapAuthError('Authentication failed during session discovery')
+    if (err instanceof JmapAuthError || err instanceof JmapNetworkError) {
+      throw err
     }
-    // Also if the error is just 'e.json is not a function' and the status was 401, but we can't easily see the status here if jmap-jam throws.
-    // If it's a TypeError like 'Failed to fetch', it's network.
-    if (err instanceof TypeError || msg.includes('fetch')) {
-      // In tests, we threw 'e.json is not a function' for 401. Let's make the test throw standard auth error by improving the test mock or just catch TypeError as network error.
-      throw new JmapNetworkError(
-        'Network error during JMAP session discovery',
-        err,
-      )
-    }
-    throw new JmapMethodError('openSession', 'networkOrServerFail', msg)
+    throw new JmapNetworkError(
+      'Network error during JMAP session discovery',
+      err,
+    )
   }
 
+  if (!response.ok) {
+    throw new JmapMethodError(
+      'openSession',
+      'networkOrServerFail',
+      `Session discovery failed with status ${response.status}`,
+    )
+  }
+
+  let raw: unknown
+  try {
+    raw = await response.json()
+  } catch {
+    throw new JmapMethodError(
+      'openSession',
+      'invalidSession',
+      'Failed to parse the JMAP session response as JSON.',
+    )
+  }
+
+  const session = raw as Record<string, unknown> | null | undefined
   if (!session) {
     throw new JmapMethodError(
       'openSession',
@@ -42,7 +68,8 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
   }
 
   // Find the primary account for mail
-  const primaryAccounts = session.primaryAccounts || {}
+  const primaryAccounts =
+    (session.primaryAccounts as Record<string, string> | undefined) || {}
   const mailAccountId = primaryAccounts[URN_MAIL]
 
   if (!mailAccountId) {
@@ -53,7 +80,8 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
     )
   }
 
-  const account = session.accounts?.[mailAccountId]
+  const accounts = session.accounts as Record<string, unknown> | undefined
+  const account = accounts?.[mailAccountId]
   if (!account) {
     throw new JmapMethodError(
       'openSession',
@@ -63,10 +91,10 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
   }
 
   // Extract endpoints
-  const apiUrl = session.apiUrl || ''
-  const downloadUrl = session.downloadUrl || ''
-  const uploadUrl = session.uploadUrl || ''
-  const eventSourceUrl = session.eventSourceUrl || ''
+  const apiUrl = (session.apiUrl as string | undefined) || ''
+  const downloadUrl = (session.downloadUrl as string | undefined) || ''
+  const uploadUrl = (session.uploadUrl as string | undefined) || ''
+  const eventSourceUrl = (session.eventSourceUrl as string | undefined) || ''
 
   if (!apiUrl || !downloadUrl || !uploadUrl || !eventSourceUrl) {
     throw new JmapMethodError(
@@ -76,13 +104,25 @@ export async function discoverSession(jam: JamClient): Promise<JmapSession> {
     )
   }
 
-  const capabilities = session.capabilities || {}
+  const capabilities =
+    (session.capabilities as Record<string, unknown> | undefined) || {}
+
+  // RFC 8887 push endpoint (ADR-006): extracted from the websocket
+  // capability, never from eventSourceUrl (that's the unrelated SSE
+  // endpoint jmap-jam's EventSource support would use).
+  const webSocketCapability = capabilities[URN_WEBSOCKET] as
+    Record<string, unknown> | undefined
+  const webSocketUrl =
+    typeof webSocketCapability?.url === 'string'
+      ? webSocketCapability.url
+      : null
 
   return {
     apiUrl,
     downloadUrl,
     uploadUrl,
     eventSourceUrl,
+    webSocketUrl,
     primaryAccounts,
     capabilities,
   }

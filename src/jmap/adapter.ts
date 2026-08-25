@@ -33,16 +33,18 @@ import { connectWebSocket } from './transport/websocket'
 
 export class JamClientAdapter implements JmapClient {
   private readonly jam: JamClient
+  private readonly sessionUrl: string
   private readonly auth: AuthConfig
   private sessionData: JmapSession | null = null
 
   constructor(sessionUrl: string, auth: AuthConfig) {
     this.jam = createJamClient(sessionUrl, auth)
+    this.sessionUrl = sessionUrl
     this.auth = auth
   }
 
   async openSession(): Promise<JmapSession> {
-    const session = await discoverSession(this.jam)
+    const session = await discoverSession(this.sessionUrl, this.auth)
     this.sessionData = session
     return session
   }
@@ -52,15 +54,6 @@ export class JamClientAdapter implements JmapClient {
       throw new Error('Session has not been opened or apiUrl is missing')
     }
     return this.sessionData.apiUrl
-  }
-
-  private get eventSourceUrl(): string {
-    if (!this.sessionData?.eventSourceUrl) {
-      throw new Error(
-        'Session has not been opened or eventSourceUrl is missing',
-      )
-    }
-    return this.sessionData.eventSourceUrl
   }
 
   async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
@@ -244,8 +237,18 @@ export class JamClientAdapter implements JmapClient {
   }
 
   onStateChange(callback: (change: JmapStateChange) => void): () => void {
+    const wsUrl = this.sessionData?.webSocketUrl
+    if (!wsUrl) {
+      // Server did not advertise urn:ietf:params:jmap:websocket — push is
+      // unavailable. Return a no-op disconnect instead of connecting to the
+      // wrong endpoint (eventSourceUrl is SSE, not RFC 8887 WebSocket).
+      console.warn(
+        '[JamClientAdapter] onStateChange: server has no websocket capability, push disabled',
+      )
+      return () => {}
+    }
     return connectWebSocket({
-      wsUrl: this.eventSourceUrl, // Using eventSourceUrl as wsUrl since Stalwart provides the WS URL there
+      wsUrl,
       auth: this.auth,
       onStateChange: callback,
     })

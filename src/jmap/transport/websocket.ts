@@ -73,14 +73,19 @@ export function connectWebSocket(options: WebSocketPushOptions): () => void {
           options.onStateChange(parsed as unknown as JmapStateChange)
         }
         // Silently ignore other message types (e.g. Response, RequestError)
-      } catch {
-        // Malformed JSON — log but don't crash
+      } catch (err: unknown) {
+        options.onError?.(
+          err instanceof Error ? err : new Error('Malformed WebSocket message'),
+        )
       }
     }
 
     ws.onerror = () => {
-      // The error event gives no useful info in the browser WebSocket API.
-      // onclose will fire after this, which handles reconnect.
+      // The native error event carries no useful detail in the browser
+      // WebSocket API; onclose fires right after and handles reconnect.
+      // Still surface it so callers can distinguish "was reconnecting" from
+      // "connection is unhealthy" instead of silently discarding it.
+      options.onError?.(new Error('WebSocket connection error'))
     }
 
     ws.onclose = () => {

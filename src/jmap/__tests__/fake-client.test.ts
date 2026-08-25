@@ -23,6 +23,7 @@ class FakeJmapClient implements JmapClient {
       downloadUrl: 'https://example.com/download',
       uploadUrl: 'https://example.com/upload',
       eventSourceUrl: 'https://example.com/events',
+      webSocketUrl: null,
       primaryAccounts: { 'urn:ietf:params:jmap:mail': 'account-1' },
       capabilities: {},
     }

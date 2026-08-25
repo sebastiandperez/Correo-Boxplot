@@ -56,13 +56,31 @@ export function createJamClient(
   sessionUrl: string,
   auth: AuthConfig,
 ): JamClient {
-  const authenticatedFetch = createAuthenticatedFetch(sessionUrl, auth)
-
-  return new JamClient({
+  // NOTE: jmap-jam 0.13.3's ClientConfig has no `fetch` option — its
+  // internal loadSession()/request() always call the raw global `fetch`,
+  // authenticated only via `bearerToken` (see node_modules/.pnpm/jmap-jam@0.13.3/
+  // node_modules/jmap-jam/src/client.ts). Passing a custom fetch here would be
+  // silently ignored, so we don't. Consequence: AuthConfig.type === 'Basic'
+  // is NOT honored by calls routed through JamClient.request() (getMailboxes,
+  // getIdentities, queryEmails, getEmails, getEmailChanges, getEmailBody,
+  // getEmailAttachments) — only Bearer works there. Session discovery bypasses
+  // jam.session entirely (see session.ts) and uses createAuthenticatedFetch
+  // directly, so it supports both Bearer and Basic correctly.
+  const jam = new JamClient({
     sessionUrl,
     bearerToken: auth.type === 'Bearer' ? auth.token : 'dummy',
-    fetch: authenticatedFetch,
   })
+
+  // JamClient eagerly starts fetching the session in its own constructor
+  // (JamClient.loadSession()), independently of discoverSession() above,
+  // which never reads jam.session. Any other jmap-jam method that does
+  // (request(), uploadBlob(), downloadBlob(), connectEventSource()) still
+  // awaits it normally and sees rejections. Without this, an auth/network
+  // failure at construction time would surface as an unhandled promise
+  // rejection nobody is listening for.
+  jam.session.catch(() => {})
+
+  return jam
 }
 
 /**
@@ -114,8 +132,22 @@ export async function fetchJmapRaw(
     )
   }
 
-  const body = await response.json()
-  return body.methodCalls as ReadonlyArray<
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch (err: unknown) {
+    throw new JmapNetworkError(
+      'Failed to parse JMAP batch response as JSON',
+      err,
+    )
+  }
+
+  const methodResponses = (body as Record<string, unknown>)?.methodResponses
+  if (!Array.isArray(methodResponses)) {
+    throw new JmapNetworkError('JMAP batch response is missing methodResponses')
+  }
+
+  return methodResponses as ReadonlyArray<
     readonly [string, Record<string, unknown>, string]
   >
 }

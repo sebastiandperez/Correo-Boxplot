@@ -121,6 +121,12 @@ export type JmapSession = Readonly<{
   downloadUrl: string
   uploadUrl: string
   eventSourceUrl: string
+  /**
+   * WebSocket push endpoint (RFC 8887), extracted from
+   * capabilities['urn:ietf:params:jmap:websocket'].url — see ADR-006.
+   * null when the server does not advertise the websocket capability.
+   */
+  webSocketUrl: string | null
   primaryAccounts: Record<string, string>
   capabilities: Record<string, unknown>
 }>
