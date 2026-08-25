@@ -122,6 +122,20 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 
 ---
 
+## 5A. Rust net — traductor IMAP/SMTP (ADR-007)
+
+* **Responsabilidad:** Traducir IMAP/SMTP a DTOs con forma JMAP, expuestos por comandos IPC propios que consume `ImapJmapAdapter` (un `JmapClient` más). Es la única excepción a que Rust no hable red de correo, y solo existe para satisfacer el requisito de dos protocolos del proyecto (ADR-007).
+* **Qué NO hace:** No habla JMAP, no custodia el token JMAP del Worker, no actúa como proxy HTTP genérico, no adquiere el `EngineLease` del motor de persistencia y no conoce `SyncPort`/`ReadRepository`/SQLite/SQLCipher. No aloja Coordinator ni Outbox.
+* **Dependencias:** Crates TLS/IMAP/SMTP con versión exacta pinneada; Tauri mínimo para IPC.
+* **Consumidores:** `ImapJmapAdapter` en `src/jmap/`, vía el mismo puente IPC Worker↔main que ya usa `SyncPort`.
+* **Datos de entrada:** Credenciales IMAP/SMTP memory-only del proceso Rust; operaciones equivalentes a los métodos de `JmapClient` (query, get, changes, set, submission).
+* **Datos de salida:** DTOs con la forma de `src/jmap/types.ts` — el resto de la capa JMAP (normalizadores, Coordinator, Outbox) no distingue si vinieron de JMAP real o de esta traducción.
+* **Estado:** Sesión de red por cuenta, memory-only, con su propio ciclo de vida independiente del `EngineLease`.
+* **Persistencia:** Ninguna. No escribe en SQLite ni mantiene su propio almacenamiento durable; el mapeo UID↔ID estable vive en memoria, reconstruible por resync.
+* **Networking:** TCP/TLS saliente hacia IMAP/SMTP. Sin TLS solo se permite contra `127.0.0.1`/`localhost`; cualquier otro host exige TLS y falla cerrado.
+
+---
+
 ## 6. Motor Web/PWA — diferido
 
 * **Responsabilidad:** En una iteración futura, implementar `ReadRepository`, `SyncPort` y `LocalChangeSource` sobre `wa-sqlite`/OPFS dentro de `SharedWorker` y notificar por `BroadcastChannel`.
@@ -166,15 +180,15 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 
 ## 9. Cliente JMAP
 
-* **Responsabilidad:** Implementar en TypeScript JMAP estándar: descubrimiento/sesión, métodos por `fetch`, push `StateChange` por WebSocket, serialización, validación y errores. Mantiene DTOs parciales dentro de la frontera de transporte y los normaliza/mergea antes de producir entidades Domain completas. Normaliza body parts sin exponer un MIME tree crudo y solo produce `EmailBody` cuando dispone de la representación visible completa y no truncada definida por D-09.
-* **Qué NO hace:** No implementa servidor ni proveedor real, no habla IMAP/SMTP, no ejecuta SQL, no entrega modelos de UI, no pasa la red por Rust y no maneja binarios de adjuntos en el MVP.
-* **Dependencias:** HTTPS, WebSocket, capacidades JMAP y token de sesión obtenido por el flujo Passkey en navegador del sistema.
+* **Responsabilidad:** Implementar en TypeScript el puerto único `JmapClient` (`src/jmap/client.ts`) que Coordinador y Outbox consumen sin ramas por protocolo. Tiene dos implementaciones: `JamClientAdapter`, JMAP estándar por `fetch`/WebSocket (descubrimiento/sesión, push `StateChange`, serialización, validación y errores); y `ImapJmapAdapter` (ADR-007), que traduce IMAP/SMTP delegando la conexión de red a `src-tauri/src/net/` y consumiendo DTOs con la misma forma. Ambos mantienen DTOs parciales dentro de la frontera de transporte y los normalizan/mergean antes de producir entidades Domain completas. Normaliza body parts sin exponer un MIME tree crudo y solo produce `EmailBody` cuando dispone de la representación visible completa y no truncada definida por D-09.
+* **Qué NO hace:** No implementa servidor ni proveedor real, no ejecuta SQL, no entrega modelos de UI y no maneja binarios de adjuntos en el MVP. `JamClientAdapter` no pasa la red por Rust; `ImapJmapAdapter` sí, pero exclusivamente a través del traductor `net/`, sin que ninguno filtre al Coordinador/Outbox qué protocolo hay detrás.
+* **Dependencias:** `JamClientAdapter`: HTTPS, WebSocket, capacidades JMAP y token de sesión obtenido por el flujo Passkey en navegador del sistema. `ImapJmapAdapter`: los comandos IPC de `net/` y la sesión IMAP/SMTP memory-only en Rust.
 * **Consumidores:** Coordinador y Outbox.
 * **Datos de entrada:** Invocaciones JMAP, cursores/state, IDs, parches y cuerpo saliente sin adjuntos.
 * **Datos de salida:** Respuestas validadas y normalizadas, metadata `AttachmentRef` D-10, `EmailBody` completo conforme a D-09, errores clasificados y `StateChange`. La implementación concreta del flattening JMAP y la disponibilidad cacheada de la colección de refs siguen diferidas.
-* **Estado:** JMAP Session, WebSocket, solicitudes y token. El token vive solo en memoria del Worker, nunca en Pinia/SQLite/`localStorage`/logs, y se elimina al logout, expiración o cierre.
+* **Estado:** JMAP Session, WebSocket, solicitudes y token (`JamClientAdapter`) o sesión de red vía `net/` (`ImapJmapAdapter`). El token/credencial vive solo en memoria del Worker o del proceso Rust según el adaptador, nunca en Pinia/SQLite/`localStorage`/logs, y se elimina al logout, expiración o cierre.
 * **Persistencia:** Ninguna directa. Correo, cursores y pendientes pasan por `SyncPort`.
-* **Networking:** Sí; corre en Worker normal dentro del webview Tauri y habla directo con el servidor JMAP. El runtime `SharedWorker` queda para la futura iteración Web.
+* **Networking:** Sí; corre en Worker normal dentro del webview Tauri. `JamClientAdapter` habla directo con el servidor JMAP; `ImapJmapAdapter` delega la conexión saliente a Rust net (ADR-007). El runtime `SharedWorker` queda para la futura iteración Web.
 
 ## 10. Explicación del diagrama de componentes: abres la bandeja de entrada
 

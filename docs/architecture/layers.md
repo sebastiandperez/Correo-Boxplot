@@ -98,7 +98,13 @@ No depende de Vue, Pinia, SQLite, SQL, Rust Local Engine ni persistencia Tauri. 
 
 Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, DEK, validación de la frontera IPC, comandos semánticos y eventos locales necesarios. `ipc/` delimita los 25 comandos IPC-00 y `local-state-changed`; `persistence/` implementa el motor semántico PERSIST-01; `db/` aplica migraciones; `security/` selecciona el credential store nativo y custodia la DEK; `bootstrap/` coordina lifecycle, markers crash-safe, reset interno y lock entre procesos. Véase [secure-local-cache.md](secure-local-cache.md).
 
-No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa como proxy HTTP/WebSocket, no almacena el token JMAP, no renderiza UI y no maneja Pinia. El networking de correo de Rust es ninguno.
+No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa como proxy HTTP/WebSocket, no almacena el token JMAP, no renderiza UI y no maneja Pinia. El networking de correo del Rust Local Engine es ninguno.
+
+### Rust net — traductor IMAP/SMTP (ADR-007)
+
+**Rutas implementadas:** `src-tauri/src/net/`.
+
+Excepción única y explícita a la regla anterior. Abre conexiones TCP/TLS salientes hacia IMAP/SMTP exclusivamente para traducir esos protocolos a DTOs con forma JMAP, expuestos por comandos IPC propios y separados de los 25 de IPC-00. Es una capa Rust distinta del Rust Local Engine: no adquiere su `EngineLease`, no conoce `SyncPort`/`ReadRepository`/SQLite/SQLCipher, y el Local Engine sigue sin conocerla a ella. Nunca habla JMAP, nunca custodia el token JMAP del Worker y nunca actúa como proxy HTTP genérico; la credencial IMAP/SMTP vive solo en memoria de este proceso.
 
 ## Dependency direction
 
@@ -119,6 +125,7 @@ Las dependencias permitidas son:
 | JMAP | Web APIs de networking; protocolo y adaptador JMAP aprobado |
 | Rust commands | Local Engine; seguridad y errores Rust; Tauri mínimo |
 | Rust Local Engine | `rusqlite`/SQLCipher y servicios nativos de seguridad necesarios |
+| Rust net (ADR-007) | Crates TLS/IMAP/SMTP pinneados con versión exacta; Tauri mínimo para IPC |
 
 Una conveniencia local no justifica invertir o saltar esta dirección.
 
@@ -133,6 +140,7 @@ Una conveniencia local no justifica invertir o saltar esta dirección.
 | Coordinator / Outbox | SQLite o SQL directos; deben usar `SyncPort` |
 | JMAP Client | Pinia, Vue, modelos UI, SQLite, Rust Local Engine o persistencia Tauri |
 | Rust Local Engine | JMAP, autenticación remota, almacenamiento del token JMAP o proxy de red |
+| Rust net (ADR-007) | JMAP; `EngineLease`; `SyncPort`/`ReadRepository`; SQLite/SQLCipher; almacenamiento del token JMAP |
 
 ## State ownership
 
@@ -147,7 +155,7 @@ Estas categorías no se mezclan. `LocalReady + RemoteAnonymous` es válido.
 
 ## Networking ownership
 
-Presentation, Application, Domain, Ports y los adaptadores Tauri tienen networking de correo **ninguno**. Coordinator y Outbox lo orquestan solo mediante JMAP Client. JMAP Client es la única pieza que habla JMAP por `fetch`/WebSocket. Rust Local Engine tiene networking de correo **ninguno**.
+Presentation, Application, Domain, Ports y los adaptadores Tauri tienen networking de correo **ninguno**. Coordinator y Outbox lo orquestan solo mediante JMAP Client — el puerto único, sin ramas por protocolo. JMAP Client es la única pieza TypeScript que habla JMAP por `fetch`/WebSocket. Rust Local Engine tiene networking de correo **ninguno**. Rust net (ADR-007) es la única excepción: abre TCP/TLS saliente hacia IMAP/SMTP exclusivamente como traductor detrás de un adaptador de JMAP Client; nunca habla JMAP y nunca toca el Rust Local Engine.
 
 ## Persistence ownership
 
@@ -203,5 +211,5 @@ Antes de aprobar un cambio, verificar:
 2. ¿Sus imports apuntan en la dirección permitida?
 3. ¿Cruza un port o salta una frontera?
 4. ¿Estado durable terminó accidentalmente en Pinia?
-5. ¿Networking de correo apareció fuera de JMAP Client?
+5. ¿Networking de correo apareció fuera de JMAP Client o de Rust net (ADR-007)? ¿Rust net tocó el Local Engine?
 6. ¿SQL o IPC apareció dentro de UI/Application?

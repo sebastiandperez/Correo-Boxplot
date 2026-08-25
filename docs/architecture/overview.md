@@ -6,7 +6,7 @@ Este documento describe el cliente de correo que vamos a construir: una aplicaci
 
 Las reglas canónicas de capas, imports y dirección de dependencias se encuentran en [layers.md](layers.md).
 
-El cliente habla **JMAP real** (HTTP + WebSocket) contra nuestro propio servidor, y es explícitamente opcional: el servidor también expone IMAP y SMTP estándar, así que Apple Mail, apps de Android o cualquier cliente de terceros pueden usar la misma cuenta sin pasar por esta app.
+El cliente habla **JMAP real** (HTTP + WebSocket) contra nuestro propio servidor, y es explícitamente opcional: el servidor también expone IMAP y SMTP estándar, así que Apple Mail, apps de Android o cualquier cliente de terceros pueden usar la misma cuenta sin pasar por esta app. Este mismo cliente, además, implementa esos dos protocolos como segundo camino obligatorio (ADR-007): un traductor IMAP→JMAP en Rust detrás del mismo puerto TypeScript, sin que Coordinador ni Outbox distingan cuál de los dos está activo.
 
 Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc) y adaptar lo mejor de cada una a un contexto distinto: single-node, embebido, para un máximo de 30 personas.
 
@@ -20,16 +20,16 @@ Es el resultado directo de comparar tres arquitecturas (Stormbox, Himalaya, Aerc
 
 ## Detalles técnicos
 
-*   **Lenguaje principal:** TypeScript para Vue/Pinia y para Cliente JMAP, Coordinador y Outbox; Rust queda limitado a persistencia, cifrado y secure store de Tauri.
+*   **Lenguaje principal:** TypeScript para Vue/Pinia y para Cliente JMAP, Coordinador y Outbox; Rust queda limitado a persistencia, cifrado, secure store de Tauri y, exclusivamente como traductor IMAP→JMAP (ADR-007), el cliente TCP/TLS saliente de `src-tauri/src/net/`.
 *   **Framework UI:** Vue 3 (Composition API), Vite como bundler — igual que Stormbox, por continuidad de patrones ya probados.
 *   **Entrega del MVP:** Tauri v2, con Vue dentro del webview y backend Rust. No depende de WASM, OPFS ni políticas de almacenamiento del navegador.
 *   **Motor de almacenamiento local:** SQLite nativo cifrado con SQLCipher, accedido desde Rust y oculto detrás de `ReadRepository` para lecturas committed y `SyncPort` para transiciones semánticas atómicas. Application, Coordinator y Outbox consumen la capacidad que corresponda; `LocalChangeSource` P-03 comunica únicamente invalidaciones post-commit. La capa Vue/Pinia no ejecuta SQL ni conoce el motor.
 *   **Orquestador de sincronización y concurrencia:**
-    *   Cliente JMAP, Coordinador de sincronización y Outbox tienen una única implementación en TypeScript.
-    *   En Tauri corre en un Worker normal dentro del webview: habla JMAP directamente mediante `fetch`/WebSocket y cruza por los adaptadores Tauri/`invoke()` únicamente para persistir a través de Rust. Los cambios se notifican mediante el sistema de eventos de Tauri.
-    *   Rust no aloja ni es dueño del cliente JMAP. Su responsabilidad en esta ruta se limita a SQLite nativo, SQLCipher y secure store del sistema operativo.
+    *   Cliente JMAP, Coordinador de sincronización y Outbox tienen una única implementación en TypeScript, detrás de un único puerto (`JmapClient`) con dos adaptadores posibles.
+    *   En Tauri corre en un Worker normal dentro del webview: el adaptador JMAP habla directamente mediante `fetch`/WebSocket; el adaptador IMAP (ADR-007) delega la conexión TCP/TLS saliente a `src-tauri/src/net/` por IPC. Ambos cruzan por los adaptadores Tauri/`invoke()` únicamente para persistir a través de Rust. Los cambios se notifican mediante el sistema de eventos de Tauri.
+    *   Rust no aloja ni es dueño del cliente JMAP y nunca habla JMAP él mismo. Su responsabilidad se limita a SQLite nativo, SQLCipher, secure store del sistema operativo y, exclusivamente como traductor detrás del adaptador IMAP, la conexión saliente de `net/`.
     *   Tauri configura la política `backgroundThrottling: "throttle"`. El throttling del webview en background es un riesgo aceptado para el MVP.
-*   **Protocolo hacia el servidor:** el Worker TypeScript habla JMAP estándar directamente sobre HTTPS, con push por WebSocket. No pasa la red por Rust. Extensiones propias de UI (si hacen falta) se declaran bajo un namespace propio, sin dejar de ser JMAP válido.
+*   **Protocolo hacia el servidor:** dos protocolos obligatorios detrás del mismo puerto. El Worker TypeScript habla JMAP estándar directamente sobre HTTPS, con push por WebSocket, sin pasar esa red por Rust; y habla IMAP/SMTP delegando la conexión saliente a Rust `net/` (ADR-007), que traduce a la misma forma JMAP sin que Coordinador/Outbox lo perciban. Extensiones propias de UI (si hacen falta) se declaran bajo un namespace propio, sin dejar de ser JMAP válido.
 *   **Autenticación remota:** Passkey/WebAuthn se ejecuta en el navegador del sistema. El token JMAP vive solo en memoria del Worker; no se persiste en Pinia, SQLite, `localStorage` ni logs. Al relanzar la aplicación se requiere autenticación remota de nuevo, sin impedir leer la caché local.
 *   **Confidencialidad local:** Rust genera una DEK criptográficamente aleatoria de 32 bytes, la guarda en el secure store del sistema operativo y la entrega directamente a SQLCipher. La clave no se deriva del Passkey, no atraviesa IPC y no existe fallback a SQLite en texto plano.
 *   **Ciclos independientes:** una base local abierta no implica una sesión JMAP activa. `LocalReady + RemoteAnonymous` es un estado válido y permite iniciar offline y leer la caché.

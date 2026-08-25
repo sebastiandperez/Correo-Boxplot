@@ -19,7 +19,7 @@ SQLite → onChange → ReadRepository → Pinia → Vue
 Composer → PendingMutation → Outbox → JMAP
 ```
 
-TypeScript contiene Vue, Pinia, contratos, Application, cliente JMAP, Coordinator y Outbox. Rust contiene Tauri, SQLite/SQLCipher, migraciones, queries, transacciones, secure store e IPC mínimo. JMAP usa `fetch`/WebSocket desde TypeScript; Rust no es proxy HTTP y la UI no ejecuta SQL.
+TypeScript contiene Vue, Pinia, contratos, Application, cliente JMAP, Coordinator y Outbox. Rust contiene Tauri, SQLite/SQLCipher, migraciones, queries, transacciones, secure store, IPC mínimo y, exclusivamente como traductor IMAP→JMAP (ADR-007), el cliente TCP/TLS saliente de `src-tauri/src/net/`. JMAP usa `fetch`/WebSocket desde TypeScript; Rust no es proxy HTTP genérico y la UI no ejecuta SQL. La excepción de ADR-007 no convierte a Rust en un proxy HTTP: solo traduce IMAP/SMTP a la forma JMAP detrás del mismo puerto `JmapClient`.
 
 ## Baseline exacta
 
@@ -94,7 +94,7 @@ Coordinator y Outbox dependen siempre de una interfaz JMAP propiedad del proyect
 
 ## Política de dependencias
 
-Una dependencia debe resolver un problema actual. No se incorporan por anticipación Axios, Lodash, RxJS, TanStack Query, Vue Router, UI frameworks, ORMs, SQLx, Tokio directo, `anyhow`, `serde_json`, plugins HTTP/WebSocket de Tauri, frameworks E2E pesados ni validadores de schema.
+Una dependencia debe resolver un problema actual. No se incorporan por anticipación Axios, Lodash, RxJS, TanStack Query, Vue Router, UI frameworks, ORMs, SQLx, Tokio directo, `anyhow`, `serde_json`, plugins HTTP/WebSocket de Tauri, frameworks E2E pesados ni validadores de schema. Excepción ADR-007: `src-tauri/src/net/` puede incorporar crates de TLS/IMAP/SMTP/parsing MIME con versión exacta pinneada y justificación en este documento cuando se elijan; sigue sin autorizarse un plugin HTTP/WebSocket de Tauri ni Tokio como runtime async del resto del backend.
 
 Secure-store crates se difieren hasta implementar el ciclo DEK. La estrategia prevista antes de release es `keyring-core` con stores explícitos por plataforma; Linux Secret Service requiere PoC propio.
 
@@ -105,3 +105,4 @@ Secure-store crates se difieren hasta implementar el ciclo DEK. La estrategia pr
 * Versiones mínimas Windows/macOS/Linux, WebView y target de Vite.
 * Disponibilidad/desbloqueo del secure store en las distribuciones Linux soportadas.
 * Callback de autenticación desde navegador del sistema hacia Tauri.
+* Elección y pinning exacto de crates TLS/IMAP/SMTP para `src-tauri/src/net/` (ADR-007); conformance de la traducción contra un servidor IMAP/SMTP real cuando exista.
