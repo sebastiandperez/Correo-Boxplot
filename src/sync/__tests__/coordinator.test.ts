@@ -81,4 +81,3 @@ describe('Coordinator', () => {
     expect(mockSyncPort.applyCollectionSync).not.toHaveBeenCalled()
   })
 })
-

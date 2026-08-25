@@ -226,17 +226,21 @@ export class MailApplicationController {
     await this.refreshMailboxWindow()
   }
 
-    async syncSelectedAccount(): Promise<void> {
-    const accountKey = this.mailStore.selectedAccountKey;
-    if (!accountKey) return;
+  async syncSelectedAccount(): Promise<void> {
+    const accountKey = this.mailStore.selectedAccountKey
+    if (!accountKey) return
     try {
-      this.runtimeStore.setLocal('opening');
+      this.runtimeStore.setLocal('opening')
       // En un entorno real se extrae jmapAccountId del Account, aquí usamos mock
-      this.context.workerClient?.syncAccount(accountKey, 'mock-jmap-account', 'state-1');
-      this.runtimeStore.setLocal('ready');
+      this.context.workerClient?.syncAccount(
+        accountKey,
+        'mock-jmap-account',
+        'state-1',
+      )
+      this.runtimeStore.setLocal('ready')
     } catch (e) {
-      console.error(e);
-      this.runtimeStore.setLocal('error');
+      console.error(e)
+      this.runtimeStore.setLocal('error')
     }
   }
 
@@ -406,10 +410,12 @@ export class MailApplicationController {
     }
   }
 
-    async sendEmail(intent: import('../domain/send-intent').SendIntent): Promise<void> {
-    const accountKey = this.mailStore.selectedAccountKey;
-    if (!accountKey) throw new Error('No account selected');
-    
+  async sendEmail(
+    intent: import('../domain/send-intent').SendIntent,
+  ): Promise<void> {
+    const accountKey = this.mailStore.selectedAccountKey
+    if (!accountKey) throw new Error('No account selected')
+
     // Generar la mutación pendiente (esto se conectará con Composer)
     const mutation = {
       kind: 'send',
@@ -417,14 +423,18 @@ export class MailApplicationController {
       accountKey,
       createdAt: nowMutationInstant(),
       intent,
-      lifecycle: { status: 'pending', attemptCount: 0 }
-    } as import('../domain/pending-mutation').SendMutation;
-    
+      lifecycle: { status: 'pending', attemptCount: 0 },
+    } as import('../domain/pending-mutation').SendMutation
+
     // Primero, persistimos en SQLite optimistamente (en un escenario real)
     // await this.context.syncPort.replacePendingMutationIfCurrent(...)
-    
+
     // Delegamos al Outbox el proceso de red que garantiza consistencia eventual
-    this.context.workerClient?.sendEmail(accountKey, 'mock-jmap-account', mutation);
+    this.context.workerClient?.sendEmail(
+      accountKey,
+      'mock-jmap-account',
+      mutation,
+    )
   }
 
   private scheduleInvalidation(batch: LocalChangeBatch): void {
@@ -494,6 +504,3 @@ export function createMailApplicationController(
 ): MailApplicationController {
   return new MailApplicationController(context, mailStore, runtimeStore)
 }
-
-
-

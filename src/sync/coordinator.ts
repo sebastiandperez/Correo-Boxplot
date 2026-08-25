@@ -36,7 +36,6 @@ export class Coordinator {
 
       // delta.destroyed would be removed from local cache
       // await this.syncPort.applyCollectionSync({ kind: 'email', mode: 'delta', ... })
-
     } catch (err: unknown) {
       if (
         err instanceof JmapMethodError &&
@@ -84,7 +83,7 @@ export class Coordinator {
 
       console.log(
         `[Coordinator] queryChanges applied: +${changes.added.length} -${changes.removed.length}, ` +
-        `newState=${changes.newQueryState}, total=${changes.total}`
+          `newState=${changes.newQueryState}, total=${changes.total}`,
       )
     } catch (err: unknown) {
       if (
@@ -119,7 +118,11 @@ export class Coordinator {
     mailboxId: string,
     query: unknown,
   ): Promise<JmapQueryResult> {
-    const result = await this.client.queryEmails(jmapAccountId, mailboxId, query)
+    const result = await this.client.queryEmails(
+      jmapAccountId,
+      mailboxId,
+      query,
+    )
 
     // Result now properly includes queryState, total, position,
     // and canCalculateChanges for downstream consumers.

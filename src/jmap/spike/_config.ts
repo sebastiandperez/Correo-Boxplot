@@ -102,7 +102,8 @@ export function report(
   result: SpikeResult,
   details: string,
 ): void {
-  const icon = result === 'PASS' ? 'PASS' : result === 'FAIL' ? 'FAIL' : 'BLOCKED'
+  const icon =
+    result === 'PASS' ? 'PASS' : result === 'FAIL' ? 'FAIL' : 'BLOCKED'
   console.log(`\n${'='.repeat(60)}`)
   console.log(`${icon}  [${vector}] ${result}`)
   console.log(`${'-'.repeat(60)}`)

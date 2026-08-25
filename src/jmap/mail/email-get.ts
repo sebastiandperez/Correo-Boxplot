@@ -43,7 +43,7 @@ function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
   if (!raw.id || !raw.blobId || !raw.threadId) {
     console.warn(
       `[email-get] Skipping email with missing identity fields: ` +
-      `id=${raw.id}, blobId=${raw.blobId}, threadId=${raw.threadId}`
+        `id=${raw.id}, blobId=${raw.blobId}, threadId=${raw.threadId}`,
     )
     return null
   }
@@ -51,7 +51,7 @@ function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
   // D-02: receivedAt is mandatory per Domain spec
   if (!raw.receivedAt || raw.receivedAt.length === 0) {
     console.warn(
-      `[email-get] Skipping email ${raw.id}: missing receivedAt (D-02 violation)`
+      `[email-get] Skipping email ${raw.id}: missing receivedAt (D-02 violation)`,
     )
     return null
   }
@@ -70,9 +70,12 @@ function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
     subject: raw.subject ?? null,
     sentAt: raw.sentAt ?? null,
     receivedAt: raw.receivedAt,
-    size: typeof raw.size === 'number' && Number.isSafeInteger(raw.size) && raw.size >= 0
-      ? raw.size
-      : 0,
+    size:
+      typeof raw.size === 'number' &&
+      Number.isSafeInteger(raw.size) &&
+      raw.size >= 0
+        ? raw.size
+        : 0,
     preview: raw.preview ?? '',
     hasAttachment: raw.hasAttachment ?? false,
     keywords: Object.freeze({ ...(raw.keywords || {}) }),

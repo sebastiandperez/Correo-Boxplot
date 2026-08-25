@@ -72,7 +72,9 @@ if (
           .catch((err) => {
             self.postMessage({
               type: 'SESSION_ERROR',
-              payload: { error: err instanceof Error ? err.message : String(err) },
+              payload: {
+                error: err instanceof Error ? err.message : String(err),
+              },
             })
           })
       }

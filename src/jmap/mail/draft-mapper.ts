@@ -11,8 +11,10 @@ import type { JmapEmailDraft, JmapEmailAddress } from '../types'
  * in the DTO since JMAP expects arrays (not null) for optional recipient fields.
  */
 export function mapSendIntentToJmapDraft(intent: SendIntent): JmapEmailDraft {
-  const mapAddress = (addr: { name: string | null; email: string }): JmapEmailAddress => 
-    Object.freeze({ name: addr.name, email: addr.email })
+  const mapAddress = (addr: {
+    name: string | null
+    email: string
+  }): JmapEmailAddress => Object.freeze({ name: addr.name, email: addr.email })
 
   return Object.freeze({
     from: [mapAddress(intent.from)],

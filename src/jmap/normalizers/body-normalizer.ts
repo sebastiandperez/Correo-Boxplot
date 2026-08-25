@@ -86,8 +86,8 @@ export function extractEmailBody(
       // Log for diagnostics but do not fabricate partial content
       console.warn(
         `[body-normalizer] Email ${emailId}: body extraction failed ` +
-        `(encodingProblem=${hasEncodingProblem}, truncated=${hasTruncation}). ` +
-        `No EmailBody produced per D-09.`
+          `(encodingProblem=${hasEncodingProblem}, truncated=${hasTruncation}). ` +
+          `No EmailBody produced per D-09.`,
       )
     }
     return null

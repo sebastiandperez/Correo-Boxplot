@@ -18,7 +18,7 @@ const workerClient = new JmapWorkerClient()
 
 const context = createApplicationContext({
   ...adapters,
-  workerClient
+  workerClient,
 })
 
 createApp(App).use(pinia).provide(applicationContextKey, context).mount('#app')

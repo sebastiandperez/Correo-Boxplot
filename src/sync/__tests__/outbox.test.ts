@@ -72,6 +72,3 @@ describe('Outbox', () => {
     expect(mockSyncPort.removeConfirmedMutation).not.toHaveBeenCalled()
   })
 })
-
-
-

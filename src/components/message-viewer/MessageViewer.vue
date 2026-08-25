@@ -103,8 +103,6 @@ const iframeDocument = computed(() => {
   const cleanHtml = sanitizeEmailHtml(rawHtml)
   return createSandboxedIframeSrcDoc(cleanHtml)
 })
-
-
 </script>
 
 <template>
@@ -299,7 +297,6 @@ const iframeDocument = computed(() => {
           :srcdoc="iframeDocument"
           class="message-viewer__iframe"
           title="Contenido del mensaje"
-          
         />
         <div v-else class="empty-state">
           <h2 v-if="mailStore.bodyLoadState === 'loading'">
