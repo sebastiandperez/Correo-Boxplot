@@ -44,6 +44,7 @@ export interface RawJmapEmail {
   hasAttachment: boolean
 
   keywords: Record<string, boolean>
+  mailboxIds: Record<string, boolean> | null
 }
 
 export interface RawJmapQueryResponse {

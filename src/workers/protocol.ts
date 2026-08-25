@@ -1,5 +1,4 @@
-import type { AccountKey } from '../domain/ids'
-import type { SendMutation } from '../domain/pending-mutation'
+import type { AccountKey, MutationId } from '../domain/ids'
 
 /**
  * Correlates a request sent across the Worker<->main postMessage channel
@@ -57,17 +56,22 @@ export type SyncAccountMessage = Readonly<{
   payload: Readonly<{
     accountKey: AccountKey
     jmapAccountId: string
-    sinceState: string
   }>
 }>
 
+/**
+ * mutationId, not the mutation itself: Outbox reads the durably staged
+ * SendMutation itself via ReadRepository rather than trusting a
+ * caller-supplied snapshot — the mutation must already be staged via
+ * SyncPort.stageSendMutation before this is sent.
+ */
 export type SendEmailMessage = Readonly<{
   type: 'SEND_EMAIL'
   requestId: WorkerRequestId
   payload: Readonly<{
     accountKey: AccountKey
     jmapAccountId: string
-    mutation: SendMutation
+    mutationId: MutationId
   }>
 }>
 
@@ -138,7 +142,15 @@ export type SyncErrorMessage = Readonly<{
 export type SendSuccessMessage = Readonly<{
   type: 'SEND_SUCCESS'
   requestId: WorkerRequestId
-  payload: Readonly<{ mutationId: string }>
+  payload: Readonly<{
+    mutationId: string
+    /**
+     * 'sent': submitEmail succeeded and the mutation was confirmed+removed.
+     * 'skipped': nothing to do (never staged, already handled by another
+     * run, or lost a claim race) — not an error, but not a new send either.
+     */
+    outcome: 'sent' | 'skipped'
+  }>
 }>
 
 export type SendErrorMessage = Readonly<{

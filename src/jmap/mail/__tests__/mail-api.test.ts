@@ -9,7 +9,7 @@ import type { JamClient } from 'jmap-jam'
 import * as httpMock from '../../transport/http'
 
 describe('JMAP Mail APIs', () => {
-  it('getMailboxes should normalize response', async () => {
+  it('getMailboxes should normalize response and surface the state token', async () => {
     const mockJam = {
       request: vi.fn().mockResolvedValue([
         {
@@ -20,15 +20,17 @@ describe('JMAP Mail APIs', () => {
               myRights: { mayReadItems: true },
             },
           ],
+          state: 'mailbox-state-1',
         },
       ]),
     } as unknown as JamClient
 
     const result = await getMailboxes(mockJam, 'acc1')
-    expect(result).toHaveLength(1)
-    expect(result[0].id).toBe('mb1')
-    expect(result[0].rights.mayReadItems).toBe(true)
-    expect(result[0].rights.mayAddItems).toBe(false)
+    expect(result.mailboxes).toHaveLength(1)
+    expect(result.mailboxes[0].id).toBe('mb1')
+    expect(result.mailboxes[0].rights.mayReadItems).toBe(true)
+    expect(result.mailboxes[0].rights.mayAddItems).toBe(false)
+    expect(result.state).toBe('mailbox-state-1')
   })
 
   it('queryEmails should support pagination', async () => {
@@ -70,16 +72,19 @@ describe('JMAP Mail APIs', () => {
               threadId: 'thread1',
               receivedAt: '2026-01-01T00:00:00Z',
               keywords: { $seen: true, $flagged: false },
+              mailboxIds: { mailbox1: true },
             },
           ],
+          state: 'email-state-1',
         },
       ]),
     } as unknown as JamClient
 
     const result = await getEmails(mockJam, 'acc1', ['email1'])
-    expect(result[0].id).toBe('email1')
+    expect(result.emails[0].id).toBe('email1')
+    expect(result.state).toBe('email-state-1')
 
-    const keywords = result[0].keywords
+    const keywords = result.emails[0].keywords
     expect(keywords['$seen']).toBe(true)
     expect(keywords['$flagged']).toBe(false)
   })
@@ -132,6 +137,10 @@ describe('JMAP Mail APIs', () => {
           list: [
             {
               id: 'batch1',
+              blobId: 'blob-batch1',
+              threadId: 'thread-batch1',
+              receivedAt: '2026-01-01T00:00:00Z',
+              mailboxIds: { mailbox1: true },
             },
           ],
         },

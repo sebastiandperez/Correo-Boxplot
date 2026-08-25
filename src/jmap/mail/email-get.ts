@@ -1,5 +1,5 @@
 ﻿import type { JamClient } from 'jmap-jam'
-import type { JmapEmail, JmapEmailAddress } from '../types'
+import type { JmapEmail, JmapEmailAddress, JmapEmailsResult } from '../types'
 import type { RawJmapEmail, RawJmapEmailAddress } from './types-raw'
 import { JmapMethodError } from '../errors'
 
@@ -20,6 +20,7 @@ const EMAIL_PROPERTIES = [
   'preview',
   'hasAttachment',
   'keywords',
+  'mailboxIds',
 ] as const
 
 function mapAddresses(
@@ -38,7 +39,7 @@ function mapAddresses(
  *
  * D-03 compliance: Empty address arrays map to null, not [].
  */
-function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
+export function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
   // D-02: Reject emails missing mandatory identity fields
   if (!raw.id || !raw.blobId || !raw.threadId) {
     console.warn(
@@ -52,6 +53,18 @@ function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
   if (!raw.receivedAt || raw.receivedAt.length === 0) {
     console.warn(
       `[email-get] Skipping email ${raw.id}: missing receivedAt (D-02 violation)`,
+    )
+    return null
+  }
+
+  // D-02: an Email always belongs to at least one Mailbox (RFC 8621 §4.1.1);
+  // one with none is provisional/inconsistent, not a real synced state.
+  const mailboxIds = Object.keys(raw.mailboxIds || {}).filter(
+    (id) => raw.mailboxIds?.[id] === true,
+  )
+  if (mailboxIds.length === 0) {
+    console.warn(
+      `[email-get] Skipping email ${raw.id}: missing mailboxIds (D-02 violation)`,
     )
     return null
   }
@@ -79,6 +92,7 @@ function validateAndMapEmail(raw: RawJmapEmail): JmapEmail | null {
     preview: raw.preview ?? '',
     hasAttachment: raw.hasAttachment ?? false,
     keywords: Object.freeze({ ...(raw.keywords || {}) }),
+    mailboxIds: Object.freeze(mailboxIds),
   })
 }
 
@@ -86,8 +100,8 @@ export async function getEmails(
   jam: JamClient,
   accountId: string,
   emailIds: string[],
-): Promise<JmapEmail[]> {
-  if (emailIds.length === 0) return []
+): Promise<JmapEmailsResult> {
+  if (emailIds.length === 0) return { emails: [], state: '' }
 
   let response
   try {
@@ -109,6 +123,7 @@ export async function getEmails(
   }
 
   const list = (response.list || []) as RawJmapEmail[]
+  const state = (response.state as string | undefined) ?? ''
 
   // D-02: Filter out any partial/malformed emails instead of passing them through
   const validEmails: JmapEmail[] = []
@@ -119,5 +134,5 @@ export async function getEmails(
     }
   }
 
-  return validEmails
+  return { emails: validEmails, state }
 }

@@ -103,7 +103,7 @@ describe('JmapWorkerClient', () => {
   it('syncAccount resolves on SYNC_SUCCESS and rejects on SYNC_ERROR', async () => {
     const accountKey = 'acc-key-1' as AccountKey
 
-    const okPromise = client.syncAccount(accountKey, 'jmap-acc-1', 'state-1')
+    const okPromise = client.syncAccount(accountKey, 'jmap-acc-1')
     worker.emit({
       type: 'SYNC_SUCCESS',
       requestId: worker.lastRequestId() as never,
@@ -111,7 +111,7 @@ describe('JmapWorkerClient', () => {
     })
     await expect(okPromise).resolves.toEqual({ accountKey })
 
-    const errPromise = client.syncAccount(accountKey, 'jmap-acc-1', 'state-1')
+    const errPromise = client.syncAccount(accountKey, 'jmap-acc-1')
     worker.emit({
       type: 'SYNC_ERROR',
       requestId: worker.lastRequestId() as never,
@@ -120,11 +120,50 @@ describe('JmapWorkerClient', () => {
     await expect(errPromise).rejects.toThrow('network down')
   })
 
+  it('sendEmail resolves with the outcome (sent vs skipped) on SEND_SUCCESS and rejects on SEND_ERROR', async () => {
+    const accountKey = 'acc-key-1' as AccountKey
+    const mutationId = 'mut-1' as never
+
+    const sentPromise = client.sendEmail(accountKey, 'jmap-acc-1', mutationId)
+    worker.emit({
+      type: 'SEND_SUCCESS',
+      requestId: worker.lastRequestId() as never,
+      payload: { mutationId: 'mut-1', outcome: 'sent' },
+    })
+    await expect(sentPromise).resolves.toEqual({
+      mutationId: 'mut-1',
+      outcome: 'sent',
+    })
+
+    const skippedPromise = client.sendEmail(
+      accountKey,
+      'jmap-acc-1',
+      mutationId,
+    )
+    worker.emit({
+      type: 'SEND_SUCCESS',
+      requestId: worker.lastRequestId() as never,
+      payload: { mutationId: 'mut-1', outcome: 'skipped' },
+    })
+    await expect(skippedPromise).resolves.toEqual({
+      mutationId: 'mut-1',
+      outcome: 'skipped',
+    })
+
+    const errPromise = client.sendEmail(accountKey, 'jmap-acc-1', mutationId)
+    worker.emit({
+      type: 'SEND_ERROR',
+      requestId: worker.lastRequestId() as never,
+      payload: { mutationId: 'mut-1', error: 'submit failed' },
+    })
+    await expect(errPromise).rejects.toThrow('submit failed')
+  })
+
   it('resolves concurrent requests independently, even out of order', async () => {
     const accountKey = 'acc-key-1' as AccountKey
-    const first = client.syncAccount(accountKey, 'jmap-acc-1', 'state-1')
+    const first = client.syncAccount(accountKey, 'jmap-acc-1')
     const firstId = worker.lastRequestId()
-    const second = client.syncAccount(accountKey, 'jmap-acc-2', 'state-2')
+    const second = client.syncAccount(accountKey, 'jmap-acc-2')
     const secondId = worker.lastRequestId()
 
     expect(firstId).not.toBe(secondId)

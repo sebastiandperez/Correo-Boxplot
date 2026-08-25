@@ -2,8 +2,8 @@
 import type { JmapClient } from './client'
 import type {
   JmapSession,
-  JmapMailbox,
-  JmapEmail,
+  JmapMailboxesResult,
+  JmapEmailsResult,
   JmapDelta,
   JmapEmailBody,
   JmapAttachment,
@@ -18,8 +18,8 @@ export class MockJmapClient implements JmapClient {
   async openSession(): Promise<JmapSession> {
     throw new Error('Mock')
   }
-  async getMailboxes(_accountId: string): Promise<JmapMailbox[]> {
-    return []
+  async getMailboxes(_accountId: string): Promise<JmapMailboxesResult> {
+    return { mailboxes: [], state: 'mock' }
   }
   async getIdentities(_accountId: string): Promise<JmapIdentity[]> {
     return []
@@ -34,8 +34,8 @@ export class MockJmapClient implements JmapClient {
   async getEmails(
     _accountId: string,
     _emailIds: string[],
-  ): Promise<JmapEmail[]> {
-    return []
+  ): Promise<JmapEmailsResult> {
+    return { emails: [], state: 'mock' }
   }
   async getEmailChanges(
     accountId: string,

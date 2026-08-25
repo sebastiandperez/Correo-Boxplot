@@ -6,8 +6,8 @@ import { createJamClient } from './transport/http'
 import { discoverSession } from './session'
 import type {
   JmapSession,
-  JmapMailbox,
-  JmapEmail,
+  JmapMailboxesResult,
+  JmapEmailsResult,
   JmapDelta,
   JmapEmailBody,
   JmapStateChange,
@@ -57,7 +57,7 @@ export class JamClientAdapter implements JmapClient {
     return this.sessionData.apiUrl
   }
 
-  async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
+  async getMailboxes(accountId: string): Promise<JmapMailboxesResult> {
     return getMailboxes(this.jam, accountId)
   }
 
@@ -74,7 +74,10 @@ export class JamClientAdapter implements JmapClient {
     return queryEmails(this.jam, accountId, mailboxId, filter, options)
   }
 
-  async getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
+  async getEmails(
+    accountId: string,
+    emailIds: string[],
+  ): Promise<JmapEmailsResult> {
     return getEmails(this.jam, accountId, emailIds)
   }
 

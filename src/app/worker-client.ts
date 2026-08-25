@@ -11,8 +11,7 @@ import type {
   WorkerRequestId,
   WorkerToMainMessage,
 } from '../workers/protocol'
-import type { AccountKey } from '../domain/ids'
-import type { SendMutation } from '../domain/pending-mutation'
+import type { AccountKey, MutationId } from '../domain/ids'
 
 const ALLOWED_IPC_COMMANDS = new Set<string>([
   ...IPC_READ_COMMANDS,
@@ -94,20 +93,20 @@ export class JmapWorkerClient {
   syncAccount(
     accountKey: AccountKey,
     jmapAccountId: string,
-    sinceState: string,
   ): Promise<{ accountKey: AccountKey }> {
     return this.request('SYNC_ACCOUNT', {
-      payload: { accountKey, jmapAccountId, sinceState },
+      payload: { accountKey, jmapAccountId },
     })
   }
 
+  /** `mutationId` must already be durably staged via SyncPort.stageSendMutation. */
   sendEmail(
     accountKey: AccountKey,
     jmapAccountId: string,
-    mutation: SendMutation,
-  ): Promise<{ mutationId: string }> {
+    mutationId: MutationId,
+  ): Promise<{ mutationId: string; outcome: 'sent' | 'skipped' }> {
     return this.request('SEND_EMAIL', {
-      payload: { accountKey, jmapAccountId, mutation },
+      payload: { accountKey, jmapAccountId, mutationId },
     })
   }
 

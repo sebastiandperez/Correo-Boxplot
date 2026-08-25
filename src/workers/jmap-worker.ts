@@ -8,6 +8,7 @@ import { MockJmapClient } from '../jmap/mock-client'
 import { Coordinator } from '../sync/coordinator'
 import { Outbox } from '../sync/outbox'
 import type { SyncPort } from '../ports/sync-port'
+import type { ReadRepository } from '../ports/read-repository'
 import type { JmapClient } from '../jmap/client'
 import type {
   MainToWorkerMessage,
@@ -18,6 +19,7 @@ import type {
 export type WorkerRuntimeDeps = Readonly<{
   post: (message: WorkerToMainMessage) => void
   syncPort: SyncPort
+  readRepository: ReadRepository
   resolveIpcInvoke: (
     message: Extract<MainToWorkerMessage, { type: 'IPC_INVOKE_RESULT' }>,
   ) => void
@@ -37,7 +39,7 @@ export type WorkerRuntime = Readonly<{
  * self.postMessage/self.onmessage.
  */
 export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
-  const { post, syncPort, resolveIpcInvoke } = deps
+  const { post, syncPort, readRepository, resolveIpcInvoke } = deps
 
   // Token lives ONLY in Worker memory — never in Pinia, SQLite, or localStorage
   // per AGENTS.md security invariants.
@@ -46,8 +48,8 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
   // The active JMAP client — either a real JamClientAdapter (when authenticated)
   // or a MockJmapClient (for offline/development mode).
   let jmapClient: JmapClient = new MockJmapClient()
-  let coordinator = new Coordinator(jmapClient, syncPort)
-  let outbox = new Outbox(jmapClient, syncPort)
+  let coordinator = new Coordinator(jmapClient, syncPort, readRepository)
+  let outbox = new Outbox(jmapClient, syncPort, readRepository)
   let stateChangeUnsubscribe: (() => void) | null = null
 
   // Set right before an explicit TEARDOWN_SESSION request calls
@@ -68,8 +70,8 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
   function resetToAnonymous(): void {
     teardownPushListener()
     jmapClient = new MockJmapClient()
-    coordinator = new Coordinator(jmapClient, syncPort)
-    outbox = new Outbox(jmapClient, syncPort)
+    coordinator = new Coordinator(jmapClient, syncPort, readRepository)
+    outbox = new Outbox(jmapClient, syncPort, readRepository)
   }
 
   // Listen for token invalidation (natural expiry, or a 401 surfaced by an
@@ -118,8 +120,8 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
         // Replace MockJmapClient with a real JamClientAdapter.
         const activeClient = new JamClientAdapter(sessionUrl, authConfig)
         jmapClient = activeClient
-        coordinator = new Coordinator(jmapClient, syncPort)
-        outbox = new Outbox(jmapClient, syncPort)
+        coordinator = new Coordinator(jmapClient, syncPort, readRepository)
+        outbox = new Outbox(jmapClient, syncPort, readRepository)
 
         activeClient
           .openSession()
@@ -167,9 +169,9 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
       }
 
       case 'SYNC_ACCOUNT': {
-        const { accountKey, jmapAccountId, sinceState } = data.payload
+        const { accountKey, jmapAccountId } = data.payload
         coordinator
-          .syncEmails(accountKey, jmapAccountId, sinceState)
+          .syncEmails(accountKey, jmapAccountId)
           .then(() => {
             post({
               type: 'SYNC_SUCCESS',
@@ -188,14 +190,14 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
       }
 
       case 'SEND_EMAIL': {
-        const { accountKey, jmapAccountId, mutation } = data.payload
+        const { accountKey, jmapAccountId, mutationId } = data.payload
         outbox
-          .processSendMutation(accountKey, jmapAccountId, mutation)
-          .then(() => {
+          .processSendMutation(accountKey, jmapAccountId, mutationId)
+          .then((outcome) => {
             post({
               type: 'SEND_SUCCESS',
               requestId: data.requestId,
-              payload: { mutationId: mutation.mutationId },
+              payload: { mutationId, outcome: outcome.kind },
             })
           })
           .catch((error: unknown) => {
@@ -203,7 +205,7 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
               type: 'SEND_ERROR',
               requestId: data.requestId,
               payload: {
-                mutationId: mutation.mutationId,
+                mutationId,
                 error: String(error),
               },
             })
@@ -241,6 +243,7 @@ if (
   const runtime = createWorkerRuntime({
     post,
     syncPort: adapters.syncPort,
+    readRepository: adapters.readRepository,
     resolveIpcInvoke: resolveInvoke,
   })
 

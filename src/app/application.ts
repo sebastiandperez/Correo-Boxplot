@@ -232,11 +232,7 @@ export class MailApplicationController {
     try {
       this.runtimeStore.setLocal('opening')
       // En un entorno real se extrae jmapAccountId del Account, aquí usamos mock
-      this.context.workerClient?.syncAccount(
-        accountKey,
-        'mock-jmap-account',
-        'state-1',
-      )
+      this.context.workerClient?.syncAccount(accountKey, 'mock-jmap-account')
       this.runtimeStore.setLocal('ready')
     } catch (e) {
       console.error(e)
@@ -427,13 +423,16 @@ export class MailApplicationController {
     } as import('../domain/pending-mutation').SendMutation
 
     // Primero, persistimos en SQLite optimistamente (en un escenario real)
-    // await this.context.syncPort.replacePendingMutationIfCurrent(...)
+    // await this.context.syncPort.stageSendMutation(mutation)
 
-    // Delegamos al Outbox el proceso de red que garantiza consistencia eventual
+    // Delegamos al Outbox el proceso de red que garantiza consistencia eventual.
+    // Outbox lee la mutación durable por mutationId (no confía en el objeto
+    // local) — sin el stageSendMutation de arriba, no encontrará nada que
+    // procesar todavía.
     this.context.workerClient?.sendEmail(
       accountKey,
       'mock-jmap-account',
-      mutation,
+      mutation.mutationId,
     )
   }
 

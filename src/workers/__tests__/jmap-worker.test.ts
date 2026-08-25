@@ -2,54 +2,38 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createWorkerRuntime } from '../jmap-worker'
 import type { WorkerRuntimeDeps } from '../jmap-worker'
 import type { MainToWorkerMessage, WorkerToMainMessage } from '../protocol'
-import type { SyncPort, WriteResult } from '../../ports/sync-port'
+import { createMemoryLocalEngine } from '../../adapters/memory'
+import type { MemoryLocalEngine } from '../../adapters/memory'
+import { unwrapOk } from '../../tests/contracts/assertions'
 import {
   createTestAccount,
   createTestIdentity,
   createTestSendMutation,
 } from '../../tests/contracts/fixtures'
 
-function ok(): Promise<WriteResult> {
-  return Promise.resolve({ ok: true, value: undefined })
-}
-
-function createFakeSyncPort(overrides: Partial<SyncPort> = {}): SyncPort {
-  return {
-    registerAccount: vi.fn(ok),
-    applyCollectionSync: vi.fn(ok),
-    cacheEmailBody: vi.fn(ok),
-    replaceAttachmentRefs: vi.fn(ok),
-    replaceMailboxView: vi.fn(ok),
-    stageSendMutation: vi.fn(ok),
-    applyOptimisticKeywordMutation: vi.fn(ok),
-    applyOptimisticMailboxMembershipMutation: vi.fn(ok),
-    replacePendingMutationIfCurrent: vi.fn(ok),
-    removeConfirmedMutation: vi.fn(ok),
-    ...overrides,
-  }
-}
-
 describe('createWorkerRuntime', () => {
   let posted: WorkerToMainMessage[]
-  let syncPort: SyncPort
+  let engine: MemoryLocalEngine
   let resolveIpcInvoke: WorkerRuntimeDeps['resolveIpcInvoke']
   let runtime: ReturnType<typeof createWorkerRuntime>
 
   beforeEach(() => {
     posted = []
-    syncPort = createFakeSyncPort()
+    engine = createMemoryLocalEngine()
     resolveIpcInvoke = vi.fn<WorkerRuntimeDeps['resolveIpcInvoke']>()
     const deps: WorkerRuntimeDeps = {
       post: (m) => posted.push(m),
-      syncPort,
+      syncPort: engine.syncPort,
+      readRepository: engine.readRepository,
       resolveIpcInvoke,
     }
     runtime = createWorkerRuntime(deps)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
     vi.useRealTimers()
+    await engine.dispose()
   })
 
   function types(): string[] {
@@ -195,28 +179,53 @@ describe('createWorkerRuntime', () => {
     expect(teardown).toBeDefined()
   })
 
-  it('SYNC_ACCOUNT succeeds against the mock client and posts SYNC_SUCCESS', async () => {
+  it('SYNC_ACCOUNT with no local cursor performs a real hard-reset replace commit against the engine', async () => {
     const account = createTestAccount('W1')
+    unwrapOk(await engine.syncPort.registerAccount(account))
 
     runtime.handleMessage({
       type: 'SYNC_ACCOUNT',
       requestId: 'm:5' as never,
-      payload: {
-        accountKey: account.key,
-        jmapAccountId: 'jmap-account-w1',
-        sinceState: 'state-0',
-      },
+      payload: { accountKey: account.key, jmapAccountId: 'jmap-account-w1' },
     })
 
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(types()).toEqual(['SYNC_SUCCESS'])
+
+    // Prove it against real committed state, not a mock assertion: the
+    // Email collection cursor now exists for this account.
+    const cursor = unwrapOk(
+      await engine.readRepository.readCollectionSyncCursor(
+        account.key,
+        'email',
+      ),
+    )
+    expect(cursor.kind).toBe('present')
   })
 
-  it('SEND_EMAIL against the mock client posts SEND_SUCCESS and confirms the mutation via SyncPort', async () => {
+  it('SYNC_ACCOUNT for an unregistered account surfaces SYNC_ERROR instead of throwing unhandled', async () => {
+    runtime.handleMessage({
+      type: 'SYNC_ACCOUNT',
+      requestId: 'm:5b' as never,
+      payload: {
+        accountKey: 'never-registered' as never,
+        jmapAccountId: 'jmap-account-x',
+      },
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(types()).toEqual(['SYNC_ERROR'])
+  })
+
+  it('SEND_EMAIL processes a durably staged mutation end-to-end: SEND_SUCCESS and the mutation is gone from ReadRepository', async () => {
     const account = createTestAccount('W2')
     const identity = createTestIdentity(account, 'W2')
     const mutation = createTestSendMutation(account, identity, 'W2')
+
+    unwrapOk(await engine.syncPort.registerAccount(account))
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
 
     runtime.handleMessage({
       type: 'SEND_EMAIL',
@@ -224,17 +233,50 @@ describe('createWorkerRuntime', () => {
       payload: {
         accountKey: account.key,
         jmapAccountId: 'jmap-account-w2',
-        mutation,
+        mutationId: mutation.mutationId,
       },
     })
 
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(types()).toEqual(['SEND_SUCCESS'])
-    expect(syncPort.removeConfirmedMutation).toHaveBeenCalledWith(
-      account.key,
-      mutation.mutationId,
+    const success = posted[0] as Extract<
+      WorkerToMainMessage,
+      { type: 'SEND_SUCCESS' }
+    >
+    expect(success.payload.outcome).toBe('sent')
+
+    const afterward = unwrapOk(
+      await engine.readRepository.readPendingMutation(
+        account.key,
+        mutation.mutationId,
+      ),
     )
+    expect(afterward.kind).toBe('absent')
+  })
+
+  it('SEND_EMAIL for a mutationId that was never staged is a safe no-op (outcome: skipped, not an error)', async () => {
+    const account = createTestAccount('W3')
+    unwrapOk(await engine.syncPort.registerAccount(account))
+
+    runtime.handleMessage({
+      type: 'SEND_EMAIL',
+      requestId: 'm:7' as never,
+      payload: {
+        accountKey: account.key,
+        jmapAccountId: 'jmap-account-w3',
+        mutationId: 'never-staged' as never,
+      },
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(types()).toEqual(['SEND_SUCCESS'])
+    const success = posted[0] as Extract<
+      WorkerToMainMessage,
+      { type: 'SEND_SUCCESS' }
+    >
+    expect(success.payload.outcome).toBe('skipped')
   })
 
   it('routes IPC_INVOKE_RESULT to resolveIpcInvoke', () => {

@@ -2,8 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { JmapClient } from '../client'
 import type {
   JmapSession,
-  JmapMailbox,
-  JmapEmail,
+  JmapMailboxesResult,
   JmapDelta,
   JmapEmailBody,
   JmapStateChange,
@@ -29,28 +28,31 @@ class FakeJmapClient implements JmapClient {
     }
   }
 
-  async getMailboxes(accountId: string): Promise<JmapMailbox[]> {
+  async getMailboxes(accountId: string): Promise<JmapMailboxesResult> {
     if (accountId !== 'account-1')
       throw new JmapMethodError('Mailbox/get', 'accountNotFound')
-    return [
-      {
-        id: 'mb-1',
-        name: 'Inbox',
-        parent: null,
-        role: 'inbox',
-        sortOrder: 10,
-        totalEmails: 5,
-        unreadEmails: 2,
-        rights: {
-          mayReadItems: true,
-          mayAddItems: true,
-          mayRemoveItems: true,
-          maySetSeen: true,
-          maySetKeywords: true,
-          maySubmit: false,
+    return {
+      mailboxes: [
+        {
+          id: 'mb-1',
+          name: 'Inbox',
+          parent: null,
+          role: 'inbox',
+          sortOrder: 10,
+          totalEmails: 5,
+          unreadEmails: 2,
+          rights: {
+            mayReadItems: true,
+            mayAddItems: true,
+            mayRemoveItems: true,
+            maySetSeen: true,
+            maySetKeywords: true,
+            maySubmit: false,
+          },
         },
-      },
-    ]
+      ],
+      state: 'mailbox-state-1',
+    }
   }
 
   async queryEmails(): Promise<import('../types').JmapQueryResult> {
@@ -75,26 +77,33 @@ class FakeJmapClient implements JmapClient {
     throw new Error('Method not implemented.')
   }
 
-  async getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]> {
+  async getEmails(
+    accountId: string,
+    emailIds: string[],
+  ): Promise<import('../types').JmapEmailsResult> {
     void accountId
-    return emailIds.map((id) => ({
-      id,
-      blobId: `blob-${id}`,
-      threadId: `thread-${id}`,
-      sender: [{ name: 'Test', email: 'test@example.com' }],
-      from: [{ name: 'Test', email: 'test@example.com' }],
-      replyTo: null,
-      to: [{ name: 'Recipient', email: 'to@example.com' }],
-      cc: null,
-      bcc: null,
-      subject: 'Test email',
-      sentAt: '2023-01-01T12:00:00Z',
-      receivedAt: '2023-01-01T12:01:00Z',
-      size: 1024,
-      preview: 'Hello world',
-      hasAttachment: false,
-      keywords: { $seen: true },
-    }))
+    return {
+      emails: emailIds.map((id) => ({
+        id,
+        blobId: `blob-${id}`,
+        threadId: `thread-${id}`,
+        sender: [{ name: 'Test', email: 'test@example.com' }],
+        from: [{ name: 'Test', email: 'test@example.com' }],
+        replyTo: null,
+        to: [{ name: 'Recipient', email: 'to@example.com' }],
+        cc: null,
+        bcc: null,
+        subject: 'Test email',
+        sentAt: '2023-01-01T12:00:00Z',
+        receivedAt: '2023-01-01T12:01:00Z',
+        size: 1024,
+        preview: 'Hello world',
+        hasAttachment: false,
+        keywords: { $seen: true },
+        mailboxIds: [`mailbox-${id}`],
+      })),
+      state: 'email-state-1',
+    }
   }
 
   async getEmailChanges(
@@ -157,17 +166,19 @@ describe('FakeJmapClient contract tests', () => {
 
   it('should fetch and normalize mailboxes', async () => {
     const client = new FakeJmapClient()
-    const mailboxes = await client.getMailboxes('account-1')
-    expect(mailboxes).toHaveLength(1)
-    expect(mailboxes[0].role).toBe('inbox')
-    expect(mailboxes[0].rights.mayReadItems).toBe(true)
+    const result = await client.getMailboxes('account-1')
+    expect(result.mailboxes).toHaveLength(1)
+    expect(result.mailboxes[0].role).toBe('inbox')
+    expect(result.mailboxes[0].rights.mayReadItems).toBe(true)
+    expect(result.state).toBe('mailbox-state-1')
   })
 
   it('should get emails with mapped metadata', async () => {
     const client = new FakeJmapClient()
-    const emails = await client.getEmails('account-1', ['email-1'])
-    expect(emails).toHaveLength(1)
-    expect(emails[0].keywords['$seen']).toBe(true)
+    const result = await client.getEmails('account-1', ['email-1'])
+    expect(result.emails).toHaveLength(1)
+    expect(result.emails[0].keywords['$seen']).toBe(true)
+    expect(result.state).toBe('email-state-1')
   })
 
   it('should trigger state change callback', async () => {

@@ -3,7 +3,8 @@ import { fetchJmapRaw } from '../transport/http'
 import { JmapMethodError } from '../errors'
 import type { QueryOptions } from './email-query'
 import type { JmapEmail } from '../types'
-import type { RawJmapEmail, RawJmapEmailAddress } from './types-raw'
+import type { RawJmapEmail } from './types-raw'
+import { validateAndMapEmail } from './email-get'
 
 export async function queryAndGetEmails(
   apiUrl: string,
@@ -57,6 +58,7 @@ export async function queryAndGetEmails(
           'preview',
           'hasAttachment',
           'keywords',
+          'mailboxIds',
         ],
       },
       'g1',
@@ -80,35 +82,15 @@ export async function queryAndGetEmails(
 
   const list = requestResult.list || []
 
-  return list.map((raw) => {
-    const mapAddresses = (
-      rawAddrs: readonly RawJmapEmailAddress[] | null | undefined,
-    ) => {
-      if (!rawAddrs || rawAddrs.length === 0) return null
-      return Object.freeze(
-        rawAddrs.map((addr) =>
-          Object.freeze({ name: addr.name, email: addr.email }),
-        ),
-      )
+  // D-02: reuse the same validation as getEmails() instead of duplicating a
+  // second, looser mapping — a partial/malformed email is skipped here too.
+  const validEmails: JmapEmail[] = []
+  for (const raw of list) {
+    const mapped = validateAndMapEmail(raw)
+    if (mapped !== null) {
+      validEmails.push(mapped)
     }
+  }
 
-    return Object.freeze({
-      id: raw.id,
-      blobId: raw.blobId,
-      threadId: raw.threadId,
-      sender: mapAddresses(raw.sender),
-      from: mapAddresses(raw.from),
-      replyTo: mapAddresses(raw.replyTo),
-      to: mapAddresses(raw.to),
-      cc: mapAddresses(raw.cc),
-      bcc: mapAddresses(raw.bcc),
-      subject: raw.subject ?? null,
-      sentAt: raw.sentAt ?? null,
-      receivedAt: raw.receivedAt,
-      size: raw.size ?? 0,
-      preview: raw.preview ?? '',
-      hasAttachment: raw.hasAttachment ?? false,
-      keywords: Object.freeze({ ...(raw.keywords || {}) }),
-    })
-  })
+  return validEmails
 }

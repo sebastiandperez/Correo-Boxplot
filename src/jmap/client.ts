@@ -1,7 +1,7 @@
 import type {
   JmapSession,
-  JmapMailbox,
-  JmapEmail,
+  JmapMailboxesResult,
+  JmapEmailsResult,
   JmapDelta,
   JmapEmailBody,
   JmapAttachment,
@@ -21,9 +21,10 @@ export interface JmapClient {
   openSession(): Promise<JmapSession>
 
   /**
-   * Retrieves all mailboxes for the given account.
+   * Retrieves all mailboxes for the given account, plus the opaque
+   * collection state token Coordinator commits as CollectionSyncCursor.
    */
-  getMailboxes(accountId: string): Promise<JmapMailbox[]>
+  getMailboxes(accountId: string): Promise<JmapMailboxesResult>
 
   /**
    * Retrieves all identities for the given account.
@@ -43,9 +44,11 @@ export interface JmapClient {
   ): Promise<JmapQueryResult>
 
   /**
-   * Retrieves the metadata for the requested email IDs.
+   * Retrieves the metadata for the requested email IDs, plus the opaque
+   * Email collection state token (used to bootstrap a cursor when there
+   * is no prior Email/changes state — see Coordinator.performHardReset).
    */
-  getEmails(accountId: string, emailIds: string[]): Promise<JmapEmail[]>
+  getEmails(accountId: string, emailIds: string[]): Promise<JmapEmailsResult>
 
   /**
    * Retrieves changes to emails since a specific state.

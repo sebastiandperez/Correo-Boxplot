@@ -25,6 +25,16 @@ export type JmapMailbox = Readonly<{
   rights: JmapMailboxRights
 }>
 
+/**
+ * Mailbox/get always returns a `state` token alongside the list (RFC 8620
+ * §5.1) — without it, Coordinator has no opaque cursor to commit for the
+ * mailbox collection.
+ */
+export type JmapMailboxesResult = Readonly<{
+  mailboxes: readonly JmapMailbox[]
+  state: string
+}>
+
 export type JmapEmail = Readonly<{
   id: string
   blobId: string
@@ -46,6 +56,18 @@ export type JmapEmail = Readonly<{
   hasAttachment: boolean
 
   keywords: Record<string, boolean>
+  /** JMAP always assigns an Email to at least one Mailbox (RFC 8621 §4.1.1). */
+  mailboxIds: readonly string[]
+}>
+
+/**
+ * Email/get always returns a `state` token alongside the list (RFC 8620
+ * §5.3) — used to bootstrap an Email collection cursor when there is no
+ * prior Email/changes state to continue from (Coordinator hard reset).
+ */
+export type JmapEmailsResult = Readonly<{
+  emails: readonly JmapEmail[]
+  state: string
 }>
 
 export type JmapEmailBody = Readonly<{
