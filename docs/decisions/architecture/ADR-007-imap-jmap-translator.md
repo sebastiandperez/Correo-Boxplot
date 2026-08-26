@@ -1,10 +1,9 @@
 # ADR-007 — Traductor IMAP→JMAP in-process en Rust
 
-**Status:** UNDER REVIEW after REMOTE-INTEGRATION-RECOVERY-01
+**Status:** SUPERSEDED BY ADR-008
 
-> Recovery estabiliza primero el baseline JMAP. Esta propuesta no es todavía
-> la ruta final de implementación y no autoriza trabajo IMAP/SMTP antes de la
-> revisión conjunta de la futura frontera protocol-neutral.
+> Registro histórico. ADR-008 reemplaza el traductor IMAP→JMAP por
+> `RemoteMail` + `Submission`. Esta decisión ya no autoriza implementación.
 
 ## Context
 

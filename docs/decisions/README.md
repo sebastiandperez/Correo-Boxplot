@@ -10,7 +10,8 @@ Se registran solo elecciones con consecuencias arquitectónicas, no una ADR por 
 * [ADR-004 — Alcance de attachments](architecture/ADR-004-attachments-scope.md)
 * [ADR-005 — Renderizado HTML](architecture/ADR-005-email-html-rendering.md)
 * [ADR-006 — Elección de cliente JMAP](architecture/ADR-006-jmap-client-choice.md)
-* [ADR-007 — Traductor IMAP→JMAP in-process en Rust](architecture/ADR-007-imap-jmap-translator.md)
+* [ADR-007 — Traductor IMAP→JMAP in-process en Rust (superseded)](architecture/ADR-007-imap-jmap-translator.md)
+* [ADR-008 — Frontera remota protocol-neutral](architecture/ADR-008-remote-protocol-boundary.md)
 
 ## Desarrollo
 

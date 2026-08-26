@@ -12,10 +12,10 @@
 ✓ JMAP Session / Mailbox / Email / changes / submission funcionan
 ✓ WebSocket/StateChange está validado o su bloqueo está formalmente resuelto
 ✓ token JMAP permanece memory-only
-✓ Coordinator NO está implementado
-✓ Outbox processor NO está implementado
+✓ Coordinator está implementado sobre RemoteMail sin imports de protocolo
+✓ Outbox Send está implementado sobre Submission; runners keyword/membership quedan diferidos
 ✓ UI NO habla JMAP
 ✓ Rust NO habla JMAP
-✓ ReadRepository / SyncPort / JmapClient / store API quedan congelados
+✓ ReadRepository / SyncPort / RemoteMail / Submission / store API quedan congelados; JmapClient queda interno al adapter JMAP
 ✓ pnpm check pasa
 ✓ pnpm dev abre el flavor Development aislado y supera el smoke local-first

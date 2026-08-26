@@ -8,7 +8,7 @@ Este documento define responsabilidades de componentes. Las reglas normativas so
 
 La regla central es local-first: Vue y Pinia solo obtienen correo mediante `ReadRepository`, que consulta estado local committed. Las futuras solicitudes de materialización remota pertenecen a orquestación Application → Coordinator; los datos se vuelven observables después del commit y de una invalidación de `LocalChangeSource` P-03.
 
-La frontera local se divide en `ReadRepository`, compartido por Application, Coordinator y Outbox para lecturas, `SyncPort`, consumido por sus casos de escritura semántica, y `LocalChangeSource`, consumido por Application para invalidar proyecciones después de commits. Cliente JMAP, Coordinator y Outbox tienen una única implementación TypeScript que, para el MVP, corre en un Worker normal dentro del webview Tauri. Habla JMAP directo por `fetch`/WebSocket y cruza a la persistencia exclusivamente mediante `SyncPort`; su futuro adaptador Tauri concentrará `invoke()`.
+La frontera local se divide en `ReadRepository`, compartido por Application, Coordinator y Outbox para lecturas, `SyncPort`, consumido por sus casos de escritura semántica, y `LocalChangeSource`, consumido por Application para invalidar proyecciones después de commits. Coordinator y Outbox corren en el Worker pero dependen de la frontera protocol-neutral de ADR-008. Solo el adapter JMAP habla JMAP directo mediante `fetch` y WebSocket; toda persistencia cruza exclusivamente por `SyncPort`.
 
 El ciclo local y el remoto son independientes. `LocalReady + RemoteAnonymous` es válido: la DEK del SQLite local procede del secure store del sistema operativo, mientras el token JMAP solo vive en memoria del Worker. Passkey/WebAuthn autentica al servidor y no deriva la clave SQLCipher.
 
@@ -122,17 +122,12 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 
 ---
 
-## 5A. Rust net — traductor IMAP/SMTP (ADR-007)
+## 5A. Red nativa IMAP/SMTP — diferida (ADR-008)
 
-* **Responsabilidad:** Traducir IMAP/SMTP a DTOs con forma JMAP, expuestos por comandos IPC propios que consume `ImapJmapAdapter` (un `JmapClient` más). Es la única excepción a que Rust no hable red de correo, y solo existe para satisfacer el requisito de dos protocolos del proyecto (ADR-007).
-* **Qué NO hace:** No habla JMAP, no custodia el token JMAP del Worker, no actúa como proxy HTTP genérico, no adquiere el `EngineLease` del motor de persistencia y no conoce `SyncPort`/`ReadRepository`/SQLite/SQLCipher. No aloja Coordinator ni Outbox.
-* **Dependencias:** Crates TLS/IMAP/SMTP con versión exacta pinneada; Tauri mínimo para IPC.
-* **Consumidores:** `ImapJmapAdapter` en `src/jmap/`, vía el mismo puente IPC Worker↔main que ya usa `SyncPort`.
-* **Datos de entrada:** Credenciales IMAP/SMTP memory-only del proceso Rust; operaciones equivalentes a los métodos de `JmapClient` (query, get, changes, set, submission).
-* **Datos de salida:** DTOs con la forma de `src/jmap/types.ts` — el resto de la capa JMAP (normalizadores, Coordinator, Outbox) no distingue si vinieron de JMAP real o de esta traducción.
-* **Estado:** Sesión de red por cuenta, memory-only, con su propio ciclo de vida independiente del `EngineLease`.
-* **Persistencia:** Ninguna. No escribe en SQLite ni mantiene su propio almacenamiento durable; el mapeo UID↔ID estable vive en memoria, reconstruible por resync.
-* **Networking:** TCP/TLS saliente hacia IMAP/SMTP. Sin TLS solo se permite contra `127.0.0.1`/`localhost`; cualquier otro host exige TLS y falla cerrado.
+* **Responsabilidad futura:** Implementar transporte TCP/TLS nativo para adapters IMAP (`RemoteMail`) y SMTP (`Submission`). IMAP no envía correo.
+* **Qué NO hace:** No traduce a JMAP, no actúa como proxy genérico, no adquiere `EngineLease` y no conoce Ports locales, SQLite o SQLCipher.
+* **Estado:** No implementada en REMOTE-BOUNDARY-01. No existen sockets, crates o comandos IMAP/SMTP nuevos.
+* **Seguridad:** Credenciales memory-only; TLS obligatorio fuera de loopback. El diseño IPC concreto queda para el bloque del adapter nativo.
 
 ---
 
@@ -152,43 +147,42 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 
 ## 7. Coordinador de sincronización
 
-* **Responsabilidad:** Mantener SQLite al día en background; reaccionar a inicio autenticado, reconexión, `ensure…` y `StateChange`; leer `CollectionSyncCursor`, pedir deltas, normalizar/mergear DTOs JMAP parciales hasta producir entidades Domain completas, aplicar lotes por `SyncPort` y avanzar cada collection state en la misma transacción que sus cambios.
-* **Qué NO hace:** No participa en la lectura de primer plano, no entrega respuestas JMAP a Pinia, no implementa servidor/IMAP/SMTP y no interpreta un push como contenido completo.
-* **Dependencias:** Cliente JMAP, `SyncPort`, conectividad y sesión remota autenticada.
+* **Responsabilidad:** Mantener SQLite al día en background; leer `CollectionSyncCursor`, pedir transiciones completas a `RemoteMail`, mapear Remote→Domain mediante el compatibility bridge, aplicar lotes por `SyncPort` y avanzar cada collection state atómicamente.
+* **Qué NO hace:** No participa en la lectura de primer plano, no conoce DTOs, errores, paginación o métodos JMAP/IMAP y no contiene ramas por protocolo.
+* **Dependencias:** `RemoteMail`, `SyncPort`, `ReadRepository` y sesión remota autenticada.
 * **Consumidores:** Worker TypeScript Tauri; un futuro `SharedWorker` reutilizará la implementación.
 * **Datos de entrada:** `CollectionSyncCursor`, ViewSpecs con su `queryState`, solicitudes `ensure…`, eventos de conectividad/sesión y push.
-* **Datos de salida:** Invocaciones JMAP, lotes normalizados, nuevos collection states, cambios de `MailboxView` y señales locales indirectas.
+* **Datos de salida:** Lotes Domain normalizados, nuevos collection states, cambios de `MailboxView` y señales locales indirectas.
 * **Estado:** Coordinación y deduplicación en vuelo. `CollectionSyncCursor` contiene solo el checkpoint `AccountKey + DataType + opaque state`; `queryState` pertenece a la ViewSpec exacta. Status, lastError y timestamps son diagnóstico operacional separado cuya forma definitiva todavía no se diseña.
 * **Persistencia:** Solo por `SyncPort`; datos remotos y nuevo collection state se confirman atómicamente.
-* **Networking:** Solo mediante Cliente JMAP. `cannotCalculateChanges` provoca refetch/rebase del scope afectado, no reset automático completo de DB. Prioridades, batching, backoff, `queryChanges`, movimientos de posiciones y el algoritmo de rebase son trabajo posterior del Coordinator.
+* **Networking:** Solo mediante `RemoteMail`. El adapter concreto resuelve paging, invalidación de state y replace exhaustivo; Coordinator trata state como opaco.
 
 ---
 
 ## 8. Procesador de Pending Mutations (Outbox)
 
-* **Responsabilidad:** Tomar exclusivamente la familia discriminada de intenciones durables —`SendMutation`, `KeywordMutation` y `MailboxMembershipMutation`—, traducirlas a JMAP, reconciliar outcomes inciertos y registrar confirmación o fallo terminal. La primera conserva `SendIntent`; las otras actúan sobre `ScopedEmailId`.
-* **Qué NO hace:** No crea un `Email` falso o placeholder con ID temporal, no guarda drafts, no considera éxito el clic en Enviar, no descarta payload ante fallo de red, no implementa SMTP y no sube adjuntos en el MVP.
-* **Dependencias:** `SyncPort`, Cliente JMAP y la operación acordada para solicitar reconciliación al Coordinador.
+* **Responsabilidad:** Tomar la familia discriminada de intenciones durables, convertir Send a `SubmissionMessage`, usar `Submission` para envío y `RemoteMail` para mutaciones remotas de correo, y registrar confirmación o fallo terminal.
+* **Qué NO hace:** No crea un Email falso, no conoce `JmapEmailDraft`, EmailSubmission, IMAP o SMTP y no reintenta a ciegas outcomes ambiguos.
+* **Dependencias:** `RemoteMail`, `Submission`, `SyncPort` y `ReadRepository`.
 * **Consumidores:** Worker TypeScript y, por proyección local releída tras una invalidación P-03, Pinia.
-* **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados JMAP.
-* **Datos de salida:** Operaciones JMAP, transiciones durables, errores presentables y solicitud de resincronización.
+* **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados remotos.
+* **Datos de salida:** Operaciones remotas protocol-neutral, transiciones durables y solicitud de reconciliación.
 * **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
 * **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. `confirmed` puede permanecer durable hasta reconciliar la autoridad relevante; la política exacta de cleanup queda para Outbox.
-* **Networking:** Solo mediante Cliente JMAP. Después de crash no reintenta ciegamente una `SendMutation` inFlight: debe reconciliar antes de decidir si otra submission es segura. El algoritmo de idempotencia, orden, backoff y conflictos se cierra durante la implementación de Outbox.
+* **Networking:** Solo mediante Remote Boundary. Una aceptación sin `RemoteEmailId` o un outcome desconocido conserva `inFlight` y produce `needsReconciliation`; MutationId se usa como idempotency key y nunca como Email ID.
 
 ---
 
-## 9. Cliente JMAP
+## 9. Remote Boundary y adapter JMAP
 
-* **Responsabilidad:** Implementar en TypeScript el puerto único `JmapClient` (`src/jmap/client.ts`) que Coordinador y Outbox consumen sin ramas por protocolo. Tiene dos implementaciones: `JamClientAdapter`, JMAP estándar por `fetch`/WebSocket (descubrimiento/sesión, push `StateChange`, serialización, validación y errores); y `ImapJmapAdapter` (ADR-007), que traduce IMAP/SMTP delegando la conexión de red a `src-tauri/src/net/` y consumiendo DTOs con la misma forma. Ambos mantienen DTOs parciales dentro de la frontera de transporte y los normalizan/mergean antes de producir entidades Domain completas. Normaliza body parts sin exponer un MIME tree crudo y solo produce `EmailBody` cuando dispone de la representación visible completa y no truncada definida por D-09.
-* **Qué NO hace:** No implementa servidor ni proveedor real, no ejecuta SQL, no entrega modelos de UI y no maneja binarios de adjuntos en el MVP. `JamClientAdapter` no pasa la red por Rust; `ImapJmapAdapter` sí, pero exclusivamente a través del traductor `net/`, sin que ninguno filtre al Coordinador/Outbox qué protocolo hay detrás.
-* **Dependencias:** `JamClientAdapter`: HTTPS, WebSocket, capacidades JMAP y token de sesión obtenido por el flujo Passkey en navegador del sistema. `ImapJmapAdapter`: los comandos IPC de `net/` y la sesión IMAP/SMTP memory-only en Rust.
-* **Consumidores:** Coordinador y Outbox.
-* **Datos de entrada:** Invocaciones JMAP, cursores/state, IDs, parches y cuerpo saliente sin adjuntos.
-* **Datos de salida:** Respuestas validadas y normalizadas, metadata `AttachmentRef` D-10, `EmailBody` completo conforme a D-09, errores clasificados y `StateChange`. La implementación concreta del flattening JMAP y la disponibilidad cacheada de la colección de refs siguen diferidas.
-* **Estado:** JMAP Session, WebSocket, solicitudes y token (`JamClientAdapter`) o sesión de red vía `net/` (`ImapJmapAdapter`). El token/credencial vive solo en memoria del Worker o del proceso Rust según el adaptador, nunca en Pinia/SQLite/`localStorage`/logs, y se elimina al logout, expiración o cierre.
+* **Responsabilidad:** `RemoteMail` normaliza receive/sync/mutaciones; `Submission` normaliza envío. `JmapRemoteMail`, `JmapSubmission` y `JmapRemoteConnection` encapsulan `JmapClient`, sus DTOs, paging, state y errores. `RemoteConnection` selecciona protocolo únicamente en composición.
+* **Qué NO hace:** El core remoto no ejecuta SQL, no produce UI, no descifra E2EE y no importa JMAP. `JmapClient` no cruza al Coordinator/Outbox.
+* **Dependencias:** Core remoto: tipos protocol-neutral. Adapter JMAP: `JmapClient`, HTTPS/WebSocket, capacidades JMAP y token memory-only.
+* **Consumidores:** Coordinator consume `RemoteMail`; Outbox consume `RemoteMail` + `Submission`; Worker compone la sesión.
+* **Datos de entrada/salida:** `Remote*` IDs opacos, transiciones replace/delta completas, `RemoteBody`, `SubmissionMessage`, `SubmissionResult` y `RemoteError`.
+* **Compatibilidad:** `src/remote/compat/` concentra Remote* ↔ nombres locales `Jmap*` congelados; no cambia Domain, IPC ni SQL.
 * **Persistencia:** Ninguna directa. Correo, cursores y pendientes pasan por `SyncPort`.
-* **Networking:** Sí; corre en Worker normal dentro del webview Tauri. `JamClientAdapter` habla directo con el servidor JMAP; `ImapJmapAdapter` delega la conexión saliente a Rust net (ADR-007). El runtime `SharedWorker` queda para la futura iteración Web.
+* **Networking:** Solo el adapter JMAP habla JMAP. IMAP/SMTP permanecen diferidos.
 
 ## 10. Explicación del diagrama de componentes: abres la bandeja de entrada
 

@@ -16,12 +16,12 @@ SP-07	SyncPort	membership existente + delta válido	applyOptimisticMailboxMember
 SP-08	SyncPort	mutation pending leída	replacePendingMutationIfCurrent(inFlight)	un solo caller gana el CAS
 SP-09	SyncPort	mutation inFlight tras restart	read sin reset	permanece inFlight para reconciliación
 SP-10	SyncPort	mutation confirmed	removeConfirmedMutation()	cleanup committed; otros lifecycle producen conflict
-JM-01	JmapClient	credencial válida	openSession()	capability Mail + account
-JM-02	JmapClient	inbox conocida	query + get	ids y Emails normalizados
-JM-03	JmapClient	state antiguo	getEmailChanges()	created/updated/destroyed + newState
-JM-04	JmapClient	body multipart	getEmailBody()	EmailBody completo normalizado; no raw tree ni resultado truncado
-JM-05	JmapClient	send válido	submitEmail()	submissionId + emailId
-JM-06	JmapClient	WS push	StateChange	callback tipado
+JM-01	JMAP adapter	credencial válida	RemoteConnection.open()	RemoteSession + account descriptor
+JM-02	JmapRemoteMail	inbox conocida	queryMailbox + syncEmails	Remote IDs y transición normalizada
+JM-03	JmapRemoteMail	state antiguo	syncEmails()	delta o replace completo + RemoteSyncState
+JM-04	JmapRemoteMail	body multipart	fetchBody()	RemoteBody normalizado; no raw tree ni truncado
+JM-05	JmapSubmission	send válido	submit()	receipt + RemoteEmailId cuando esté disponible
+JM-06	JMAP adapter	WS push	StateChange	callback tipado (actualmente deferred/fail-closed)
 ST-01	Stores	local ready, auth anonymous	bootstrap	cache visible
 ST-02	Stores	selected mailbox	repository change	reread visible page
 ST-03	Composer	stage success	commit de SendMutation	composer limpio

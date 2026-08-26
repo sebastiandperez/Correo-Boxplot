@@ -27,7 +27,21 @@ Recovery estabiliza la línea JMAP existente antes de diseñar la futura fronter
 
 - Domain D-01→D-10 y Ports P-01/P-02/P-03: unchanged.
 - Los 25 comandos IPC locales, schema SQLCipher, bootstrap/DEK y E2EE V1: unchanged.
-- ADR-007 queda **UNDER REVIEW**. La arquitectura protocol-neutral, ADR-008, IMAP y SMTP pertenecen a la fase siguiente y no forman parte de esta Recovery.
+- ADR-007 fue posteriormente **SUPERSEDED BY ADR-008** mediante REMOTE-BOUNDARY-01.
+
+## REMOTE-BOUNDARY-01
+
+**Estado: COMPLETE.** ADR-008 está ACCEPTED y `src/remote/` define IDs/estado
+opacos, `RemoteError`, `RemoteConnection`/`RemoteSession`, `RemoteMail`,
+`Submission`, `RemoteBody` y `SubmissionMessage`. `JmapRemoteMail` y
+`JmapSubmission` reutilizan la implementación JMAP recuperada detrás de esa
+frontera. Coordinator no importa JMAP; Outbox consume RemoteMail + Submission;
+el Worker selecciona/compone el adapter una vez.
+
+El puente `src/remote/compat/` concentra la conversión Remote* hacia el
+vocabulario local `Jmap*` congelado. Domain, P-01/P-02/P-03, los 25 comandos
+IPC, SQLCipher y E2EE no cambian. IMAP, SMTP, sockets nativos, reconciliación
+SMTP y el bridge E2EE del Worker permanecen diferidos.
 
 
 ## SPRINT 2 

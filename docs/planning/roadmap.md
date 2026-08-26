@@ -8,7 +8,7 @@ Este roadmap ordena dependencias reales; no asigna fechas ni confunde una decisi
 
 | Gate | Estado | Qué quedó cerrado |
 | --- | --- | --- |
-| **0-A** | **CLOSED** | Cliente JMAP + Coordinador + Outbox: una implementación TypeScript en Worker; red directa; Rust solo persistencia/cifrado/secure store. |
+| **0-A** | **CLOSED · ADR-008** | Remote Boundary protocol-neutral: Coordinator→RemoteMail, Outbox→RemoteMail+Submission; JMAP directo en Worker; Rust solo persistencia/cifrado/secure store. |
 | **0-B** | **CLOSED** | Modelo lógico D-01…D-10: identities scoped, Email completo, addresses, Identity/SendIntent, Mailbox, MailboxView, CollectionSyncCursor, PendingMutation, EmailBody y AttachmentRef. |
 | **0-C** | **CLOSED FOR TAURI MVP** | DEK aleatoria en Rust/secure store, auth Passkey separada, token memory-only, ciclos local/remoto independientes, recuperación por reset/resync y frontera Tauri. |
 | **0-D** | **CLOSED FOR TAURI MVP** | Pinia efímero, drafts memory-only, solo `PendingMutation` para send, metadata de adjuntos y render HTML en defensa en profundidad. |
@@ -37,7 +37,8 @@ La secuencia obligatoria del core es:
 14. LOCAL-SECURE-STORE-01 — completo en Linux y Windows; flavors dev/prod aislados, stores nativos y Development reopen/persistence verificados.
 15. SQLCIPHER-PACKAGING-01 — completo en Linux y Windows x86_64 MSVC: source 4.17.0/SQLite 3.53.3 y OpenSSL 3.6.3 vendored, runtime exacto fail-closed, compatibilidad 4.14, DEB y NSIS instalado verificados.
 16. SPRINT1-INTEGRATION-GATE-01 — A-01→A-08 completos sobre la cadena productiva local; SQLCipher Development → Vue, P-03 → reread → UI y SendMutation durable verificados sin servidor remoto.
-17. JMAP, Coordinator y Outbox integration.
+17. REMOTE-BOUNDARY-01 — completado; JMAP detrás de RemoteMail/Submission, Coordinator/Outbox protocol-neutral.
+18. Adapters IMAP/SMTP, BodyMaterializer E2EE y aceptación remota — siguientes bloques separados.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -47,9 +48,9 @@ Application y Presentation siguen siendo capas consumidoras independientes; este
 
 | Elemento | Decisión Tauri MVP |
 | --- | --- |
-| Runtime de JMAP/Coordinator/Outbox | Worker normal TypeScript dentro del webview |
+| Runtime remoto/Coordinator/Outbox | Worker normal TypeScript; selección de adapter una vez en composición |
 | Persistencia | `SyncPort`/`ReadRepository` → adaptadores Tauri TypeScript → `invoke()` validado → Rust → SQLite + SQLCipher |
-| Red JMAP | `fetch` + WebSocket directos desde TypeScript; nunca por Rust |
+| Red remota | JMAP por `fetch`/WebSocket TypeScript; IMAP/SMTP nativos diferidos detrás de RemoteMail/Submission |
 | Cambios locales | Commit → `LocalChangeSource` P-03 → invalidación → relectura local |
 | Clave local | DEK aleatoria 32 bytes, creada/recuperada y usada solo en Rust |
 | Sesión remota | Passkey en navegador del sistema; token solo en memoria del Worker |
@@ -215,9 +216,9 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Estado de aplicación (Pinia) | Consumidor posterior a Domain/Ports | Fase 3-C; aceptación |
 | Motor Tauri/Rust | **PERSIST-01 + IPC-00 + PROD-CONFORMANCE-01 + SECURE-BOOTSTRAP-01 + LOCAL-SECURE-STORE-01 + SQLCIPHER-PACKAGING-01 COMPLETE EN LINUX/WINDOWS** | 3-B/3-C; aceptación |
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
-| Cliente JMAP | **Fase 3 · 3-B** | Aceptación remota |
-| Coordinador de sincronización | **Fase 3 · 3-B** | Aceptación receive/sync |
-| Procesador de Pending Mutations | **Fase 3 · 3-B** | Aceptación send |
+| Remote Boundary + adapter JMAP | **REMOTE-BOUNDARY-01 COMPLETE** | Adapter IMAP/SMTP y aceptación remota |
+| Coordinador de sincronización | **Protocol-neutral core COMPLETE** | Body materialization y aceptación receive/sync |
+| Procesador de Pending Mutations | **Send core sobre Submission COMPLETE** | Executors keyword/membership y reconciliación |
 
 ## 11. Registro de decisiones vigente
 

@@ -69,7 +69,7 @@ Pinia proyecta este ciclo sin custodiar secretos: `runtime.local = opening | rea
 
 Tauri v2 parte de cero capacidades y habilita únicamente comandos Rust explícitos, mínimos y validados por ventana. El **Isolation Pattern** intercepta el puente IPC antes de alcanzar el núcleo nativo.
 
-La ubicación y dirección de esta frontera se rige por [layers.md](layers.md): los adaptadores TypeScript concentran el IPC, SQLCipher/DEK permanecen en Rust y el networking JMAP no cruza el Local Engine. La única excepción de red en Rust es `src-tauri/src/net/` (ADR-007), el traductor IMAP→JMAP: tampoco cruza el Local Engine ni adquiere su `EngineLease`, y nunca habla JMAP.
+La ubicación y dirección de esta frontera se rige por [layers.md](layers.md): los adaptadores TypeScript concentran el IPC, SQLCipher/DEK permanecen en Rust y el networking JMAP no cruza el Local Engine. ADR-008 reserva una futura capa TCP/TLS Rust para IMAP/SMTP, separada del Local Engine y sin traducción a JMAP; todavía no está implementada.
 
 Reglas:
 
@@ -80,7 +80,7 @@ Reglas:
 * Production y Development usan identificadores Tauri, roots y credenciales distintos. El runtime rechaza identidad Production bajo `tauri dev` o `debug_assertions` antes de cualquier side effect de caché.
 * Los smokes nativos usan servicios aleatorios `*.test.<RUN_ID>.local-cache`; ninguna entrada de test puede seleccionarse desde IPC o Application.
 * Cliente JMAP, Coordinador y Outbox siguen en el Worker TypeScript y usan `fetch`/WebSocket directo; Rust no retransmite ni custodia la sesión JMAP.
-* Excepción única (ADR-007): cuando la cuenta usa IMAP/SMTP, `ImapJmapAdapter` (un `JmapClient` más, sin rama especial en Coordinador/Outbox) delega la conexión TCP/TLS saliente a `src-tauri/src/net/`. La credencial IMAP/SMTP vive solo en memoria de ese proceso Rust, nunca cruza de vuelta por IPC hacia TypeScript ni se persiste. Sin TLS solo se permite contra `127.0.0.1`/`localhost`.
+* Frontera remota (ADR-008): Coordinator/Outbox nunca reciben secretos ni tipos concretos de protocolo. La futura implementación IMAP/SMTP mantendrá credenciales solo en memoria Rust, no las devolverá por IPC ni las persistirá. Sin TLS solo se permitirá contra `127.0.0.1`/`localhost`.
 
 ### 2. Renderizado de HTML en defensa en profundidad
 

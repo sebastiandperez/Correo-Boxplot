@@ -21,9 +21,10 @@ Tauri adapters TypeScript
         ↓ invoke() semántico
 Rust commands → Local Engine → SQLite + SQLCipher
 
-Coordinator / Outbox → JMAP Client → JMAP Server
-          ↓
-       SyncPort → Tauri adapter → Rust Local Engine
+Coordinator → RemoteMail → JMAP adapter → JMAP Server
+Outbox → RemoteMail + Submission → protocol adapters
+     ↓
+ SyncPort → Tauri adapter → Rust Local Engine
 ```
 
 Las dependencias de código apuntan hacia contratos y tipos internos. En ejecución, las llamadas cruzan desde esos contratos hacia adaptadores e infraestructura. Los adaptadores TypeScript satisfacen `ReadRepository` y `SyncPort`; Rust no implementa literalmente interfaces TypeScript, sino la semántica de persistencia expuesta mediante IPC Tauri semántico.
@@ -100,11 +101,11 @@ Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, 
 
 No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa como proxy HTTP/WebSocket, no almacena el token JMAP, no renderiza UI y no maneja Pinia. El networking de correo del Rust Local Engine es ninguno.
 
-### Rust net — traductor IMAP/SMTP (ADR-007)
+### Red nativa IMAP/SMTP — diferida (ADR-008)
 
-**Rutas implementadas:** `src-tauri/src/net/`.
+**Ruta futura:** `src-tauri/src/net/`.
 
-Excepción única y explícita a la regla anterior. Abre conexiones TCP/TLS salientes hacia IMAP/SMTP exclusivamente para traducir esos protocolos a DTOs con forma JMAP, expuestos por comandos IPC propios y separados de los 25 de IPC-00. Es una capa Rust distinta del Rust Local Engine: no adquiere su `EngineLease`, no conoce `SyncPort`/`ReadRepository`/SQLite/SQLCipher, y el Local Engine sigue sin conocerla a ella. Nunca habla JMAP, nunca custodia el token JMAP del Worker y nunca actúa como proxy HTTP genérico; la credencial IMAP/SMTP vive solo en memoria de este proceso.
+Cuando se implemente, abrirá TCP/TLS únicamente para protocolos nativos que lo requieren. Será una capa distinta del Rust Local Engine: no adquirirá `EngineLease`, no conocerá `SyncPort`/`ReadRepository`/SQLite/SQLCipher y no traducirá IMAP a DTOs JMAP. No existe todavía implementación IMAP/SMTP en este repositorio.
 
 ## Dependency direction
 
@@ -121,11 +122,13 @@ Las dependencias permitidas son:
 | Domain | Nada específico de infraestructura |
 | Ports | Domain; errores propios de contrato |
 | Tauri adapters | Ports; Domain; API Tauri mínima para IPC |
-| Sync | Domain; `SyncPort`; interfaz JMAP; sesión/conectividad |
-| JMAP | Web APIs de networking; protocolo y adaptador JMAP aprobado |
+| Sync | Domain; `SyncPort`; `ReadRepository`; `RemoteMail`; `Submission` |
+| Remote core | Tipos mail protocol-neutral y compatibility bridge al Domain congelado |
+| Remote JMAP adapter | `RemoteMail`/`Submission`; `JmapClient`; DTOs y errores JMAP |
+| JMAP | Web APIs de networking; protocolo y librería JMAP aprobada |
 | Rust commands | Local Engine; seguridad y errores Rust; Tauri mínimo |
 | Rust Local Engine | `rusqlite`/SQLCipher y servicios nativos de seguridad necesarios |
-| Rust net (ADR-007) | Crates TLS/IMAP/SMTP pinneados con versión exacta; Tauri mínimo para IPC |
+| Rust net futuro (ADR-008) | Crates TLS/IMAP/SMTP pinneados con versión exacta; Tauri mínimo para IPC |
 
 Una conveniencia local no justifica invertir o saltar esta dirección.
 
@@ -137,10 +140,10 @@ Una conveniencia local no justifica invertir o saltar esta dirección.
 | Application | SQLite, SQL, SQLCipher, comandos Tauri concretos, transporte JMAP, `fetch` o WebSocket JMAP |
 | Domain | Vue, Pinia, Tauri, `rusqlite`, SQLCipher, DOMPurify o `jmap-jam` |
 | Ports | Cualquier infraestructura: Tauri/`invoke`, Rust, SQL/SQLite o transporte JMAP |
-| Coordinator / Outbox | SQLite o SQL directos; deben usar `SyncPort` |
+| Coordinator / Outbox | JMAP/IMAP/SMTP concretos, SQLite o SQL directos; deben usar Remote Boundary y `SyncPort` |
 | JMAP Client | Pinia, Vue, modelos UI, SQLite, Rust Local Engine o persistencia Tauri |
 | Rust Local Engine | JMAP, autenticación remota, almacenamiento del token JMAP o proxy de red |
-| Rust net (ADR-007) | JMAP; `EngineLease`; `SyncPort`/`ReadRepository`; SQLite/SQLCipher; almacenamiento del token JMAP |
+| Rust net futuro (ADR-008) | JMAP; DTOs JMAP falsos; `EngineLease`; `SyncPort`/`ReadRepository`; SQLite/SQLCipher; almacenamiento del token JMAP |
 
 ## State ownership
 
@@ -155,7 +158,7 @@ Estas categorías no se mezclan. `LocalReady + RemoteAnonymous` es válido.
 
 ## Networking ownership
 
-Presentation, Application, Domain, Ports y los adaptadores Tauri tienen networking de correo **ninguno**. Coordinator y Outbox lo orquestan solo mediante JMAP Client — el puerto único, sin ramas por protocolo. JMAP Client es la única pieza TypeScript que habla JMAP por `fetch`/WebSocket. Rust Local Engine tiene networking de correo **ninguno**. Rust net (ADR-007) es la única excepción: abre TCP/TLS saliente hacia IMAP/SMTP exclusivamente como traductor detrás de un adaptador de JMAP Client; nunca habla JMAP y nunca toca el Rust Local Engine.
+Presentation, Application, Domain, Ports y los adaptadores Tauri tienen networking de correo **ninguno**. Coordinator consume `RemoteMail`; Outbox consume `RemoteMail` + `Submission`, sin ramas de protocolo. Solo `src/remote/jmap/` y la composición explícita conocen `JmapClient`; este último habla JMAP por `fetch`/WebSocket. Rust Local Engine tiene networking de correo **ninguno**. La futura red nativa IMAP/SMTP quedará detrás de adapters propios y separada del Local Engine.
 
 ## Persistence ownership
 
@@ -211,5 +214,5 @@ Antes de aprobar un cambio, verificar:
 2. ¿Sus imports apuntan en la dirección permitida?
 3. ¿Cruza un port o salta una frontera?
 4. ¿Estado durable terminó accidentalmente en Pinia?
-5. ¿Networking de correo apareció fuera de JMAP Client o de Rust net (ADR-007)? ¿Rust net tocó el Local Engine?
+5. ¿Un protocolo concreto apareció en Coordinator/Outbox? ¿Networking de correo salió de su adapter o tocó el Local Engine?
 6. ¿SQL o IPC apareció dentro de UI/Application?
