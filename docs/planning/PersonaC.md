@@ -5,8 +5,29 @@ Session	C-03	P0	Session discovery/capabilities	Obtener Session y validar account
 Mail Read	C-04	P0	Mailbox + Email read APIs	Mailbox/get, Email/query, Email/get, changes/queryChanges y batching	src/jmap/mail/*	C-03	5	IDs/states normalizados; paginación/deltas correctos	fixtures RFC/Stalwart, hasMoreChanges
 Body	C-05	P1	Normalización del contenido JMAP	Producir `EmailBody` solo desde contenido completo/no truncado y extraer metadata `AttachmentRef`	src/jmap/normalizers/*	C-04	3	No filtra MIME tree raw; respeta shapes D-09/D-10 y mantiene AttachmentRef separado	multipart HTML/text/attachment vectors
 Remote Mutation	C-06	P1	Email patch + submission	Primitive propia para keywords/mailboxes y send sin adjuntos	src/jmap/mail/mutations.ts, submission.ts	C-03	5	Errores JMAP clasificados; sin persistencia local	accepted/rejected/stateMismatch/tooLarge
-Push	C-07	P1	WebSocket StateChange	Conectar, activar push, parsear StateChange, reconnect mínimo	src/jmap/transport/websocket.ts	C-03	5	StateChange typed; close/reconnect; invalid payload handled	WS fake + Stalwart integration
+Push	C-07	P1	WebSocket StateChange — DEFERRED	El browser WebSocket no puede adjuntar Authorization; Recovery prohíbe credenciales en URL y mantiene push deshabilitado fail-closed	src/jmap/transport/websocket.ts	C-03	5	Reabrir solo con transporte autenticado interoperable; HTTP/manual sync siguen operativos	Security transport + Stalwart integration
 Secret Lifecycle	C-08	P0	Token memory-only	Worker bootstrap recibe token, nunca lo expone/persiste/loguea y lo destruye	src/workers/*, src/jmap/*	C-03	3	Canario no aparece en storage/log; logout invalida client	token lifecycle tests
+
+## REMOTE-INTEGRATION-RECOVERY-01
+
+Recovery estabiliza la línea JMAP existente antes de diseñar la futura frontera protocol-neutral. No introduce IMAP, SMTP, `RemoteMail`, `Submission` ni ADR-008.
+
+| ID | Estado | Resultado |
+| --- | --- | --- |
+| C2-R01 baseline | COMPLETE | Parte de `9776bfa` (A2-00/A2-01); Domain, Ports, Local Engine, IPC, SQLCipher y E2EE permanecen congelados. |
+| C2-R02 session lifecycle | COMPLETE | Login fallido, expiración, logout y 401/403 eliminan la credencial memory-only y vuelven inutilizable el cliente previo. Los mensajes Worker no devuelven secretos ni errores remotos sin filtrar. |
+| C2-R03 WebSocket safety | DEFERRED / FAIL-CLOSED | Se elimina todo token Bearer/Basic de URLs. El runtime productivo no inicia WebSocket hasta disponer de un handshake autenticado seguro; JMAP HTTP sigue habilitado. C-07 queda reabierto/deferred. |
+| C2-R04 Coordinator correctness | COMPLETE | Account sync ordena Identity → Mailbox → Email → MailboxView; hard reset pagina exhaustivamente, usa estado Email/get real incluso vacío y no confirma snapshots parciales. |
+| C2-R05 Outbox retry | COMPLETE | `pending` y `retrying` vencida pueden reclamarse; `retrying` futura se omite; `inFlight`, `confirmed` y `failedTerminal` nunca se reenvían automáticamente. |
+| C2-R06 ambiguous send safety | COMPLETE | Una pérdida de transporte durante submission conserva `inFlight`, produce `needsReconciliation` y bloquea el reenvío ciego. La reconciliación remota completa continúa diferida. |
+| C2-R07 Worker wiring | COMPLETE | `SYNC_ACCOUNT` espera la orquestación completa sobre el cliente autenticado real. El estado anónimo no usa `MockJmapClient`; Application obtiene el JMAP Account ID del `RemoteAccountRef` persistido. |
+| C2-R08 cross-owner audit | NEEDS PERSONA B REVIEW | FTS5 permanece dentro del archivo SQLCipher y no cambia P-01/P-02, pero es una migración no consumida todavía por los Ports; Recovery no la modifica. |
+
+### Recovery boundaries preserved
+
+- Domain D-01→D-10 y Ports P-01/P-02/P-03: unchanged.
+- Los 25 comandos IPC locales, schema SQLCipher, bootstrap/DEK y E2EE V1: unchanged.
+- ADR-007 queda **UNDER REVIEW**. La arquitectura protocol-neutral, ADR-008, IMAP y SMTP pertenecen a la fase siguiente y no forman parte de esta Recovery.
 
 
 ## SPRINT 2 

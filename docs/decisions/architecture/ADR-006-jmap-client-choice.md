@@ -4,6 +4,11 @@
 - **Fecha:** 2026-08-22
 - **Contexto:** STACK-02 · Fase 3-B
 
+> **Recovery note (REMOTE-INTEGRATION-RECOVERY-01):** la adopción encapsulada
+> de `jmap-jam` se mantiene, pero el claim histórico de WebSocket nativo no es
+> una implementación de autenticación RFC 8887 segura en browser. Push queda
+> deshabilitado/deferred; nunca se transportan credenciales en la URL.
+
 ## Contexto
 
 El MVP Tauri requiere un cliente JMAP TypeScript para comunicarse con Stalwart Mail Server. La arquitectura establece que:
