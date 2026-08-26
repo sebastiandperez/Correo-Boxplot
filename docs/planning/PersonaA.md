@@ -11,7 +11,12 @@ Runtime UX	A-07	P1	Estados runtime	Proyectar local/auth/connectivity sin mezclar
 Integration	A-08	P0	Corte local-first A+B	Ejecutar UI real contra TauriReadRepository y DB de test/desarrollo	src/app/*, adapters con B	B-04/B-06	3	Tauri muestra datos locales y responde sin servidor	Smoke local vertical
 
 
-### SPRINT 2 
+### SPRINT 2
+
+> **A2-00 — COMPLETE.** Se restauró el contrato aceptado de seguridad del MessageViewer: sandbox exacto `allow-same-origin`, sanitización por render, recursos remotos bloqueados y navegación HTTP/HTTPS exclusivamente mediante el opener controlado. También se corrigió el mojibake introducido en rutas Persona A.
+>
+> **A2-01 — COMPLETE.** `AccountSetup` y su store Pinia efímero recopilan y validan la configuración **Boxplot Local / IMAP** (`127.0.0.1:1143`, SMTP derivado `1587`). La contraseña permanece solo en memoria. A2-01 no autentica: el bridge real sigue en **A2-02** y el first-run routing sigue en **A2-03**.
+
 
 | ID                                     | Archivos principales                                                                                                                     | Tarea concreta                                                                                                                                                                                                                                                                 | Impacto                                                                                                                                              |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

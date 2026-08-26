@@ -86,7 +86,7 @@ export class MailApplicationController {
       this.runtimeStore.setLocal('error')
       this.mailStore.setLoadState(
         'error',
-        'El almacenamiento local no estÃ¡ disponible.',
+        'El almacenamiento local no está disponible.',
       )
       throw new Error('LocalChangeSource is unavailable')
     }
@@ -262,14 +262,14 @@ export class MailApplicationController {
     if (!viewResult.ok) {
       this.mailStore.setLoadState(
         'error',
-        'No se pudo leer la vista local del buzÃ³n.',
+        'No se pudo leer la vista local del buzón.',
       )
       return
     }
     if (viewResult.value.kind === 'ownerAbsent') {
       this.mailStore.setMailboxView(null)
       this.mailStore.setEmails([])
-      this.mailStore.setLoadState('error', 'El buzÃ³n local ya no existe.')
+      this.mailStore.setLoadState('error', 'El buzón local ya no existe.')
       return
     }
     if (viewResult.value.kind === 'notCached') {
