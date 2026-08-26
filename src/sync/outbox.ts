@@ -1,6 +1,5 @@
 import type { SyncPort } from '../ports/sync-port'
 import type { ReadRepository } from '../ports/read-repository'
-import type { JmapClient } from '../jmap/client'
 import type { AccountKey, MutationId } from '../domain/ids'
 import type { MutationInstant, SendMutation } from '../domain/pending-mutation'
 import {
@@ -11,14 +10,12 @@ import {
   sendConfirmation,
   startMutationAttempt,
 } from '../domain/pending-mutation'
-import { jmapEmailIdFromString, scopedEmailId } from '../domain/ids'
-import {
-  isRetryable,
-  JmapError,
-  JmapNetworkError,
-  JmapSubmissionAmbiguousError,
-} from '../jmap/errors'
-import { mapSendIntentToJmapDraft } from '../jmap/mail/draft-mapper'
+import type { RemoteMail } from '../remote/mail'
+import type { Submission } from '../remote/submission'
+import type { RemoteAccountId } from '../remote/types'
+import { RemoteError } from '../remote/errors'
+import { localEmailId } from '../remote/compat/domain-ids'
+import { submissionMessageFromSendIntent } from '../remote/compat/submission-message'
 
 export type SendMutationOutcome =
   | Readonly<{ kind: 'sent' }>
@@ -38,7 +35,8 @@ type MutationLookup =
 
 export class Outbox {
   constructor(
-    private readonly client: JmapClient,
+    private readonly remoteMail: RemoteMail,
+    private readonly submission: Submission,
     private readonly syncPort: SyncPort,
     private readonly readRepository: ReadRepository,
     private readonly now: () => MutationInstant = currentMutationInstant,
@@ -65,7 +63,7 @@ export class Outbox {
    */
   async processSendMutation(
     accountKey: AccountKey,
-    jmapAccountId: string,
+    remoteAccountId: RemoteAccountId,
     mutationId: MutationId,
   ): Promise<SendMutationOutcome> {
     const lookup = await this.readCurrentSendMutation(accountKey, mutationId)
@@ -88,15 +86,17 @@ export class Outbox {
       )
     }
 
-    const draft = mapSendIntentToJmapDraft(inFlight.intent)
+    // RemoteMail is intentionally a separate Outbox dependency for keyword
+    // and membership executors; Send uses the Submission capability only.
+    void this.remoteMail
+    const message = submissionMessageFromSendIntent(
+      remoteAccountId,
+      inFlight.intent,
+    )
 
     let result
     try {
-      result = await this.client.submitEmail(
-        jmapAccountId,
-        draft,
-        inFlight.intent.identityId.jmapId,
-      )
+      result = await this.submission.submit(message, inFlight.mutationId)
     } catch (err: unknown) {
       if (isAmbiguousSubmissionFailure(err)) {
         // The server may have accepted the request. Preserve durable
@@ -107,11 +107,13 @@ export class Outbox {
       throw err
     }
 
+    if (result.remoteEmailId === null) {
+      return { kind: 'needsReconciliation' }
+    }
+
     const confirmed = confirmSendMutation(
       inFlight,
-      sendConfirmation(
-        scopedEmailId(accountKey, jmapEmailIdFromString(result.emailId)),
-      ),
+      sendConfirmation(localEmailId(accountKey, result.remoteEmailId)),
     )
     const confirmResult = await this.syncPort.replacePendingMutationIfCurrent(
       inFlight,
@@ -140,7 +142,7 @@ export class Outbox {
     inFlight: SendMutation,
     err: unknown,
   ): Promise<void> {
-    const next = isRetryable(err)
+    const next = isRetryableRemoteFailure(err)
       ? scheduleMutationRetry(inFlight, this.now())
       : failMutationTerminal(inFlight)
 
@@ -207,8 +209,15 @@ function currentMutationInstant(): MutationInstant {
 
 function isAmbiguousSubmissionFailure(error: unknown): boolean {
   return (
-    error instanceof JmapSubmissionAmbiguousError ||
-    error instanceof JmapNetworkError ||
-    !(error instanceof JmapError)
+    !(error instanceof RemoteError) ||
+    error.retry === 'reconcile' ||
+    error.outcome === 'unknown'
+  )
+}
+
+function isRetryableRemoteFailure(error: unknown): boolean {
+  return (
+    error instanceof RemoteError &&
+    (error.retry === 'safeImmediate' || error.retry === 'safeBackoff')
   )
 }

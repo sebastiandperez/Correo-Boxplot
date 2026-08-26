@@ -6,6 +6,7 @@ import {
   scopedEmailId,
 } from '../../../domain/ids'
 import type { JmapAttachment } from '../../../jmap/types'
+import { mapJmapAttachment } from '../../../remote/jmap/mappers'
 
 const accountKey = accountKeyFromString('acc-1')
 const emailId = scopedEmailId(accountKey, jmapEmailIdFromString('email-1'))
@@ -28,7 +29,7 @@ function makeRawAttachment(
 describe('toDomainAttachmentRefs', () => {
   it('maps a well-formed attachment list', () => {
     const refs = toDomainAttachmentRefs(accountKey, emailId, [
-      makeRawAttachment(),
+      mapJmapAttachment(makeRawAttachment()),
     ])
 
     expect(refs).toHaveLength(1)
@@ -52,7 +53,7 @@ describe('toDomainAttachmentRefs', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const refs = toDomainAttachmentRefs(accountKey, emailId, [
-      makeRawAttachment({ partId: null }),
+      mapJmapAttachment(makeRawAttachment({ partId: null })),
     ])
 
     expect(refs).toEqual([])
@@ -63,7 +64,7 @@ describe('toDomainAttachmentRefs', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const refs = toDomainAttachmentRefs(accountKey, emailId, [
-      makeRawAttachment({ mediaType: 'multipart/mixed' }),
+      mapJmapAttachment(makeRawAttachment({ mediaType: 'multipart/mixed' })),
     ])
 
     expect(refs).toEqual([])
@@ -72,9 +73,11 @@ describe('toDomainAttachmentRefs', () => {
 
   it('keeps valid attachments and skips only the invalid one in a mixed list', () => {
     const refs = toDomainAttachmentRefs(accountKey, emailId, [
-      makeRawAttachment({ partId: 'part-1' }),
-      makeRawAttachment({ partId: null }),
-      makeRawAttachment({ partId: 'part-3', blobId: 'blob-att-3' }),
+      mapJmapAttachment(makeRawAttachment({ partId: 'part-1' })),
+      mapJmapAttachment(makeRawAttachment({ partId: null })),
+      mapJmapAttachment(
+        makeRawAttachment({ partId: 'part-3', blobId: 'blob-att-3' }),
+      ),
     ])
 
     expect(refs.map((r) => r.partId)).toEqual(['part-1', 'part-3'])

@@ -14,7 +14,7 @@ const emailId = scopedEmailId(
 describe('toDomainEmailBody', () => {
   it('maps text+html content through', () => {
     const body = toDomainEmailBody(emailId, {
-      emailId: 'email-1',
+      kind: 'plain',
       text: 'hello',
       html: '<p>hello</p>',
     })
@@ -24,7 +24,7 @@ describe('toDomainEmailBody', () => {
 
   it('preserves valid null/null as a complete cached body', () => {
     const body = toDomainEmailBody(emailId, {
-      emailId: 'email-1',
+      kind: 'plain',
       text: null,
       html: null,
     })

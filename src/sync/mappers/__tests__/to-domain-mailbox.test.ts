@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { toDomainMailbox } from '../to-domain-mailbox'
 import { accountKeyFromString } from '../../../domain/ids'
 import type { JmapMailbox } from '../../../jmap/types'
+import { mapJmapMailbox } from '../../../remote/jmap/mappers'
 
 const accountKey = accountKeyFromString('acc-1')
 
@@ -28,7 +29,10 @@ function makeRawMailbox(overrides: Partial<JmapMailbox> = {}): JmapMailbox {
 
 describe('toDomainMailbox', () => {
   it('maps a well-formed JmapMailbox into a Domain Mailbox', () => {
-    const mailbox = toDomainMailbox(accountKey, makeRawMailbox())
+    const mailbox = toDomainMailbox(
+      accountKey,
+      mapJmapMailbox(makeRawMailbox()),
+    )
 
     expect(mailbox).not.toBeNull()
     expect(mailbox?.id).toEqual({ accountKey, jmapId: 'mailbox-1' })
@@ -40,7 +44,7 @@ describe('toDomainMailbox', () => {
   it('scopes a non-null parent to the same account', () => {
     const mailbox = toDomainMailbox(
       accountKey,
-      makeRawMailbox({ parent: 'mailbox-parent' }),
+      mapJmapMailbox(makeRawMailbox({ parent: 'mailbox-parent' })),
     )
 
     expect(mailbox?.parent).toEqual({ accountKey, jmapId: 'mailbox-parent' })
@@ -51,7 +55,7 @@ describe('toDomainMailbox', () => {
 
     const mailbox = toDomainMailbox(
       accountKey,
-      makeRawMailbox({ totalEmails: 1, unreadEmails: 5 }),
+      mapJmapMailbox(makeRawMailbox({ totalEmails: 1, unreadEmails: 5 })),
     )
 
     expect(mailbox).toBeNull()
@@ -59,7 +63,10 @@ describe('toDomainMailbox', () => {
   })
 
   it('returns null when name is empty', () => {
-    const mailbox = toDomainMailbox(accountKey, makeRawMailbox({ name: '' }))
+    const mailbox = toDomainMailbox(
+      accountKey,
+      mapJmapMailbox(makeRawMailbox({ name: '' })),
+    )
     expect(mailbox).toBeNull()
   })
 })

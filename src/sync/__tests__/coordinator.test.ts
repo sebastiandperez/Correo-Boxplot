@@ -6,6 +6,12 @@ import { unwrapOk } from '../../tests/contracts/assertions'
 import { createTestAccount } from '../../tests/contracts/fixtures'
 import { JmapMethodError } from '../../jmap/errors'
 import type { JmapClient } from '../../jmap/client'
+import { JmapRemoteMail } from '../../remote/jmap'
+import type { RemoteMail } from '../../remote/mail'
+import {
+  remoteAccountIdFromString,
+  remoteMailboxIdFromString,
+} from '../../remote/types'
 import type {
   JmapDelta,
   JmapEmail,
@@ -25,11 +31,13 @@ import {
 import { jmapMailboxIdFromString, scopedMailboxId } from '../../domain/ids'
 
 /** Every method throws unless overridden — a call the test doesn't expect fails loudly. */
-function createFakeJmapClient(overrides: Partial<JmapClient> = {}): JmapClient {
+function createFakeJmapClient(
+  overrides: Partial<JmapClient> = {},
+): JmapClient & RemoteMail {
   const notImplemented = (name: string) => () => {
     throw new Error(`FakeJmapClient.${name} not implemented in this test`)
   }
-  return {
+  const client: JmapClient = {
     openSession: notImplemented('openSession'),
     getMailboxes: notImplemented('getMailboxes'),
     getIdentities: notImplemented('getIdentities'),
@@ -45,7 +53,20 @@ function createFakeJmapClient(overrides: Partial<JmapClient> = {}): JmapClient {
     onStateChange: notImplemented('onStateChange'),
     ...overrides,
   } as JmapClient
+  const remote = new JmapRemoteMail(client)
+  return Object.assign(client, {
+    syncIdentities: remote.syncIdentities.bind(remote),
+    syncMailboxes: remote.syncMailboxes.bind(remote),
+    syncEmails: remote.syncEmails.bind(remote),
+    queryMailbox: remote.queryMailbox.bind(remote),
+    fetchBody: remote.fetchBody.bind(remote),
+    fetchAttachments: remote.fetchAttachments.bind(remote),
+    applyKeywordChange: remote.applyKeywordChange.bind(remote),
+    applyMembershipChange: remote.applyMembershipChange.bind(remote),
+  })
 }
+
+const REMOTE_ACCOUNT = remoteAccountIdFromString('jmap-acc')
 
 function rawEmail(overrides: Partial<JmapEmail> = {}): JmapEmail {
   return {
@@ -117,7 +138,7 @@ describe('Coordinator', () => {
         engine.readRepository,
       )
 
-      await coordinator.syncMailboxes(account.key, 'jmap-acc')
+      await coordinator.syncMailboxes(account.key, REMOTE_ACCOUNT)
 
       const mailboxes = unwrapOk(
         await engine.readRepository.listMailboxes(account.key),
@@ -190,7 +211,7 @@ describe('Coordinator', () => {
       )
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      await coordinator.syncMailboxes(account.key, 'jmap-acc')
+      await coordinator.syncMailboxes(account.key, REMOTE_ACCOUNT)
 
       const mailboxes = unwrapOk(
         await engine.readRepository.listMailboxes(account.key),
@@ -248,7 +269,7 @@ describe('Coordinator', () => {
         engine.readRepository,
       )
 
-      await coordinator.syncEmails(account.key, 'jmap-acc')
+      await coordinator.syncEmails(account.key, REMOTE_ACCOUNT)
 
       const cursor = unwrapOk(
         await engine.readRepository.readCollectionSyncCursor(
@@ -310,7 +331,7 @@ describe('Coordinator', () => {
         engine.readRepository,
       )
 
-      await coordinator.syncEmails(account.key, 'jmap-acc')
+      await coordinator.syncEmails(account.key, REMOTE_ACCOUNT)
 
       const cursor = unwrapOk(
         await engine.readRepository.readCollectionSyncCursor(
@@ -372,7 +393,7 @@ describe('Coordinator', () => {
         engine.readRepository,
       )
 
-      await coordinator.syncEmails(account.key, 'jmap-acc')
+      await coordinator.syncEmails(account.key, REMOTE_ACCOUNT)
 
       // Hard reset with zero mailboxes -> empty replace snapshot, but the
       // cursor must have advanced past the stale state.
@@ -447,7 +468,7 @@ describe('Coordinator', () => {
         engine.syncPort,
         engine.readRepository,
       )
-      await coordinator.syncEmails(account.key, 'jmap-acc')
+      await coordinator.syncEmails(account.key, REMOTE_ACCOUNT)
 
       expect(getEmailChanges).toHaveBeenCalledTimes(2)
       const cursor = unwrapOk(
@@ -543,7 +564,7 @@ describe('Coordinator', () => {
         engine.readRepository,
       )
 
-      await coordinator.syncEmails(account.key, 'jmap-acc')
+      await coordinator.syncEmails(account.key, REMOTE_ACCOUNT)
 
       expect(getEmailChanges).toHaveBeenCalledTimes(2)
       const cursor = unwrapOk(
@@ -620,7 +641,7 @@ describe('Coordinator', () => {
         mailboxViewSort('descending'),
       )
 
-      await coordinator.syncQueryView(account.key, 'jmap-acc', spec)
+      await coordinator.syncQueryView(account.key, REMOTE_ACCOUNT, spec)
 
       const view = unwrapOk(await engine.readRepository.readMailboxView(spec))
       expect(view.kind).toBe('cached')
@@ -649,9 +670,11 @@ describe('Coordinator', () => {
         engine.readRepository,
       )
 
-      const result = await coordinator.searchEmails('jmap-acc', 'mailbox-1', {
-        text: 'hello',
-      })
+      const result = await coordinator.searchEmails(
+        REMOTE_ACCOUNT,
+        remoteMailboxIdFromString('mailbox-1'),
+        { text: 'hello' },
+      )
 
       expect(client.queryEmails).toHaveBeenCalledWith('jmap-acc', 'mailbox-1', {
         text: 'hello',

@@ -6,11 +6,14 @@ import { TokenManager } from '../jmap/auth/token-manager'
 import { JamClientAdapter } from '../jmap/adapter'
 import { Coordinator } from '../sync/coordinator'
 import { Outbox } from '../sync/outbox'
-import { JmapAuthError } from '../jmap/errors'
 import type { AuthConfig } from '../jmap/transport/http'
 import type { SyncPort } from '../ports/sync-port'
 import type { ReadRepository } from '../ports/read-repository'
 import type { JmapClient } from '../jmap/client'
+import { JmapRemoteConnection } from '../remote/jmap'
+import type { RemoteSession } from '../remote/session'
+import { RemoteError } from '../remote/errors'
+import { remoteAccountIdFromString } from '../remote/types'
 import type {
   MainToWorkerMessage,
   RemoteConnectionStatus,
@@ -52,6 +55,7 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
   const tokenManager = new TokenManager()
 
   let jmapClient: JmapClient | null = null
+  let remoteSession: RemoteSession | null = null
   let coordinator: Coordinator | null = null
   let outbox: Outbox | null = null
   let sessionGeneration = 0
@@ -70,8 +74,11 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
   function resetToAnonymous(): void {
     sessionGeneration += 1
     jmapClient = null
+    const closingSession = remoteSession
+    remoteSession = null
     coordinator = null
     outbox = null
+    void closingSession?.close()
   }
 
   // Listen for token invalidation (natural expiry, or a 401 surfaced by an
@@ -122,25 +129,47 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
         const generation = sessionGeneration
         const activeClient = createJmapClient(sessionUrl, authConfig)
         jmapClient = activeClient
-        coordinator = new Coordinator(jmapClient, syncPort, readRepository)
-        outbox = new Outbox(jmapClient, syncPort, readRepository)
+        const connection = new JmapRemoteConnection(activeClient)
 
-        activeClient
-          .openSession()
+        connection
+          .open()
           .then((session) => {
             if (
               generation !== sessionGeneration ||
               jmapClient !== activeClient ||
               tokenManager.getToken() === null
             ) {
+              void session.close()
               return
             }
+
+            remoteSession = session
+            coordinator = new Coordinator(
+              session.mail,
+              syncPort,
+              readRepository,
+            )
+            outbox = new Outbox(
+              session.mail,
+              session.submission,
+              syncPort,
+              readRepository,
+            )
+
+            const primaryAccounts = Object.fromEntries(
+              session.accounts.flatMap((account) =>
+                account.capabilities.map((capability) => [
+                  capability,
+                  account.id,
+                ]),
+              ),
+            )
 
             postStatus('authenticated')
             post({
               type: 'SESSION_READY',
               requestId: data.requestId,
-              payload: { primaryAccounts: session.primaryAccounts },
+              payload: { primaryAccounts },
             })
           })
           .catch((err: unknown) => {
@@ -189,7 +218,7 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
           return
         }
         activeCoordinator
-          .syncAccount(accountKey, jmapAccountId)
+          .syncAccount(accountKey, remoteAccountIdFromString(jmapAccountId))
           .then(() => {
             post({
               type: 'SYNC_SUCCESS',
@@ -221,7 +250,11 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
           return
         }
         activeOutbox
-          .processSendMutation(accountKey, jmapAccountId, mutationId)
+          .processSendMutation(
+            accountKey,
+            remoteAccountIdFromString(jmapAccountId),
+            mutationId,
+          )
           .then((outcome) => {
             post({
               type: 'SEND_SUCCESS',
@@ -254,14 +287,18 @@ export function createWorkerRuntime(deps: WorkerRuntimeDeps): WorkerRuntime {
     error: unknown,
     operationClient: JmapClient | null,
   ): void {
-    if (error instanceof JmapAuthError && jmapClient === operationClient) {
+    if (
+      error instanceof RemoteError &&
+      error.session === 'expire' &&
+      jmapClient === operationClient
+    ) {
       invalidationStatus = 'expired'
       tokenManager.invalidate()
     }
   }
 
   function safeRemoteError(error: unknown): string {
-    return error instanceof JmapAuthError
+    return error instanceof RemoteError && error.kind === 'auth'
       ? 'Remote authentication failed'
       : 'Remote operation failed'
   }

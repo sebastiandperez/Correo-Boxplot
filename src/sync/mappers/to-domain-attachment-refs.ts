@@ -3,13 +3,9 @@ import {
   attachmentRef,
   type AttachmentRef,
 } from '../../domain/attachment-ref'
-import {
-  jmapBlobIdFromString,
-  scopedBlobId,
-  type AccountKey,
-  type ScopedEmailId,
-} from '../../domain/ids'
-import type { JmapAttachment } from '../../jmap/types'
+import type { AccountKey, ScopedEmailId } from '../../domain/ids'
+import type { RemoteAttachment } from '../../remote/types'
+import { localBlobId } from '../../remote/compat/domain-ids'
 
 /**
  * Maps JmapAttachment[] (already normalized in
@@ -21,7 +17,7 @@ import type { JmapAttachment } from '../../jmap/types'
 export function toDomainAttachmentRefs(
   accountKey: AccountKey,
   emailId: ScopedEmailId,
-  raw: readonly JmapAttachment[],
+  raw: readonly RemoteAttachment[],
 ): readonly AttachmentRef[] {
   const result: AttachmentRef[] = []
 
@@ -38,10 +34,7 @@ export function toDomainAttachmentRefs(
         attachmentRef({
           emailId,
           partId: attachmentPartIdFromString(attachment.partId),
-          blobId: scopedBlobId(
-            accountKey,
-            jmapBlobIdFromString(attachment.blobId),
-          ),
+          blobId: localBlobId(accountKey, attachment.blobId),
           name: attachment.name,
           mediaType: attachment.mediaType,
           size: attachment.size,

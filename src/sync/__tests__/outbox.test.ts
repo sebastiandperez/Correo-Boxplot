@@ -23,12 +23,21 @@ import {
 } from '../../jmap/errors'
 import type { JmapClient } from '../../jmap/client'
 import type { SyncPort } from '../../ports/sync-port'
+import { JmapRemoteMail, JmapSubmission } from '../../remote/jmap'
+import type { RemoteMail } from '../../remote/mail'
+import type { Submission } from '../../remote/submission'
+import { RemoteError } from '../../remote/errors'
+import { remoteAccountIdFromString } from '../../remote/types'
 
-function createFakeJmapClient(overrides: Partial<JmapClient> = {}): JmapClient {
+const REMOTE_ACCOUNT = remoteAccountIdFromString('jmap-acc')
+
+function createFakeJmapClient(
+  overrides: Partial<JmapClient> = {},
+): JmapClient & RemoteMail & Submission {
   const notImplemented = (name: string) => () => {
     throw new Error(`FakeJmapClient.${name} not implemented in this test`)
   }
-  return {
+  const client: JmapClient = {
     openSession: notImplemented('openSession'),
     getMailboxes: notImplemented('getMailboxes'),
     getIdentities: notImplemented('getIdentities'),
@@ -44,6 +53,19 @@ function createFakeJmapClient(overrides: Partial<JmapClient> = {}): JmapClient {
     onStateChange: notImplemented('onStateChange'),
     ...overrides,
   } as JmapClient
+  const remote = new JmapRemoteMail(client)
+  const submission = new JmapSubmission(client)
+  return Object.assign(client, {
+    syncIdentities: remote.syncIdentities.bind(remote),
+    syncMailboxes: remote.syncMailboxes.bind(remote),
+    syncEmails: remote.syncEmails.bind(remote),
+    queryMailbox: remote.queryMailbox.bind(remote),
+    fetchBody: remote.fetchBody.bind(remote),
+    fetchAttachments: remote.fetchAttachments.bind(remote),
+    applyKeywordChange: remote.applyKeywordChange.bind(remote),
+    applyMembershipChange: remote.applyMembershipChange.bind(remote),
+    submit: submission.submit.bind(submission),
+  })
 }
 
 describe('Outbox', () => {
@@ -70,11 +92,16 @@ describe('Outbox', () => {
       submissionId: 'sub-1',
     }))
     const client = createFakeJmapClient({ submitEmail })
-    const outbox = new Outbox(client, engine.syncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      engine.syncPort,
+      engine.readRepository,
+    )
 
     const outcome = await outbox.processSendMutation(
       account.key,
-      'jmap-acc',
+      REMOTE_ACCOUNT,
       mutation.mutationId,
     )
 
@@ -100,11 +127,16 @@ describe('Outbox', () => {
     const account = createTestAccount('B')
     unwrapOk(await engine.syncPort.registerAccount(account))
     const client = createFakeJmapClient()
-    const outbox = new Outbox(client, engine.syncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      engine.syncPort,
+      engine.readRepository,
+    )
 
     const outcome = await outbox.processSendMutation(
       account.key,
-      'jmap-acc',
+      REMOTE_ACCOUNT,
       'never-staged' as never,
     )
 
@@ -133,11 +165,16 @@ describe('Outbox', () => {
     )
 
     const client = createFakeJmapClient()
-    const outbox = new Outbox(client, engine.syncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      engine.syncPort,
+      engine.readRepository,
+    )
 
     const outcome = await outbox.processSendMutation(
       account.key,
-      'jmap-acc',
+      REMOTE_ACCOUNT,
       mutation.mutationId,
     )
 
@@ -183,11 +220,16 @@ describe('Outbox', () => {
 
     const submitEmail = vi.fn()
     const client = createFakeJmapClient({ submitEmail })
-    const outbox = new Outbox(client, racingSyncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      racingSyncPort,
+      engine.readRepository,
+    )
 
     const outcome = await outbox.processSendMutation(
       account.key,
-      'jmap-acc',
+      REMOTE_ACCOUNT,
       mutation.mutationId,
     )
 
@@ -214,10 +256,19 @@ describe('Outbox', () => {
         throw new JmapNetworkError('connection reset')
       }),
     })
-    const outbox = new Outbox(client, engine.syncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      engine.syncPort,
+      engine.readRepository,
+    )
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
     ).resolves.toEqual({ kind: 'needsReconciliation' })
 
     const afterward = unwrapOk(
@@ -232,7 +283,11 @@ describe('Outbox', () => {
     }
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
     ).resolves.toEqual({ kind: 'skipped', reason: 'alreadyInFlight' })
     expect(client.submitEmail).toHaveBeenCalledTimes(1)
   })
@@ -247,14 +302,19 @@ describe('Outbox', () => {
     const now = mutationInstantFromString('2026-01-01T00:00:00.000Z')
     const outbox = new Outbox(
       client,
+      client,
       engine.syncPort,
       engine.readRepository,
       () => now,
     )
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
-    ).rejects.toThrow(JmapMethodError)
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
+    ).rejects.toThrow(RemoteError)
 
     const afterward = unwrapOk(
       await engine.readRepository.readPendingMutation(
@@ -318,16 +378,22 @@ describe('Outbox', () => {
     const client = createFakeJmapClient({ submitEmail })
     const before = new Outbox(
       client,
+      client,
       engine.syncPort,
       engine.readRepository,
       () => mutationInstantFromString('2026-01-31T23:59:59.000Z'),
     )
     await expect(
-      before.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+      before.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
     ).resolves.toEqual({ kind: 'skipped', reason: 'notDue' })
     expect(submitEmail).not.toHaveBeenCalled()
 
     const dueOutbox = new Outbox(
+      client,
       client,
       engine.syncPort,
       engine.readRepository,
@@ -336,7 +402,7 @@ describe('Outbox', () => {
     await expect(
       dueOutbox.processSendMutation(
         account.key,
-        'jmap-acc',
+        REMOTE_ACCOUNT,
         mutation.mutationId,
       ),
     ).resolves.toEqual({ kind: 'sent' })
@@ -350,11 +416,20 @@ describe('Outbox', () => {
         throw new JmapMethodError('EmailSubmission/set', 'notFound', 'bad')
       }),
     })
-    const outbox = new Outbox(client, engine.syncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      engine.syncPort,
+      engine.readRepository,
+    )
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
-    ).rejects.toThrow(JmapMethodError)
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
+    ).rejects.toThrow(RemoteError)
 
     const afterward = unwrapOk(
       await engine.readRepository.readPendingMutation(
@@ -368,7 +443,11 @@ describe('Outbox', () => {
     }
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
     ).resolves.toEqual({ kind: 'skipped', reason: 'terminal' })
     expect(client.submitEmail).toHaveBeenCalledTimes(1)
   })
@@ -404,14 +483,20 @@ describe('Outbox', () => {
       ),
     )
     const submitEmail = vi.fn()
+    const client = createFakeJmapClient({ submitEmail })
     const outbox = new Outbox(
-      createFakeJmapClient({ submitEmail }),
+      client,
+      client,
       engine.syncPort,
       engine.readRepository,
     )
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
     ).resolves.toEqual({ kind: 'skipped', reason: 'terminal' })
     expect(submitEmail).not.toHaveBeenCalled()
   })
@@ -423,11 +508,20 @@ describe('Outbox', () => {
         throw new JmapAuthError()
       }),
     })
-    const outbox = new Outbox(client, engine.syncPort, engine.readRepository)
+    const outbox = new Outbox(
+      client,
+      client,
+      engine.syncPort,
+      engine.readRepository,
+    )
 
     await expect(
-      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
-    ).rejects.toThrow(JmapAuthError)
+      outbox.processSendMutation(
+        account.key,
+        REMOTE_ACCOUNT,
+        mutation.mutationId,
+      ),
+    ).rejects.toThrow(RemoteError)
 
     const afterward = unwrapOk(
       await engine.readRepository.readPendingMutation(

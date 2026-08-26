@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { toDomainEmailRecord } from '../to-domain-email'
 import { accountKeyFromString } from '../../../domain/ids'
 import type { JmapEmail } from '../../../jmap/types'
+import { mapJmapEmail } from '../../../remote/jmap/mappers'
 
 const accountKey = accountKeyFromString('acc-1')
 
@@ -30,7 +31,7 @@ function makeRawEmail(overrides: Partial<JmapEmail> = {}): JmapEmail {
 
 describe('toDomainEmailRecord', () => {
   it('maps a well-formed JmapEmail into an EmailSyncRecord with matching memberships', () => {
-    const record = toDomainEmailRecord(accountKey, makeRawEmail())
+    const record = toDomainEmailRecord(accountKey, mapJmapEmail(makeRawEmail()))
 
     expect(record).not.toBeNull()
     expect(record?.email.id).toEqual({
@@ -53,7 +54,9 @@ describe('toDomainEmailRecord', () => {
   it('only includes keywords whose value is true', () => {
     const record = toDomainEmailRecord(
       accountKey,
-      makeRawEmail({ keywords: { $seen: true, $flagged: false } }),
+      mapJmapEmail(
+        makeRawEmail({ keywords: { $seen: true, $flagged: false } }),
+      ),
     )
 
     expect(record?.email.keywords.has('$seen')).toBe(true)
@@ -63,7 +66,7 @@ describe('toDomainEmailRecord', () => {
   it('maps one membership per mailboxId', () => {
     const record = toDomainEmailRecord(
       accountKey,
-      makeRawEmail({ mailboxIds: ['mailbox-1', 'mailbox-2'] }),
+      mapJmapEmail(makeRawEmail({ mailboxIds: ['mailbox-1', 'mailbox-2'] })),
     )
 
     expect(record?.memberships).toHaveLength(2)
@@ -76,7 +79,10 @@ describe('toDomainEmailRecord', () => {
   it('returns null and logs a warning when the Domain factory rejects the data (e.g. negative size)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    const record = toDomainEmailRecord(accountKey, makeRawEmail({ size: -1 }))
+    const record = toDomainEmailRecord(
+      accountKey,
+      mapJmapEmail(makeRawEmail({ size: -1 })),
+    )
 
     expect(record).toBeNull()
     expect(warnSpy).toHaveBeenCalled()
@@ -85,7 +91,7 @@ describe('toDomainEmailRecord', () => {
   it('returns null when receivedAt is empty', () => {
     const record = toDomainEmailRecord(
       accountKey,
-      makeRawEmail({ receivedAt: '' }),
+      mapJmapEmail(makeRawEmail({ receivedAt: '' })),
     )
 
     expect(record).toBeNull()

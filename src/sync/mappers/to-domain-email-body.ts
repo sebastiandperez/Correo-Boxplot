@@ -1,6 +1,6 @@
 import { emailBody, type EmailBody } from '../../domain/email-body'
 import type { ScopedEmailId } from '../../domain/ids'
-import type { JmapEmailBody } from '../../jmap/types'
+import type { RemoteBody } from '../../remote/body'
 
 /**
  * Translates an already-normalized JmapEmailBody into a Domain EmailBody.
@@ -11,7 +11,7 @@ import type { JmapEmailBody } from '../../jmap/types'
  */
 export function toDomainEmailBody(
   emailId: ScopedEmailId,
-  raw: JmapEmailBody,
+  raw: Extract<RemoteBody, { kind: 'plain' }>,
 ): EmailBody {
   return emailBody({ emailId, text: raw.text, html: raw.html })
 }

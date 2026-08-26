@@ -1,30 +1,25 @@
-import {
-  jmapBlobIdFromString,
-  jmapEmailIdFromString,
-  jmapMailboxIdFromString,
-  jmapThreadIdFromString,
-  scopedBlobId,
-  scopedEmailId,
-  scopedMailboxId,
-  scopedThreadId,
-  type AccountKey,
-} from '../../domain/ids'
+import type { AccountKey } from '../../domain/ids'
 import { emailAddress, type EmailAddress } from '../../domain/address'
 import { email, keywordSet } from '../../domain/email'
 import { emailMailbox } from '../../domain/mailbox'
 import type { EmailSyncRecord } from '../../ports/sync-port'
-import type { JmapEmail, JmapEmailAddressList } from '../../jmap/types'
+import type { RemoteAddressList, RemoteEmail } from '../../remote/types'
+import {
+  localBlobId,
+  localEmailId,
+  localMailboxId,
+  localThreadId,
+} from '../../remote/compat/domain-ids'
 
 function toDomainAddressList(
-  raw: JmapEmailAddressList,
+  raw: RemoteAddressList,
 ): readonly EmailAddress[] | null {
   if (raw === null) return null
   return raw.map((addr) => emailAddress(addr.name, addr.email))
 }
 
 /**
- * Maps a normalized JmapEmail (already D-02/D-03 validated at the JMAP
- * layer — see mail/email-get.ts::validateAndMapEmail) into an
+ * Maps normalized protocol-neutral remote mail metadata into an
  * EmailSyncRecord ready for SyncPort.applyCollectionSync.
  *
  * Returns null instead of throwing so one malformed record cannot abort
@@ -35,18 +30,15 @@ function toDomainAddressList(
  */
 export function toDomainEmailRecord(
   accountKey: AccountKey,
-  raw: JmapEmail,
+  raw: RemoteEmail,
 ): EmailSyncRecord | null {
   try {
-    const id = scopedEmailId(accountKey, jmapEmailIdFromString(raw.id))
+    const id = localEmailId(accountKey, raw.id)
 
     const domainEmail = email({
       id,
-      blobId: scopedBlobId(accountKey, jmapBlobIdFromString(raw.blobId)),
-      threadId: scopedThreadId(
-        accountKey,
-        jmapThreadIdFromString(raw.threadId),
-      ),
+      blobId: localBlobId(accountKey, raw.blobId),
+      threadId: localThreadId(accountKey, raw.threadId),
       sender: toDomainAddressList(raw.sender),
       from: toDomainAddressList(raw.from),
       replyTo: toDomainAddressList(raw.replyTo),
@@ -59,16 +51,11 @@ export function toDomainEmailRecord(
       size: raw.size,
       preview: raw.preview,
       hasAttachment: raw.hasAttachment,
-      keywords: keywordSet(
-        Object.keys(raw.keywords).filter((k) => raw.keywords[k] === true),
-      ),
+      keywords: keywordSet(raw.keywords),
     })
 
     const memberships = raw.mailboxIds.map((mailboxId) =>
-      emailMailbox(
-        id,
-        scopedMailboxId(accountKey, jmapMailboxIdFromString(mailboxId)),
-      ),
+      emailMailbox(id, localMailboxId(accountKey, mailboxId)),
     )
 
     return { email: domainEmail, memberships }

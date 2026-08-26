@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { toDomainIdentity } from '../to-domain-identity'
 import { accountKeyFromString } from '../../../domain/ids'
 import type { JmapIdentity } from '../../../jmap/types'
+import { mapJmapIdentity } from '../../../remote/jmap/mappers'
 
 const accountKey = accountKeyFromString('acc-1')
 
@@ -20,7 +21,10 @@ function makeRawIdentity(overrides: Partial<JmapIdentity> = {}): JmapIdentity {
 
 describe('toDomainIdentity', () => {
   it('maps a well-formed JmapIdentity into a Domain Identity', () => {
-    const identity = toDomainIdentity(accountKey, makeRawIdentity())
+    const identity = toDomainIdentity(
+      accountKey,
+      mapJmapIdentity(makeRawIdentity()),
+    )
 
     expect(identity).not.toBeNull()
     expect(identity?.id).toEqual({ accountKey, jmapId: 'identity-1' })
@@ -31,10 +35,12 @@ describe('toDomainIdentity', () => {
   it('maps a non-null replyTo/bcc list', () => {
     const identity = toDomainIdentity(
       accountKey,
-      makeRawIdentity({
-        replyTo: [{ name: 'Reply', email: 'reply@example.test' }],
-        bcc: [{ name: null, email: 'bcc@example.test' }],
-      }),
+      mapJmapIdentity(
+        makeRawIdentity({
+          replyTo: [{ name: 'Reply', email: 'reply@example.test' }],
+          bcc: [{ name: null, email: 'bcc@example.test' }],
+        }),
+      ),
     )
 
     expect(identity?.replyTo).toEqual([
@@ -48,7 +54,7 @@ describe('toDomainIdentity', () => {
 
     const identity = toDomainIdentity(
       accountKey,
-      makeRawIdentity({ email: '' }),
+      mapJmapIdentity(makeRawIdentity({ email: '' })),
     )
 
     expect(identity).toBeNull()

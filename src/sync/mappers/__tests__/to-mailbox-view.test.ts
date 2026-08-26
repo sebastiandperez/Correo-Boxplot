@@ -11,6 +11,7 @@ import {
   mailboxViewSpec,
 } from '../../../domain/mailbox-view'
 import type { JmapQueryResult } from '../../../jmap/types'
+import { mapJmapQuery } from '../../../remote/jmap/mappers'
 
 const accountKey = accountKeyFromString('acc-1')
 const mailboxId = scopedMailboxId(
@@ -38,7 +39,11 @@ function makeQueryResult(
 
 describe('toMailboxView', () => {
   it('builds a MailboxView with one coverage range starting at position', () => {
-    const view = toMailboxView(spec, accountKey, makeQueryResult())
+    const view = toMailboxView(
+      spec,
+      accountKey,
+      mapJmapQuery(makeQueryResult()),
+    )
 
     expect(view).not.toBeNull()
     expect(view?.total).toBe(10)
@@ -54,7 +59,7 @@ describe('toMailboxView', () => {
     const view = toMailboxView(
       spec,
       accountKey,
-      makeQueryResult({ ids: ['email-3'], position: 2 }),
+      mapJmapQuery(makeQueryResult({ ids: ['email-3'], position: 2 })),
     )
 
     expect(view?.coverage).toEqual([{ start: 2, endExclusive: 3 }])
@@ -67,7 +72,7 @@ describe('toMailboxView', () => {
     const view = toMailboxView(
       spec,
       accountKey,
-      makeQueryResult({ ids: [], total: 0 }),
+      mapJmapQuery(makeQueryResult({ ids: [], total: 0 })),
     )
 
     expect(view).not.toBeNull()
@@ -81,7 +86,13 @@ describe('toMailboxView', () => {
     const view = toMailboxView(
       spec,
       accountKey,
-      makeQueryResult({ ids: ['email-1', 'email-2'], position: 9, total: 10 }),
+      mapJmapQuery(
+        makeQueryResult({
+          ids: ['email-1', 'email-2'],
+          position: 9,
+          total: 10,
+        }),
+      ),
     )
 
     expect(view).toBeNull()
@@ -92,7 +103,7 @@ describe('toMailboxView', () => {
     const view = toMailboxView(
       spec,
       accountKey,
-      makeQueryResult({ queryState: '' }),
+      mapJmapQuery(makeQueryResult({ queryState: '' })),
     )
 
     expect(view).toBeNull()

@@ -1,11 +1,8 @@
-import {
-  jmapIdentityIdFromString,
-  scopedIdentityId,
-  type AccountKey,
-} from '../../domain/ids'
+import type { AccountKey } from '../../domain/ids'
 import { emailAddress, type EmailAddress } from '../../domain/address'
 import { identity, type Identity } from '../../domain/identity'
-import type { JmapIdentity } from '../../jmap/types'
+import type { RemoteIdentity } from '../../remote/types'
+import { localIdentityId } from '../../remote/compat/domain-ids'
 
 function toDomainAddressList(
   raw: readonly { name: string | null; email: string }[] | null,
@@ -21,11 +18,11 @@ function toDomainAddressList(
  */
 export function toDomainIdentity(
   accountKey: AccountKey,
-  raw: JmapIdentity,
+  raw: RemoteIdentity,
 ): Identity | null {
   try {
     return identity({
-      id: scopedIdentityId(accountKey, jmapIdentityIdFromString(raw.id)),
+      id: localIdentityId(accountKey, raw.id),
       name: raw.name,
       email: raw.email,
       replyTo: toDomainAddressList(raw.replyTo),

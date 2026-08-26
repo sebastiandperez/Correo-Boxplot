@@ -13,6 +13,9 @@ import {
 } from '../../domain/sync-cursor'
 import type { JmapClient } from '../../jmap/client'
 import type { JmapEmail, JmapMailbox } from '../../jmap/types'
+import { JmapRemoteMail } from '../../remote/jmap'
+import type { RemoteMail } from '../../remote/mail'
+import { remoteAccountIdFromString } from '../../remote/types'
 import { unwrapOk } from '../../tests/contracts/assertions'
 import { createTestAccount } from '../../tests/contracts/fixtures'
 import { Coordinator } from '../coordinator'
@@ -61,11 +64,11 @@ function rawEmail(id: string, mailboxIds = ['inbox']): JmapEmail {
   }
 }
 
-function fakeClient(overrides: Partial<JmapClient>): JmapClient {
+function fakeClient(overrides: Partial<JmapClient>): JmapClient & RemoteMail {
   const unsupported = (name: string) => () => {
     throw new Error(`Unexpected JMAP call: ${name}`)
   }
-  return {
+  const client: JmapClient = {
     openSession: unsupported('openSession'),
     getIdentities: unsupported('getIdentities'),
     getMailboxes: unsupported('getMailboxes'),
@@ -81,7 +84,20 @@ function fakeClient(overrides: Partial<JmapClient>): JmapClient {
     onStateChange: unsupported('onStateChange'),
     ...overrides,
   } as JmapClient
+  const remote = new JmapRemoteMail(client)
+  return Object.assign(client, {
+    syncIdentities: remote.syncIdentities.bind(remote),
+    syncMailboxes: remote.syncMailboxes.bind(remote),
+    syncEmails: remote.syncEmails.bind(remote),
+    queryMailbox: remote.queryMailbox.bind(remote),
+    fetchBody: remote.fetchBody.bind(remote),
+    fetchAttachments: remote.fetchAttachments.bind(remote),
+    applyKeywordChange: remote.applyKeywordChange.bind(remote),
+    applyMembershipChange: remote.applyMembershipChange.bind(remote),
+  })
 }
+
+const REMOTE_ACCOUNT = remoteAccountIdFromString('remote')
 
 describe('Coordinator recovery invariants', () => {
   let engine: MemoryLocalEngine
@@ -108,7 +124,7 @@ describe('Coordinator recovery invariants', () => {
       mailboxClient,
       engine.syncPort,
       engine.readRepository,
-    ).syncMailboxes(account.key, 'remote')
+    ).syncMailboxes(account.key, REMOTE_ACCOUNT)
   }
 
   it('synchronizes identities through an authoritative replace cursor', async () => {
@@ -134,7 +150,7 @@ describe('Coordinator recovery invariants', () => {
       client,
       engine.syncPort,
       engine.readRepository,
-    ).syncIdentities(account.key, 'remote')
+    ).syncIdentities(account.key, REMOTE_ACCOUNT)
 
     const identities = unwrapOk(
       await engine.readRepository.listIdentities(account.key),
@@ -180,7 +196,7 @@ describe('Coordinator recovery invariants', () => {
       client,
       engine.syncPort,
       engine.readRepository,
-    ).syncEmails(account.key, 'remote')
+    ).syncEmails(account.key, REMOTE_ACCOUNT)
 
     expect(getEmails).toHaveBeenCalledWith('remote', [])
     const cursor = unwrapOk(
@@ -236,7 +252,7 @@ describe('Coordinator recovery invariants', () => {
         client,
         engine.syncPort,
         engine.readRepository,
-      ).syncEmails(account.key, 'remote')
+      ).syncEmails(account.key, REMOTE_ACCOUNT)
 
       expect(queryEmails).toHaveBeenCalledTimes(Math.ceil(count / 500))
       expect(getEmails.mock.calls.map((call) => call[1].length)).toEqual(
@@ -268,7 +284,7 @@ describe('Coordinator recovery invariants', () => {
       engine.syncPort,
       engine.readRepository,
     )
-    await mailboxCoordinator.syncMailboxes(account.key, 'remote')
+    await mailboxCoordinator.syncMailboxes(account.key, REMOTE_ACCOUNT)
     const getEmails = vi.fn(async (_account: string, ids: string[]) => ({
       emails: ids.map((id) => rawEmail(id, ['inbox', 'archive'])),
       state: 'email-state',
@@ -289,7 +305,7 @@ describe('Coordinator recovery invariants', () => {
       engine.readRepository,
     )
 
-    await coordinator.syncEmails(account.key, 'remote')
+    await coordinator.syncEmails(account.key, REMOTE_ACCOUNT)
 
     expect(getEmails).toHaveBeenCalledTimes(1)
     expect(getEmails.mock.calls[0][1]).toEqual(['shared'])
@@ -344,7 +360,7 @@ describe('Coordinator recovery invariants', () => {
       )
 
       await expect(
-        coordinator.syncEmails(account.key, 'remote'),
+        coordinator.syncEmails(account.key, REMOTE_ACCOUNT),
       ).rejects.toThrow()
       const cursor = unwrapOk(
         await engine.readRepository.readCollectionSyncCursor(
@@ -382,7 +398,7 @@ describe('Coordinator recovery invariants', () => {
       mailboxViewSort('descending'),
     )
 
-    await coordinator.syncQueryView(account.key, 'remote', spec)
+    await coordinator.syncQueryView(account.key, REMOTE_ACCOUNT, spec)
 
     expect(queryEmails).toHaveBeenCalledWith('remote', 'inbox', undefined, {
       limit: 500,
@@ -395,7 +411,7 @@ describe('Coordinator recovery invariants', () => {
     }
   })
 
-  it('surfaces a continuation failure when Email/changes exceeds its bound after safely advancing committed pages', async () => {
+  it('does not commit a partial aggregate when remote delta pagination exceeds its safety bound', async () => {
     const account = await setup()
     unwrapOk(
       await engine.syncPort.applyCollectionSync({
@@ -431,9 +447,9 @@ describe('Coordinator recovery invariants', () => {
       engine.readRepository,
     )
 
-    await expect(coordinator.syncEmails(account.key, 'remote')).rejects.toThrow(
-      /still has more changes/,
-    )
+    await expect(
+      coordinator.syncEmails(account.key, REMOTE_ACCOUNT),
+    ).rejects.toThrow(/still has more changes/)
     expect(getEmailChanges).toHaveBeenCalledTimes(20)
     const cursor = unwrapOk(
       await engine.readRepository.readCollectionSyncCursor(
@@ -443,7 +459,7 @@ describe('Coordinator recovery invariants', () => {
     )
     expect(cursor).toEqual({
       kind: 'present',
-      value: expect.objectContaining({ state: 'state-20' }),
+      value: expect.objectContaining({ state: 'state-0' }),
     })
   })
 })

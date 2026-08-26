@@ -1,10 +1,7 @@
-import {
-  jmapMailboxIdFromString,
-  scopedMailboxId,
-  type AccountKey,
-} from '../../domain/ids'
+import type { AccountKey } from '../../domain/ids'
 import { mailbox, mailboxRights, type Mailbox } from '../../domain/mailbox'
-import type { JmapMailbox } from '../../jmap/types'
+import type { RemoteMailbox } from '../../remote/types'
+import { localMailboxId } from '../../remote/compat/domain-ids'
 
 /**
  * Maps a JmapMailbox into a Domain Mailbox. Returns null instead of
@@ -13,16 +10,14 @@ import type { JmapMailbox } from '../../jmap/types'
  */
 export function toDomainMailbox(
   accountKey: AccountKey,
-  raw: JmapMailbox,
+  raw: RemoteMailbox,
 ): Mailbox | null {
   try {
     return mailbox({
-      id: scopedMailboxId(accountKey, jmapMailboxIdFromString(raw.id)),
+      id: localMailboxId(accountKey, raw.id),
       name: raw.name,
       parent:
-        raw.parent === null
-          ? null
-          : scopedMailboxId(accountKey, jmapMailboxIdFromString(raw.parent)),
+        raw.parent === null ? null : localMailboxId(accountKey, raw.parent),
       role: raw.role,
       sortOrder: raw.sortOrder,
       totalEmails: raw.totalEmails,

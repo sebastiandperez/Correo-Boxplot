@@ -6,12 +6,9 @@ import {
   type MailboxView,
   type MailboxViewSpec,
 } from '../../domain/mailbox-view'
-import {
-  jmapEmailIdFromString,
-  scopedEmailId,
-  type AccountKey,
-} from '../../domain/ids'
-import type { JmapQueryResult } from '../../jmap/types'
+import type { AccountKey } from '../../domain/ids'
+import type { RemoteMailboxQuery } from '../../remote/mail'
+import { localEmailId } from '../../remote/compat/domain-ids'
 
 /**
  * Builds a single-page MailboxView snapshot from a JMAP query result: one
@@ -24,14 +21,11 @@ import type { JmapQueryResult } from '../../jmap/types'
 export function toMailboxView(
   spec: MailboxViewSpec,
   accountKey: AccountKey,
-  result: JmapQueryResult,
+  result: RemoteMailboxQuery,
 ): MailboxView | null {
   try {
     const items = result.ids.map((id, index) =>
-      mailboxViewItem(
-        result.position + index,
-        scopedEmailId(accountKey, jmapEmailIdFromString(id)),
-      ),
+      mailboxViewItem(result.position + index, localEmailId(accountKey, id)),
     )
 
     const coverage =
