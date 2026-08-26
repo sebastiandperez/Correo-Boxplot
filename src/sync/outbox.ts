@@ -2,7 +2,7 @@ import type { SyncPort } from '../ports/sync-port'
 import type { ReadRepository } from '../ports/read-repository'
 import type { JmapClient } from '../jmap/client'
 import type { AccountKey, MutationId } from '../domain/ids'
-import type { SendMutation } from '../domain/pending-mutation'
+import type { MutationInstant, SendMutation } from '../domain/pending-mutation'
 import {
   confirmSendMutation,
   failMutationTerminal,
@@ -12,34 +12,36 @@ import {
   startMutationAttempt,
 } from '../domain/pending-mutation'
 import { jmapEmailIdFromString, scopedEmailId } from '../domain/ids'
-import { isRetryable } from '../jmap/errors'
+import {
+  isRetryable,
+  JmapError,
+  JmapNetworkError,
+  JmapSubmissionAmbiguousError,
+} from '../jmap/errors'
 import { mapSendIntentToJmapDraft } from '../jmap/mail/draft-mapper'
 
 export type SendMutationOutcome =
   | Readonly<{ kind: 'sent' }>
+  | Readonly<{ kind: 'needsReconciliation' }>
   | Readonly<{
       kind: 'skipped'
-      /**
-       * notFound: nothing staged under this mutationId (never staged, or a
-       * prior run already completed and removed it).
-       * notPending: staged but not in 'pending' status — a prior/concurrent
-       * run already claimed or resolved it.
-       * claimConflict: another runner claimed it between our read and our
-       * CAS write.
-       */
-      reason: 'notFound' | 'notPending' | 'claimConflict'
+      reason:
+        'notFound' | 'notDue' | 'alreadyInFlight' | 'terminal' | 'claimConflict'
     }>
 
 type MutationLookup =
   | Readonly<{ kind: 'found'; mutation: SendMutation }>
   | Readonly<{ kind: 'notFound' }>
-  | Readonly<{ kind: 'notPending' }>
+  | Readonly<{ kind: 'notDue' }>
+  | Readonly<{ kind: 'alreadyInFlight' }>
+  | Readonly<{ kind: 'terminal' }>
 
 export class Outbox {
   constructor(
     private readonly client: JmapClient,
     private readonly syncPort: SyncPort,
     private readonly readRepository: ReadRepository,
+    private readonly now: () => MutationInstant = currentMutationInstant,
   ) {}
 
   /**
@@ -96,7 +98,12 @@ export class Outbox {
         inFlight.intent.identityId.jmapId,
       )
     } catch (err: unknown) {
-      await this.settleAfterFailure(inFlight, err)
+      if (isAmbiguousSubmissionFailure(err)) {
+        // The server may have accepted the request. Preserve durable
+        // inFlight state so no automatic caller can submit it again.
+        return { kind: 'needsReconciliation' }
+      }
+      await this.settleKnownFailure(inFlight, err)
       throw err
     }
 
@@ -129,12 +136,12 @@ export class Outbox {
     return { kind: 'sent' }
   }
 
-  private async settleAfterFailure(
+  private async settleKnownFailure(
     inFlight: SendMutation,
     err: unknown,
   ): Promise<void> {
     const next = isRetryable(err)
-      ? scheduleMutationRetry(inFlight, nextAttemptInstant())
+      ? scheduleMutationRetry(inFlight, this.now())
       : failMutationTerminal(inFlight)
 
     const result = await this.syncPort.replacePendingMutationIfCurrent(
@@ -171,11 +178,19 @@ export class Outbox {
             `Mutation ${mutationId} is not a SendMutation (kind: ${result.value.value.kind})`,
           )
         }
-        if (result.value.value.lifecycle.status !== 'pending') {
-          // Already claimed/confirmed/failed by a prior run — not our job.
-          return { kind: 'notPending' }
+        switch (result.value.value.lifecycle.status) {
+          case 'pending':
+            return { kind: 'found', mutation: result.value.value }
+          case 'retrying':
+            return result.value.value.lifecycle.nextAttemptAt <= this.now()
+              ? { kind: 'found', mutation: result.value.value }
+              : { kind: 'notDue' }
+          case 'inFlight':
+            return { kind: 'alreadyInFlight' }
+          case 'confirmed':
+          case 'failedTerminal':
+            return { kind: 'terminal' }
         }
-        return { kind: 'found', mutation: result.value.value }
     }
   }
 }
@@ -186,6 +201,14 @@ export class Outbox {
  * actual backoff spacing. Exponential backoff belongs to that scheduler,
  * not to this per-mutation state transition.
  */
-function nextAttemptInstant() {
+function currentMutationInstant(): MutationInstant {
   return mutationInstantFromString(new Date().toISOString())
+}
+
+function isAmbiguousSubmissionFailure(error: unknown): boolean {
+  return (
+    error instanceof JmapSubmissionAmbiguousError ||
+    error instanceof JmapNetworkError ||
+    !(error instanceof JmapError)
+  )
 }

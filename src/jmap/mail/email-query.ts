@@ -1,7 +1,7 @@
 import type { JamClient } from 'jmap-jam'
 import type { JmapQueryResult, QueryOptions } from '../types'
 import type { RawJmapQueryResponse } from './types-raw'
-import { JmapMethodError } from '../errors'
+import { throwJmapRequestError } from '../errors'
 
 export type { QueryOptions } from '../types'
 
@@ -33,11 +33,7 @@ export async function queryEmails(
     const [result] = await jam.request(['Email/query', requestBody])
     response = result as RawJmapQueryResponse
   } catch (err: unknown) {
-    throw new JmapMethodError(
-      'Email/query',
-      'networkOrServerFail',
-      err instanceof Error ? err.message : String(err),
-    )
+    throwJmapRequestError('Email/query', err)
   }
 
   return {

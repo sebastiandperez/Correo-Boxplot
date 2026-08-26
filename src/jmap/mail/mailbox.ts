@@ -1,7 +1,7 @@
 import type { JamClient } from 'jmap-jam'
 import type { JmapMailboxesResult, JmapMailboxRights } from '../types'
 import type { RawJmapMailbox } from './types-raw'
-import { JmapMethodError } from '../errors'
+import { throwJmapRequestError } from '../errors'
 
 export async function getMailboxes(
   jam: JamClient,
@@ -12,11 +12,7 @@ export async function getMailboxes(
     const [result] = await jam.request(['Mailbox/get', { accountId }])
     response = result
   } catch (err: unknown) {
-    throw new JmapMethodError(
-      'Mailbox/get',
-      'networkOrServerFail',
-      err instanceof Error ? err.message : String(err),
-    )
+    throwJmapRequestError('Mailbox/get', err)
   }
 
   // JMAP successful responses return an object with "list" and "state"

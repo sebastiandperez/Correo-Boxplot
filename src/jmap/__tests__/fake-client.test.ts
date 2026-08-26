@@ -69,7 +69,7 @@ class FakeJmapClient implements JmapClient {
     throw new Error('Method not implemented.')
   }
 
-  async getIdentities(): Promise<import('../types').JmapIdentity[]> {
+  async getIdentities(): Promise<import('../types').JmapIdentitiesResult> {
     throw new Error('Method not implemented.')
   }
 

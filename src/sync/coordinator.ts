@@ -5,10 +5,16 @@ import type {
 } from '../ports/sync-port'
 import type { ReadRepository } from '../ports/read-repository'
 import type { JmapClient } from '../jmap/client'
-import type { JmapEmail, JmapQueryResult } from '../jmap/types'
+import type { JmapEmail, JmapQueryResult, QueryOptions } from '../jmap/types'
 import type { AccountKey } from '../domain/ids'
 import type { Mailbox } from '../domain/mailbox'
-import type { MailboxViewSpec } from '../domain/mailbox-view'
+import type { Identity } from '../domain/identity'
+import {
+  mailboxViewFilterAll,
+  mailboxViewSort,
+  mailboxViewSpec,
+  type MailboxViewSpec,
+} from '../domain/mailbox-view'
 import type {
   CollectionDataType,
   CollectionSyncCursor,
@@ -20,12 +26,16 @@ import {
 import type { EmailSyncRecord } from '../ports/sync-port'
 import { jmapEmailIdFromString, scopedEmailId } from '../domain/ids'
 import { JmapMethodError } from '../jmap/errors'
-import { toDomainEmailRecord, toDomainMailbox, toMailboxView } from './mappers'
+import {
+  toDomainEmailRecord,
+  toDomainIdentity,
+  toDomainMailbox,
+  toMailboxView,
+} from './mappers'
 
-/** Bounds performHardReset's per-mailbox fetch so a single reset cannot hang
- * indefinitely against a huge mailbox. Full incremental pagination of a
- * hard reset is out of scope here (see roadmap C-12). */
-const HARD_RESET_PAGE_LIMIT = 500
+const QUERY_PAGE_SIZE = 500
+const EMAIL_GET_BATCH_SIZE = 500
+const MAX_HARD_RESET_PAGES_PER_MAILBOX = 10_000
 
 /** Bounds Email/changes pagination within a single syncEmails call so a
  * misbehaving server cannot make it loop forever on hasMoreChanges. */
@@ -35,12 +45,83 @@ type CursorOutcome =
   | Readonly<{ kind: 'absent' }>
   | Readonly<{ kind: 'present'; cursor: CollectionSyncCursor }>
 
+function chunk<T>(values: readonly T[], size: number): T[][] {
+  const batches: T[][] = []
+  for (let index = 0; index < values.length; index += size) {
+    batches.push(values.slice(index, index + size))
+  }
+  return batches
+}
+
 export class Coordinator {
   constructor(
     private readonly client: JmapClient,
     private readonly syncPort: SyncPort,
     private readonly readRepository: ReadRepository,
   ) {}
+
+  /** Materializes all currently supported remote account data in dependency order. */
+  async syncAccount(
+    accountKey: AccountKey,
+    jmapAccountId: string,
+  ): Promise<void> {
+    await this.syncIdentities(accountKey, jmapAccountId)
+    await this.syncMailboxes(accountKey, jmapAccountId)
+    await this.syncEmails(accountKey, jmapAccountId)
+
+    const mailboxes = await this.readRepository.listMailboxes(accountKey)
+    if (!mailboxes.ok) {
+      throw new Error(`listMailboxes failed: ${mailboxes.error.kind}`)
+    }
+    if (mailboxes.value.kind === 'ownerAbsent') {
+      throw new Error(`Account ${accountKey} is not registered locally`)
+    }
+
+    for (const mailbox of mailboxes.value.value) {
+      await this.syncQueryView(
+        accountKey,
+        jmapAccountId,
+        mailboxViewSpec(
+          mailbox.id,
+          mailboxViewFilterAll(),
+          mailboxViewSort('descending'),
+        ),
+      )
+    }
+  }
+
+  async syncIdentities(
+    accountKey: AccountKey,
+    jmapAccountId: string,
+  ): Promise<void> {
+    const { identities, state } = await this.client.getIdentities(jmapAccountId)
+    const snapshot: Identity[] = []
+    for (const raw of identities) {
+      const mapped = toDomainIdentity(accountKey, raw)
+      if (mapped === null) {
+        throw new Error(`Identity ${raw.id} failed Domain validation`)
+      }
+      snapshot.push(mapped)
+    }
+
+    const nextCursor = collectionSyncCursor({
+      accountKey,
+      dataType: 'identity',
+      state: collectionSyncStateFromString(state),
+    })
+
+    await this.applyReplaceWithRetry(
+      accountKey,
+      'identity',
+      (precondition) => ({
+        kind: 'identity',
+        mode: 'replace',
+        expectedCursor: precondition,
+        nextCursor,
+        snapshot,
+      }),
+    )
+  }
 
   /**
    * Synchronizes the Mailbox collection. JMAP only exposes Mailbox/get (no
@@ -171,7 +252,12 @@ export class Coordinator {
       throw new Error(`applyCollectionSync(email) failed: ${result.error.kind}`)
     }
 
-    if (delta.hasMoreChanges && page < MAX_DELTA_PAGES) {
+    if (delta.hasMoreChanges) {
+      if (page + 1 >= MAX_DELTA_PAGES) {
+        throw new Error(
+          `Email/changes still has more changes after ${MAX_DELTA_PAGES} committed pages`,
+        )
+      }
       await this.syncEmailsPage(accountKey, jmapAccountId, 0, page + 1)
     }
   }
@@ -187,12 +273,11 @@ export class Coordinator {
     jmapAccountId: string,
     spec: MailboxViewSpec,
   ): Promise<void> {
-    const result = await this.searchEmails(
+    const result = await this.client.queryEmails(
       jmapAccountId,
       spec.mailboxId.jmapId,
-      {
-        limit: HARD_RESET_PAGE_LIMIT,
-      },
+      undefined,
+      { limit: QUERY_PAGE_SIZE },
     )
 
     const view = toMailboxView(spec, accountKey, result)
@@ -210,8 +295,7 @@ export class Coordinator {
 
   /**
    * Rebuilds the local Email collection from scratch: every Mailbox is
-   * queried for its email IDs (bounded by HARD_RESET_PAGE_LIMIT per
-   * mailbox — exhaustive pagination is roadmap item C-12), the union is
+   * queried exhaustively for its email IDs, the union is
    * fetched, and the result replaces the current snapshot. Email/get's own
    * response state seeds the new cursor, since there is no Email/changes
    * state to anchor to after a hard reset.
@@ -224,35 +308,103 @@ export class Coordinator {
 
     const allEmailIds = new Set<string>()
     for (const mailbox of mailboxes) {
-      const query = await this.client.queryEmails(
-        jmapAccountId,
-        mailbox.id,
-        undefined,
-        { limit: HARD_RESET_PAGE_LIMIT },
-      )
-      for (const id of query.ids) allEmailIds.add(id)
+      const mailboxEmailIds = new Set<string>()
+      let position = 0
+      let expectedTotal: number | null = null
+      let expectedQueryState: string | null = null
+
+      for (let page = 0; page < MAX_HARD_RESET_PAGES_PER_MAILBOX; page++) {
+        const query = await this.client.queryEmails(
+          jmapAccountId,
+          mailbox.id,
+          undefined,
+          { position, limit: QUERY_PAGE_SIZE },
+        )
+
+        if (
+          !Number.isSafeInteger(query.total) ||
+          query.total < 0 ||
+          query.position !== position ||
+          query.ids.length > QUERY_PAGE_SIZE
+        ) {
+          throw new Error(
+            `Malformed Email/query page for Mailbox ${mailbox.id}`,
+          )
+        }
+        if (expectedTotal === null) expectedTotal = query.total
+        if (expectedQueryState === null) expectedQueryState = query.queryState
+        if (
+          query.total !== expectedTotal ||
+          query.queryState !== expectedQueryState
+        ) {
+          throw new Error(
+            `Email/query changed during Mailbox ${mailbox.id} reset`,
+          )
+        }
+
+        for (const id of query.ids) {
+          if (mailboxEmailIds.has(id)) {
+            throw new Error(
+              `Email/query repeated ${id} in Mailbox ${mailbox.id}`,
+            )
+          }
+          mailboxEmailIds.add(id)
+          allEmailIds.add(id)
+        }
+
+        const nextPosition = query.position + query.ids.length
+        if (nextPosition >= query.total) break
+        if (nextPosition <= position) {
+          throw new Error(
+            `Email/query made no progress for Mailbox ${mailbox.id}`,
+          )
+        }
+        position = nextPosition
+
+        if (page + 1 === MAX_HARD_RESET_PAGES_PER_MAILBOX) {
+          throw new Error(`Email/query exceeded hard-reset safety bound`)
+        }
+      }
     }
 
-    let fetchedEmails: readonly JmapEmail[] = []
-    let state = ''
-    if (allEmailIds.size > 0) {
-      const result = await this.client.getEmails(jmapAccountId, [
-        ...allEmailIds,
-      ])
-      fetchedEmails = result.emails
-      state = result.state
+    const ids = [...allEmailIds]
+    const fetchedEmails: JmapEmail[] = []
+    let state: string | null = null
+    const batches = ids.length === 0 ? [[]] : chunk(ids, EMAIL_GET_BATCH_SIZE)
+    for (const batch of batches) {
+      const result = await this.client.getEmails(jmapAccountId, batch)
+      if (state === null) state = result.state
+      if (result.state !== state) {
+        throw new Error('Email collection changed during hard-reset Email/get')
+      }
+
+      const expectedIds = new Set(batch)
+      for (const raw of result.emails) {
+        if (!expectedIds.delete(raw.id)) {
+          throw new Error(
+            `Email/get returned unexpected or duplicate ID ${raw.id}`,
+          )
+        }
+        fetchedEmails.push(raw)
+      }
+      if (expectedIds.size > 0) {
+        throw new Error('Email/get did not return the complete requested batch')
+      }
     }
 
     const snapshot: EmailSyncRecord[] = []
     for (const raw of fetchedEmails) {
       const mapped = toDomainEmailRecord(accountKey, raw)
-      if (mapped !== null) snapshot.push(mapped)
+      if (mapped === null) {
+        throw new Error(`Email ${raw.id} failed Domain validation`)
+      }
+      snapshot.push(mapped)
     }
 
     const nextCursor = collectionSyncCursor({
       accountKey,
       dataType: 'email',
-      state: collectionSyncStateFromString(state),
+      state: collectionSyncStateFromString(state ?? ''),
     })
 
     await this.applyReplaceWithRetry(accountKey, 'email', (precondition) => ({
@@ -264,18 +416,16 @@ export class Coordinator {
     }))
   }
 
-  /**
-   * Decoupled search operation. Does not block or interleave with state
-   * sync. Leverages JMAP query but does NOT modify local collection
-   * cursors. Returns full query metadata including queryState, total, and
-   * position.
-   */
+  /** Stateless remote query; it never advances a collection cursor. */
   async searchEmails(
     jmapAccountId: string,
     mailboxId: string,
-    query: unknown,
+    filter?: unknown,
+    options?: QueryOptions,
   ): Promise<JmapQueryResult> {
-    return this.client.queryEmails(jmapAccountId, mailboxId, query)
+    return options === undefined
+      ? this.client.queryEmails(jmapAccountId, mailboxId, filter)
+      : this.client.queryEmails(jmapAccountId, mailboxId, filter, options)
   }
 
   private async readCursorOutcome(

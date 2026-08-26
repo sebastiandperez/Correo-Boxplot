@@ -149,7 +149,7 @@ export type SendSuccessMessage = Readonly<{
      * 'skipped': nothing to do (never staged, already handled by another
      * run, or lost a claim race) — not an error, but not a new send either.
      */
-    outcome: 'sent' | 'skipped'
+    outcome: 'sent' | 'skipped' | 'needsReconciliation'
   }>
 }>
 

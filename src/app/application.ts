@@ -9,6 +9,7 @@ import {
   keywordMutation,
   mailboxMembershipMutation,
   mutationInstantFromString,
+  sendMutation,
 } from '../domain/pending-mutation'
 import {
   mailboxViewFilterAll,
@@ -231,8 +232,18 @@ export class MailApplicationController {
     if (!accountKey) return
     try {
       this.runtimeStore.setLocal('opening')
-      // En un entorno real se extrae jmapAccountId del Account, aquí usamos mock
-      this.context.workerClient?.syncAccount(accountKey, 'mock-jmap-account')
+      const accountResult =
+        await this.context.readRepository.readAccount(accountKey)
+      if (!accountResult.ok || accountResult.value.kind !== 'present') {
+        throw new Error('The selected Account is unavailable locally')
+      }
+      if (!this.context.workerClient) {
+        throw new Error('The remote Worker is unavailable')
+      }
+      await this.context.workerClient.syncAccount(
+        accountKey,
+        accountResult.value.value.remoteRef.jmapAccountId,
+      )
       this.runtimeStore.setLocal('ready')
     } catch (e) {
       console.error(e)
@@ -412,26 +423,30 @@ export class MailApplicationController {
     const accountKey = this.mailStore.selectedAccountKey
     if (!accountKey) throw new Error('No account selected')
 
-    // Generar la mutación pendiente (esto se conectará con Composer)
-    const mutation = {
-      kind: 'send',
+    const accountResult =
+      await this.context.readRepository.readAccount(accountKey)
+    if (!accountResult.ok || accountResult.value.kind !== 'present') {
+      throw new Error('The selected Account is unavailable locally')
+    }
+    if (!this.context.workerClient) {
+      throw new Error('The remote Worker is unavailable')
+    }
+
+    const mutation = sendMutation({
       mutationId: nextMutationId(),
       accountKey,
       createdAt: nowMutationInstant(),
       intent,
-      lifecycle: { status: 'pending', attemptCount: 0 },
-    } as import('../domain/pending-mutation').SendMutation
+    })
 
-    // Primero, persistimos en SQLite optimistamente (en un escenario real)
-    // await this.context.syncPort.stageSendMutation(mutation)
+    const stageResult = await this.context.syncPort.stageSendMutation(mutation)
+    if (!stageResult.ok) {
+      throw new Error(`stageSendMutation failed: ${stageResult.error.kind}`)
+    }
 
-    // Delegamos al Outbox el proceso de red que garantiza consistencia eventual.
-    // Outbox lee la mutación durable por mutationId (no confía en el objeto
-    // local) — sin el stageSendMutation de arriba, no encontrará nada que
-    // procesar todavía.
-    this.context.workerClient?.sendEmail(
+    await this.context.workerClient.sendEmail(
       accountKey,
-      'mock-jmap-account',
+      accountResult.value.value.remoteRef.jmapAccountId,
       mutation.mutationId,
     )
   }

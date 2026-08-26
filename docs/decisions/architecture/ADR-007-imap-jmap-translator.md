@@ -1,6 +1,10 @@
 # ADR-007 — Traductor IMAP→JMAP in-process en Rust
 
-**Status:** Accepted for Tauri MVP
+**Status:** UNDER REVIEW after REMOTE-INTEGRATION-RECOVERY-01
+
+> Recovery estabiliza primero el baseline JMAP. Esta propuesta no es todavía
+> la ruta final de implementación y no autoriza trabajo IMAP/SMTP antes de la
+> revisión conjunta de la futura frontera protocol-neutral.
 
 ## Context
 

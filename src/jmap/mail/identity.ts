@@ -1,6 +1,6 @@
 import type { JamClient } from 'jmap-jam'
-import type { JmapIdentity, JmapEmailAddress } from '../types'
-import { JmapMethodError } from '../errors'
+import type { JmapIdentitiesResult, JmapEmailAddress } from '../types'
+import { throwJmapRequestError } from '../errors'
 
 interface RawJmapIdentity {
   id: string
@@ -15,7 +15,7 @@ interface RawJmapIdentity {
 export async function getIdentities(
   jam: JamClient,
   accountId: string,
-): Promise<JmapIdentity[]> {
+): Promise<JmapIdentitiesResult> {
   let response
   try {
     const [result] = await jam.request([
@@ -26,16 +26,12 @@ export async function getIdentities(
     ])
     response = result
   } catch (err: unknown) {
-    throw new JmapMethodError(
-      'Identity/get',
-      'networkOrServerFail',
-      err instanceof Error ? err.message : String(err),
-    )
+    throwJmapRequestError('Identity/get', err)
   }
 
   const list = (response.list || []) as unknown as RawJmapIdentity[]
 
-  return list.map((raw) => {
+  const identities = list.map((raw) => {
     const mapAddresses = (
       rawAddrs: readonly JmapEmailAddress[] | null | undefined,
     ) => {
@@ -57,4 +53,9 @@ export async function getIdentities(
       htmlSignature: raw.htmlSignature || '',
     })
   })
+
+  return {
+    identities,
+    state: (response.state as string | undefined) ?? '',
+  }
 }

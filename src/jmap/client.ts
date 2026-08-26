@@ -7,7 +7,7 @@ import type {
   JmapAttachment,
   JmapQueryResult,
   JmapQueryChanges,
-  JmapIdentity,
+  JmapIdentitiesResult,
   JmapEmailDraft,
   JmapStateChange,
   QueryOptions,
@@ -29,7 +29,7 @@ export interface JmapClient {
   /**
    * Retrieves all identities for the given account.
    */
-  getIdentities(accountId: string): Promise<JmapIdentity[]>
+  getIdentities(accountId: string): Promise<JmapIdentitiesResult>
 
   /**
    * Queries emails in a specific mailbox, returning IDs + query metadata.

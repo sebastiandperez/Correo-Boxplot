@@ -1,7 +1,7 @@
 import type { JamClient } from 'jmap-jam'
 import type { JmapDelta } from '../types'
 import type { RawJmapChangesResponse } from './types-raw'
-import { JmapMethodError } from '../errors'
+import { JmapMethodError, throwJmapRequestError } from '../errors'
 
 export async function getEmailChanges(
   jam: JamClient,
@@ -19,11 +19,7 @@ export async function getEmailChanges(
     ])
     response = requestResult[0] as RawJmapChangesResponse
   } catch (err: unknown) {
-    throw new JmapMethodError(
-      'Email/changes',
-      'networkOrServerFail',
-      err instanceof Error ? err.message : String(err),
-    )
+    throwJmapRequestError('Email/changes', err)
   }
 
   // JMAP RFC 8621: Email/changes might set canCalculateChanges to false if the state is too old.

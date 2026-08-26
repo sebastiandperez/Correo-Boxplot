@@ -361,6 +361,10 @@ describe('Coordinator', () => {
           mailboxes: [],
           state: 'mbx-state',
         })),
+        getEmails: vi.fn(async (): Promise<JmapEmailsResult> => ({
+          emails: [],
+          state: 'fresh-email-state',
+        })),
       })
       const coordinator = new Coordinator(
         client,

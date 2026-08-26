@@ -1,6 +1,6 @@
 import type { JamClient } from 'jmap-jam'
 import type { JmapClient } from './client'
-import { JmapMethodError } from './errors'
+import { JmapMethodError, throwJmapRequestError } from './errors'
 import type { AuthConfig } from './transport/http'
 import { createJamClient } from './transport/http'
 import { discoverSession } from './session'
@@ -13,7 +13,7 @@ import type {
   JmapStateChange,
   JmapQueryResult,
   JmapQueryChanges,
-  JmapIdentity,
+  JmapIdentitiesResult,
   JmapEmailDraft,
   JmapAttachment,
   QueryOptions,
@@ -29,8 +29,6 @@ import { extractAttachments } from './normalizers/attachment-normalizer'
 import { patchEmailKeywords, patchEmailMailboxes } from './mail/mutations'
 import { submitEmail } from './mail/submission'
 import { getIdentities } from './mail/identity'
-
-import { connectWebSocket } from './transport/websocket'
 
 export class JamClientAdapter implements JmapClient {
   private readonly jam: JamClient
@@ -61,7 +59,7 @@ export class JamClientAdapter implements JmapClient {
     return getMailboxes(this.jam, accountId)
   }
 
-  async getIdentities(accountId: string): Promise<JmapIdentity[]> {
+  async getIdentities(accountId: string): Promise<JmapIdentitiesResult> {
     return getIdentities(this.jam, accountId)
   }
 
@@ -118,11 +116,7 @@ export class JamClientAdapter implements JmapClient {
       ])
       response = result
     } catch (err: unknown) {
-      throw new JmapMethodError(
-        'Email/get (body)',
-        'networkOrServerFail',
-        err instanceof Error ? err.message : String(err),
-      )
+      throwJmapRequestError('Email/get (body)', err)
     }
 
     const list = response.list
@@ -175,11 +169,7 @@ export class JamClientAdapter implements JmapClient {
       ])
       response = result
     } catch (err: unknown) {
-      throw new JmapMethodError(
-        'Email/get (attachments)',
-        'networkOrServerFail',
-        err instanceof Error ? err.message : String(err),
-      )
+      throwJmapRequestError('Email/get (attachments)', err)
     }
 
     const list = response.list
@@ -242,20 +232,11 @@ export class JamClientAdapter implements JmapClient {
   }
 
   onStateChange(callback: (change: JmapStateChange) => void): () => void {
-    const wsUrl = this.sessionData?.webSocketUrl
-    if (!wsUrl) {
-      // Server did not advertise urn:ietf:params:jmap:websocket — push is
-      // unavailable. Return a no-op disconnect instead of connecting to the
-      // wrong endpoint (eventSourceUrl is SSE, not RFC 8887 WebSocket).
-      console.warn(
-        '[JamClientAdapter] onStateChange: server has no websocket capability, push disabled',
-      )
-      return () => {}
-    }
-    return connectWebSocket({
-      wsUrl,
-      auth: this.auth,
-      onStateChange: callback,
-    })
+    void callback
+    // Browser WebSocket cannot attach the required Authorization header.
+    // Credential-bearing query parameters are forbidden, so RFC 8887 push
+    // remains fail-closed until an authenticated transport exists.
+    console.warn('[JamClientAdapter] RFC 8887 push is securely deferred')
+    return () => {}
   }
 }

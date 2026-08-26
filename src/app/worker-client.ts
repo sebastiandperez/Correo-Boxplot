@@ -104,7 +104,10 @@ export class JmapWorkerClient {
     accountKey: AccountKey,
     jmapAccountId: string,
     mutationId: MutationId,
-  ): Promise<{ mutationId: string; outcome: 'sent' | 'skipped' }> {
+  ): Promise<{
+    mutationId: string
+    outcome: 'sent' | 'skipped' | 'needsReconciliation'
+  }> {
     return this.request('SEND_EMAIL', {
       payload: { accountKey, jmapAccountId, mutationId },
     })

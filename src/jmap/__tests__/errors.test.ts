@@ -3,6 +3,7 @@ import {
   JmapAuthError,
   JmapNetworkError,
   JmapMethodError,
+  throwJmapRequestError,
   isRetryable,
 } from '../errors'
 
@@ -52,5 +53,15 @@ describe('JMAP error retryability', () => {
     expect(isRetryable('not even an error')).toBe(false)
     expect(isRetryable(null)).toBe(false)
     expect(isRetryable(undefined)).toBe(false)
+  })
+
+  it.each([
+    { status: 401, detail: 'hidden' },
+    { statusCode: 403, detail: 'hidden' },
+    '401 Unauthorized',
+  ])('classifies hidden jmap-jam auth rejection %#', (failure) => {
+    expect(() => throwJmapRequestError('Email/get', failure)).toThrow(
+      JmapAuthError,
+    )
   })
 })
