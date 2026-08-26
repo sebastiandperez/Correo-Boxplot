@@ -1,6 +1,11 @@
 import type { AuthConfig } from '../transport/http'
 import { fetchJmapRaw } from '../transport/http'
-import { JmapMethodError } from '../errors'
+import {
+  JmapAuthError,
+  JmapMethodError,
+  JmapNetworkError,
+  JmapSubmissionAmbiguousError,
+} from '../errors'
 import type { JmapEmailDraft, JmapEmailAddress } from '../types'
 import type { RawJmapSetResponse } from './types-raw'
 
@@ -34,6 +39,7 @@ export async function submitEmail(
     ])
     mailboxResponse = mbxResult[0][1] as { ids?: string[] }
   } catch (err: unknown) {
+    if (err instanceof JmapAuthError) throw err
     throw new JmapMethodError(
       'Mailbox/query',
       'networkOrServerFail',
@@ -109,6 +115,13 @@ export async function submitEmail(
   try {
     batchResponse = await fetchJmapRaw(apiUrl, auth, methodCalls)
   } catch (err: unknown) {
+    if (err instanceof JmapAuthError) throw err
+    if (err instanceof JmapNetworkError) {
+      throw new JmapSubmissionAmbiguousError(
+        'Submission outcome is unknown after a transport failure',
+        err,
+      )
+    }
     throw new JmapMethodError(
       'Email/set+EmailSubmission/set',
       'networkOrServerFail',

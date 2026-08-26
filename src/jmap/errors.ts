@@ -32,6 +32,17 @@ export class JmapNetworkError extends JmapError {
   }
 }
 
+/** Transport failed after a submission request may have reached the server. */
+export class JmapSubmissionAmbiguousError extends JmapError {
+  constructor(
+    message: string,
+    public readonly originalError?: unknown,
+  ) {
+    super(message, 'terminal')
+    this.name = 'JmapSubmissionAmbiguousError'
+  }
+}
+
 // RFC 8620 §3.6.2 defines these as the server-side method errors that are
 // transient by nature (the server itself signals "try again"). Anything
 // else (notFound, invalidArguments, tooLarge, stateMismatch, forbidden,
@@ -70,4 +81,30 @@ export class JmapMethodError extends JmapError {
  */
 export function isRetryable(error: unknown): boolean {
   return error instanceof JmapError && error.retryability === 'retryable'
+}
+
+/** Preserve/auth-classify failures hidden by jmap-jam's thrown response body. */
+export function throwJmapRequestError(method: string, error: unknown): never {
+  if (error instanceof JmapAuthError) throw error
+
+  const record =
+    typeof error === 'object' && error !== null
+      ? (error as Record<string, unknown>)
+      : null
+  const status = record?.status ?? record?.statusCode
+  const detail =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : JSON.stringify(error)
+  if (
+    status === 401 ||
+    status === 403 ||
+    /(?:^|\D)(?:401|403)(?:\D|$)|unauthori[sz]ed|forbidden/i.test(detail)
+  ) {
+    throw new JmapAuthError(`Authentication failed during ${method}`)
+  }
+
+  throw new JmapMethodError(method, 'networkOrServerFail', detail)
 }

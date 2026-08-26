@@ -2,7 +2,7 @@ import type { JmapStateChange } from '../types'
 import type { AuthConfig } from './http'
 
 export interface WebSocketPushOptions {
-  /** The WebSocket URL from the JMAP Session (typically wss://...) */
+  /** The WebSocket URL advertised by the JMAP Session. */
   wsUrl: string
   auth: AuthConfig
   onStateChange: (change: JmapStateChange) => void
@@ -10,120 +10,15 @@ export interface WebSocketPushOptions {
   onDisconnect?: () => void
 }
 
-const BASE_RECONNECT_MS = 1000
-const MAX_RECONNECT_MS = 30000
-
 /**
- * Connects to the JMAP WebSocket endpoint for push notifications.
- * Sends WebSocketPushEnable after connection, parses StateChange events,
- * and implements reconnect with exponential backoff.
+ * RFC 8887 push is deliberately disabled in the browser runtime.
  *
- * @returns A function to disconnect and stop reconnecting.
+ * The browser WebSocket API cannot attach an Authorization header. Encoding
+ * Bearer or Basic credentials in the URL would leak them through histories,
+ * proxies and logs, so this boundary fails closed until an authenticated
+ * transport is available. HTTP JMAP remains fully operational.
  */
 export function connectWebSocket(options: WebSocketPushOptions): () => void {
-  let ws: WebSocket | null = null
-  let reconnectDelay = BASE_RECONNECT_MS
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  let intentionalClose = false
-
-  function buildWsUrl(): string {
-    const url = new URL(options.wsUrl)
-    // Inject auth as subprotocol or query param depending on server support
-    // JMAP RFC 8887 allows passing the token via the Authorization header
-    // but WebSocket API doesn't support custom headers.
-    // For Stalwart with Basic auth, we can pass via URL param.
-    if (options.auth.type === 'Basic') {
-      url.searchParams.set('auth', btoa(options.auth.token))
-    } else {
-      url.searchParams.set('access_token', options.auth.token)
-    }
-    return url.toString()
-  }
-
-  function connect() {
-    if (intentionalClose) return
-
-    try {
-      ws = new WebSocket(buildWsUrl())
-    } catch {
-      scheduleReconnect()
-      return
-    }
-
-    ws.onopen = () => {
-      reconnectDelay = BASE_RECONNECT_MS
-
-      // RFC 8887 §4.1: Send WebSocketPushEnable to start receiving push
-      ws?.send(
-        JSON.stringify({
-          '@type': 'WebSocketPushEnable',
-          dataTypes: null, // null = all types
-          pushState: null,
-        }),
-      )
-    }
-
-    ws.onmessage = (event: MessageEvent) => {
-      if (typeof event.data !== 'string') return
-
-      try {
-        const parsed = JSON.parse(event.data) as Record<string, unknown>
-
-        if (parsed['@type'] === 'StateChange' && parsed['changed']) {
-          options.onStateChange(parsed as unknown as JmapStateChange)
-        }
-        // Silently ignore other message types (e.g. Response, RequestError)
-      } catch (err: unknown) {
-        options.onError?.(
-          err instanceof Error ? err : new Error('Malformed WebSocket message'),
-        )
-      }
-    }
-
-    ws.onerror = () => {
-      // The native error event carries no useful detail in the browser
-      // WebSocket API; onclose fires right after and handles reconnect.
-      // Still surface it so callers can distinguish "was reconnecting" from
-      // "connection is unhealthy" instead of silently discarding it.
-      options.onError?.(new Error('WebSocket connection error'))
-    }
-
-    ws.onclose = () => {
-      ws = null
-      if (!intentionalClose) {
-        if (options.onDisconnect) {
-          options.onDisconnect()
-        }
-        scheduleReconnect()
-      }
-    }
-  }
-
-  function scheduleReconnect() {
-    if (intentionalClose) return
-
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null
-      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_MS)
-      connect()
-    }, reconnectDelay)
-  }
-
-  function disconnect() {
-    intentionalClose = true
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-    if (ws) {
-      ws.onclose = null // Prevent reconnect trigger
-      ws.close()
-      ws = null
-    }
-  }
-
-  // Start initial connection
-  connect()
-
-  return disconnect
+  void options
+  return () => {}
 }

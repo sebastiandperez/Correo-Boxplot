@@ -89,6 +89,26 @@ describe('JMAP Mail APIs', () => {
     expect(keywords['$flagged']).toBe(false)
   })
 
+  it('getEmails with no IDs still requests Email/get and returns server state', async () => {
+    const mockJam = {
+      request: vi
+        .fn()
+        .mockResolvedValue([{ list: [], state: 'authoritative-empty-state' }]),
+    } as unknown as JamClient
+
+    const result = await getEmails(mockJam, 'acc1', [])
+
+    expect(mockJam.request).toHaveBeenCalledWith([
+      'Email/get',
+      {
+        accountId: 'acc1',
+        ids: [],
+        properties: expect.any(Array),
+      },
+    ])
+    expect(result).toEqual({ emails: [], state: 'authoritative-empty-state' })
+  })
+
   it('getEmailChanges should handle deltas', async () => {
     const mockJam = {
       request: vi.fn().mockResolvedValue([

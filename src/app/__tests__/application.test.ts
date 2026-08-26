@@ -7,6 +7,7 @@ import {
 } from '../application'
 import { useMailStore } from '../stores/mail'
 import { useRuntimeStore } from '../stores/runtime'
+import { JmapWorkerClient } from '../worker-client'
 import { createSeededMemoryApplication } from './application-fixture'
 
 describe('local-first Application orchestration', () => {
@@ -99,5 +100,67 @@ describe('local-first Application orchestration', () => {
     expect(useMailStore().mailboxView).toBeNull()
     expect(useMailStore().emails).toEqual([])
     controller.dispose()
+  })
+
+  it('syncs with the persisted RemoteAccountRef and awaits the Worker', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const workerClient = Object.create(
+      JmapWorkerClient.prototype,
+    ) as JmapWorkerClient
+    let finishSync: (() => void) | undefined
+    const syncAccount = vi
+      .spyOn(workerClient, 'syncAccount')
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishSync = () => resolve({ accountKey: fixtures.accountA.key })
+          }),
+      )
+    const controller = createMailApplicationController(
+      createApplicationContext({ ...engine, workerClient }),
+      useMailStore(),
+      useRuntimeStore(),
+    )
+    await controller.initialize()
+
+    const pending = controller.syncSelectedAccount()
+    await vi.waitFor(() => expect(syncAccount).toHaveBeenCalledTimes(1))
+    expect(useRuntimeStore().local).toBe('opening')
+    expect(syncAccount).toHaveBeenCalledWith(
+      fixtures.accountA.key,
+      fixtures.accountA.remoteRef.jmapAccountId,
+    )
+    finishSync?.()
+    await pending
+    expect(useRuntimeStore().local).toBe('ready')
+  })
+
+  it('durably stages Send before invoking Worker with the persisted remote account', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const workerClient = Object.create(
+      JmapWorkerClient.prototype,
+    ) as JmapWorkerClient
+    const sendEmail = vi
+      .spyOn(workerClient, 'sendEmail')
+      .mockResolvedValue({ mutationId: 'sent', outcome: 'sent' })
+    const stage = vi.spyOn(engine.syncPort, 'stageSendMutation')
+    const controller = createMailApplicationController(
+      createApplicationContext({ ...engine, workerClient }),
+      useMailStore(),
+      useRuntimeStore(),
+    )
+    await controller.initialize()
+
+    await controller.sendEmail(fixtures.sendMutationA.intent)
+
+    expect(stage).toHaveBeenCalledTimes(1)
+    expect(stage.mock.invocationCallOrder[0]).toBeLessThan(
+      sendEmail.mock.invocationCallOrder[0],
+    )
+    expect(sendEmail.mock.calls[0][0]).toBe(fixtures.accountA.key)
+    expect(sendEmail.mock.calls[0][1]).toBe(
+      fixtures.accountA.remoteRef.jmapAccountId,
+    )
+    expect(sendEmail.mock.calls[0][1]).not.toBe('mock-jmap-account')
   })
 })

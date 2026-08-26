@@ -1,7 +1,7 @@
 ﻿import type { JamClient } from 'jmap-jam'
 import type { JmapEmail, JmapEmailAddress, JmapEmailsResult } from '../types'
 import type { RawJmapEmail, RawJmapEmailAddress } from './types-raw'
-import { JmapMethodError } from '../errors'
+import { throwJmapRequestError } from '../errors'
 
 const EMAIL_PROPERTIES = [
   'id',
@@ -101,8 +101,6 @@ export async function getEmails(
   accountId: string,
   emailIds: string[],
 ): Promise<JmapEmailsResult> {
-  if (emailIds.length === 0) return { emails: [], state: '' }
-
   let response
   try {
     const [result] = await jam.request([
@@ -115,11 +113,7 @@ export async function getEmails(
     ])
     response = result
   } catch (err: unknown) {
-    throw new JmapMethodError(
-      'Email/get',
-      'networkOrServerFail',
-      err instanceof Error ? err.message : String(err),
-    )
+    throwJmapRequestError('Email/get', err)
   }
 
   const list = (response.list || []) as RawJmapEmail[]

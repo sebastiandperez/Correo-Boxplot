@@ -9,7 +9,7 @@ import type {
   JmapAttachment,
   JmapQueryResult,
   JmapQueryChanges,
-  JmapIdentity,
+  JmapIdentitiesResult,
   JmapEmailDraft,
   JmapStateChange,
 } from './types'
@@ -21,8 +21,8 @@ export class MockJmapClient implements JmapClient {
   async getMailboxes(_accountId: string): Promise<JmapMailboxesResult> {
     return { mailboxes: [], state: 'mock' }
   }
-  async getIdentities(_accountId: string): Promise<JmapIdentity[]> {
-    return []
+  async getIdentities(_accountId: string): Promise<JmapIdentitiesResult> {
+    return { identities: [], state: 'mock' }
   }
   async queryEmails(
     _accountId: string,

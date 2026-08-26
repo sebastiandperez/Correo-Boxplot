@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { submitEmail } from '../submission'
-import { JmapMethodError } from '../../errors'
+import {
+  JmapAuthError,
+  JmapMethodError,
+  JmapNetworkError,
+  JmapSubmissionAmbiguousError,
+} from '../../errors'
 import type { JmapEmailDraft } from '../../types'
 import * as httpMock from '../../transport/http'
 
@@ -103,5 +108,39 @@ describe('JMAP Submission', () => {
         'raw-id-123',
       ),
     ).rejects.toMatchObject({ type: 'notFound' })
+  })
+
+  it('preserves auth rejection so Worker can invalidate the session', async () => {
+    vi.spyOn(httpMock, 'fetchJmapRaw').mockRejectedValueOnce(
+      new JmapAuthError(),
+    )
+
+    await expect(
+      submitEmail(
+        'http://url',
+        { type: 'Bearer', token: 'secret' },
+        'acc1',
+        dummyDraft,
+        'identity',
+      ),
+    ).rejects.toThrow(JmapAuthError)
+  })
+
+  it('classifies transport loss during the submission batch as ambiguous', async () => {
+    vi.spyOn(httpMock, 'fetchJmapRaw')
+      .mockResolvedValueOnce([
+        ['Mailbox/query', { ids: ['drafts-mbx-1'] }, 'm1'],
+      ])
+      .mockRejectedValueOnce(new JmapNetworkError('connection reset'))
+
+    await expect(
+      submitEmail(
+        'http://url',
+        { type: 'Bearer', token: 'secret' },
+        'acc1',
+        dummyDraft,
+        'identity',
+      ),
+    ).rejects.toThrow(JmapSubmissionAmbiguousError)
   })
 })

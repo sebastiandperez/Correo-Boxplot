@@ -130,6 +130,12 @@ export type JmapIdentity = Readonly<{
   textSignature: string
 }>
 
+/** Identity/get collection snapshot and its authoritative opaque state. */
+export type JmapIdentitiesResult = Readonly<{
+  identities: readonly JmapIdentity[]
+  state: string
+}>
+
 export type JmapEmailDraft = Readonly<{
   from: readonly JmapEmailAddress[]
   to: readonly JmapEmailAddress[]

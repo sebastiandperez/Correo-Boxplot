@@ -8,7 +8,14 @@ import {
   createTestIdentity,
   createTestSendMutation,
 } from '../../tests/contracts/fixtures'
-import { startMutationAttempt } from '../../domain/pending-mutation'
+import {
+  confirmSendMutation,
+  mutationInstantFromString,
+  scheduleMutationRetry,
+  sendConfirmation,
+  startMutationAttempt,
+} from '../../domain/pending-mutation'
+import { jmapEmailIdFromString, scopedEmailId } from '../../domain/ids'
 import {
   JmapAuthError,
   JmapMethodError,
@@ -105,7 +112,7 @@ describe('Outbox', () => {
     await engine.dispose()
   })
 
-  it('a mutation already claimed by a prior run (not pending) is skipped (notPending)', async () => {
+  it('an inFlight mutation is never blindly retried', async () => {
     const { engine, account, mutation } = await setup()
 
     // Drive it to inFlight directly, as if another run already claimed it.
@@ -134,7 +141,7 @@ describe('Outbox', () => {
       mutation.mutationId,
     )
 
-    expect(outcome).toEqual({ kind: 'skipped', reason: 'notPending' })
+    expect(outcome).toEqual({ kind: 'skipped', reason: 'alreadyInFlight' })
   })
 
   it('loses a real claim race to a concurrent winner: skipped (claimConflict), never calls submitEmail', async () => {
@@ -200,7 +207,7 @@ describe('Outbox', () => {
     }
   })
 
-  it('a retryable submit failure (JmapNetworkError) transitions the mutation to retrying and rethrows', async () => {
+  it('an ambiguous network submit remains inFlight and requires reconciliation', async () => {
     const { engine, account, mutation } = await setup()
     const client = createFakeJmapClient({
       submitEmail: vi.fn(async () => {
@@ -211,7 +218,7 @@ describe('Outbox', () => {
 
     await expect(
       outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
-    ).rejects.toThrow(JmapNetworkError)
+    ).resolves.toEqual({ kind: 'needsReconciliation' })
 
     const afterward = unwrapOk(
       await engine.readRepository.readPendingMutation(
@@ -221,8 +228,119 @@ describe('Outbox', () => {
     )
     expect(afterward.kind).toBe('present')
     if (afterward.kind === 'present') {
-      expect(afterward.value.lifecycle.status).toBe('retrying')
+      expect(afterward.value.lifecycle.status).toBe('inFlight')
     }
+
+    await expect(
+      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+    ).resolves.toEqual({ kind: 'skipped', reason: 'alreadyInFlight' })
+    expect(client.submitEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('a known retry-safe method failure transitions to retrying', async () => {
+    const { engine, account, mutation } = await setup()
+    const client = createFakeJmapClient({
+      submitEmail: vi.fn(async () => {
+        throw new JmapMethodError('EmailSubmission/set', 'serverUnavailable')
+      }),
+    })
+    const now = mutationInstantFromString('2026-01-01T00:00:00.000Z')
+    const outbox = new Outbox(
+      client,
+      engine.syncPort,
+      engine.readRepository,
+      () => now,
+    )
+
+    await expect(
+      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+    ).rejects.toThrow(JmapMethodError)
+
+    const afterward = unwrapOk(
+      await engine.readRepository.readPendingMutation(
+        account.key,
+        mutation.mutationId,
+      ),
+    )
+    expect(afterward.kind).toBe('present')
+    if (afterward.kind === 'present') {
+      expect(afterward.value.lifecycle).toEqual({
+        status: 'retrying',
+        attemptCount: 1,
+        nextAttemptAt: now,
+      })
+    }
+  })
+
+  it('skips retrying before nextAttemptAt and retries once due', async () => {
+    const { engine, account, mutation } = await setup()
+    const pendingRead = unwrapOk(
+      await engine.readRepository.readPendingMutation(
+        account.key,
+        mutation.mutationId,
+      ),
+    )
+    if (pendingRead.kind !== 'present' || pendingRead.value.kind !== 'send') {
+      throw new Error('fixture setup broken')
+    }
+    const inFlight = startMutationAttempt(pendingRead.value)
+    const due = mutationInstantFromString('2026-02-01T00:00:00.000Z')
+    const retrying = scheduleMutationRetry(inFlight, due)
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(
+        pendingRead.value,
+        inFlight,
+      ),
+    )
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(inFlight, retrying),
+    )
+
+    const submitEmail = vi.fn<JmapClient['submitEmail']>(async () => {
+      const claimed = unwrapOk(
+        await engine.readRepository.readPendingMutation(
+          account.key,
+          mutation.mutationId,
+        ),
+      )
+      expect(claimed.kind).toBe('present')
+      if (claimed.kind === 'present') {
+        expect(claimed.value.lifecycle).toEqual({
+          status: 'inFlight',
+          attemptCount: 2,
+        })
+      }
+      return {
+        emailId: 'retried-email',
+        submissionId: 'retried-submission',
+      }
+    })
+    const client = createFakeJmapClient({ submitEmail })
+    const before = new Outbox(
+      client,
+      engine.syncPort,
+      engine.readRepository,
+      () => mutationInstantFromString('2026-01-31T23:59:59.000Z'),
+    )
+    await expect(
+      before.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+    ).resolves.toEqual({ kind: 'skipped', reason: 'notDue' })
+    expect(submitEmail).not.toHaveBeenCalled()
+
+    const dueOutbox = new Outbox(
+      client,
+      engine.syncPort,
+      engine.readRepository,
+      () => due,
+    )
+    await expect(
+      dueOutbox.processSendMutation(
+        account.key,
+        'jmap-acc',
+        mutation.mutationId,
+      ),
+    ).resolves.toEqual({ kind: 'sent' })
+    expect(submitEmail).toHaveBeenCalledTimes(1)
   })
 
   it('a terminal submit failure (JmapMethodError notFound) transitions the mutation to failedTerminal and rethrows', async () => {
@@ -248,6 +366,54 @@ describe('Outbox', () => {
     if (afterward.kind === 'present') {
       expect(afterward.value.lifecycle.status).toBe('failedTerminal')
     }
+
+    await expect(
+      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+    ).resolves.toEqual({ kind: 'skipped', reason: 'terminal' })
+    expect(client.submitEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('a durable confirmed mutation is terminal and never resubmitted', async () => {
+    const { engine, account, mutation } = await setup()
+    const pendingRead = unwrapOk(
+      await engine.readRepository.readPendingMutation(
+        account.key,
+        mutation.mutationId,
+      ),
+    )
+    if (pendingRead.kind !== 'present' || pendingRead.value.kind !== 'send') {
+      throw new Error('fixture setup broken')
+    }
+    const inFlight = startMutationAttempt(pendingRead.value)
+    const confirmed = confirmSendMutation(
+      inFlight,
+      sendConfirmation(
+        scopedEmailId(account.key, jmapEmailIdFromString('confirmed-email')),
+      ),
+    )
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(
+        pendingRead.value,
+        inFlight,
+      ),
+    )
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(
+        inFlight,
+        confirmed,
+      ),
+    )
+    const submitEmail = vi.fn()
+    const outbox = new Outbox(
+      createFakeJmapClient({ submitEmail }),
+      engine.syncPort,
+      engine.readRepository,
+    )
+
+    await expect(
+      outbox.processSendMutation(account.key, 'jmap-acc', mutation.mutationId),
+    ).resolves.toEqual({ kind: 'skipped', reason: 'terminal' })
+    expect(submitEmail).not.toHaveBeenCalled()
   })
 
   it('a terminal auth failure (JmapAuthError) also transitions to failedTerminal, not retrying', async () => {
