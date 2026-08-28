@@ -122,12 +122,12 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 
 ---
 
-## 5A. Red nativa IMAP/SMTP — diferida (ADR-008)
+## 5A. Red nativa IMAP/SMTP — MVP loopback (ADR-008, ADR-009)
 
-* **Responsabilidad futura:** Implementar transporte TCP/TLS nativo para adapters IMAP (`RemoteMail`) y SMTP (`Submission`). IMAP no envía correo.
+* **Responsabilidad:** Implementar transporte nativo para adapters IMAP (`RemoteMail`) y SMTP (`Submission`). IMAP no envía correo.
 * **Qué NO hace:** No traduce a JMAP, no actúa como proxy genérico, no adquiere `EngineLease` y no conoce Ports locales, SQLite o SQLCipher.
-* **Estado:** No implementada en REMOTE-BOUNDARY-01. No existen sockets, crates o comandos IMAP/SMTP nuevos.
-* **Seguridad:** Credenciales memory-only; TLS obligatorio fuera de loopback. El diseño IPC concreto queda para el bloque del adapter nativo.
+* **Estado:** implementada por NATIVE-MAIL-PROTOCOLS-01 para loopback verificado. `ImapRemoteMail` y `SmtpSubmission` usan nueve comandos IPC `native_*` hacia `src-tauri/src/net/`.
+* **Seguridad:** credenciales memory-only; plaintext únicamente después de verificar loopback. TLS externo permanece diferido.
 
 ---
 
@@ -182,7 +182,7 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 * **Datos de entrada/salida:** `Remote*` IDs opacos, transiciones replace/delta completas, `RemoteBody`, `SubmissionMessage`, `SubmissionResult` y `RemoteError`.
 * **Compatibilidad:** `src/remote/compat/` concentra Remote* ↔ nombres locales `Jmap*` congelados; no cambia Domain, IPC ni SQL.
 * **Persistencia:** Ninguna directa. Correo, cursores y pendientes pasan por `SyncPort`.
-* **Networking:** Solo el adapter JMAP habla JMAP. IMAP/SMTP permanecen diferidos.
+* **Networking:** el adapter JMAP habla JMAP; los adapters IMAP/SMTP hablan solo con `NativeMailIpcPort`. Coordinator y Outbox siguen protocol-neutral.
 
 ## 10. Explicación del diagrama de componentes: abres la bandeja de entrada
 

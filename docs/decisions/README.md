@@ -12,6 +12,7 @@ Se registran solo elecciones con consecuencias arquitectónicas, no una ADR por 
 * [ADR-006 — Elección de cliente JMAP](architecture/ADR-006-jmap-client-choice.md)
 * [ADR-007 — Traductor IMAP→JMAP in-process en Rust (superseded)](architecture/ADR-007-imap-jmap-translator.md)
 * [ADR-008 — Frontera remota protocol-neutral](architecture/ADR-008-remote-protocol-boundary.md)
+* [ADR-009 — Native IMAP/SMTP loopback MVP](architecture/ADR-009-native-imap-smtp-mvp.md)
 
 ## Desarrollo
 

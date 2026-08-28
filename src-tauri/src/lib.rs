@@ -7,6 +7,7 @@ pub mod errors;
 pub mod ipc;
 #[cfg(feature = "local-env-doctor")]
 mod local_env_doctor;
+pub mod net;
 pub mod persistence;
 mod security;
 
@@ -35,6 +36,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(ipc::ManagedLocalEngine::default())
+        .manage(net::ManagedNativeMailRuntime::default())
         .manage(e2ee::ManagedE2eeService::default());
 
     #[cfg(not(feature = "conformance"))]
@@ -78,6 +80,15 @@ pub fn run() {
         e2ee::ipc::e2ee_peer_key_status,
         e2ee::ipc::e2ee_encrypt,
         e2ee::ipc::e2ee_decrypt,
+        net::commands::native_mail_open,
+        net::commands::native_mail_close,
+        net::commands::native_imap_list_mailboxes,
+        net::commands::native_imap_snapshot_mailbox,
+        net::commands::native_imap_fetch_body,
+        net::commands::native_imap_fetch_attachments,
+        net::commands::native_imap_store_flags,
+        net::commands::native_imap_move,
+        net::commands::native_smtp_submit,
     ]);
 
     #[cfg(feature = "conformance")]
@@ -114,6 +125,15 @@ pub fn run() {
             e2ee::ipc::e2ee_peer_key_status,
             e2ee::ipc::e2ee_encrypt,
             e2ee::ipc::e2ee_decrypt,
+            net::commands::native_mail_open,
+            net::commands::native_mail_close,
+            net::commands::native_imap_list_mailboxes,
+            net::commands::native_imap_snapshot_mailbox,
+            net::commands::native_imap_fetch_body,
+            net::commands::native_imap_fetch_attachments,
+            net::commands::native_imap_store_flags,
+            net::commands::native_imap_move,
+            net::commands::native_smtp_submit,
             conformance::conformance_create_runtime,
             conformance::conformance_dispose_runtime,
             conformance::conformance_settle,
