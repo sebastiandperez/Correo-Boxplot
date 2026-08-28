@@ -90,16 +90,25 @@ pub fn submit(
 }
 
 fn auth_plain_command(username: &str, password: &str) -> Zeroizing<String> {
+    let plaintext = auth_plain_payload(username, password);
+    let encoded = encode_auth_plain(&plaintext);
+    let mut command = Zeroizing::new(String::with_capacity(11 + encoded.len()));
+    command.push_str("AUTH PLAIN ");
+    command.push_str(encoded.as_str());
+    command
+}
+
+fn auth_plain_payload(username: &str, password: &str) -> Zeroizing<Vec<u8>> {
     let mut plaintext = Zeroizing::new(Vec::with_capacity(username.len() + password.len() + 2));
     plaintext.push(0);
     plaintext.extend_from_slice(username.as_bytes());
     plaintext.push(0);
     plaintext.extend_from_slice(password.as_bytes());
-    let encoded = Zeroizing::new(STANDARD.encode(plaintext.as_slice()));
-    let mut command = Zeroizing::new(String::with_capacity(11 + encoded.len()));
-    command.push_str("AUTH PLAIN ");
-    command.push_str(encoded.as_str());
-    command
+    plaintext
+}
+
+fn encode_auth_plain(plaintext: &[u8]) -> Zeroizing<String> {
+    Zeroizing::new(STANDARD.encode(plaintext))
 }
 
 pub struct BuiltMessage {
@@ -193,16 +202,13 @@ impl SmtpClient {
         expected: u16,
         ambiguous: bool,
     ) -> Result<(), NativeMailErrorDto> {
-        self.writer
-            .write_all(format!("{command}\r\n").as_bytes())
-            .and_then(|_| self.writer.flush())
-            .map_err(|_| {
-                if ambiguous {
-                    NativeMailErrorDto::ambiguous("smtp_write_unknown")
-                } else {
-                    NativeMailErrorDto::unavailable("smtp_write_failed")
-                }
-            })?;
+        write_smtp_command(&mut self.writer, command).map_err(|_| {
+            if ambiguous {
+                NativeMailErrorDto::ambiguous("smtp_write_unknown")
+            } else {
+                NativeMailErrorDto::unavailable("smtp_write_failed")
+            }
+        })?;
         self.expect_code(expected, ambiguous)
     }
 
@@ -242,6 +248,12 @@ impl SmtpClient {
             }
         }
     }
+}
+
+fn write_smtp_command(writer: &mut impl Write, command: &str) -> std::io::Result<()> {
+    writer.write_all(command.as_bytes())?;
+    writer.write_all(b"\r\n")?;
+    writer.flush()
 }
 
 fn validate_address(address: &NativeAddressDto) -> Result<(), NativeMailErrorDto> {
@@ -314,7 +326,10 @@ fn dot_stuff(value: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_plain_command, build_message};
+    use super::{
+        auth_plain_command, auth_plain_payload, build_message, encode_auth_plain,
+        write_smtp_command,
+    };
     use crate::net::dto::{NativeAddressDto, NativeSmtpSubmitRequest, NativeSubmissionBodyDto};
 
     fn request() -> NativeSmtpSubmitRequest {
@@ -368,6 +383,32 @@ mod tests {
         );
         assert!(command.starts_with("AUTH PLAIN "));
         assert!(!command.contains("BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291"));
+    }
+
+    #[test]
+    fn auth_plaintext_is_owned_by_a_zeroizing_buffer() {
+        let plaintext = auth_plain_payload(
+            "alice@boxplot.test",
+            "BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291",
+        );
+        assert!(plaintext.ends_with(b"BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291"));
+    }
+
+    #[test]
+    fn auth_encoding_is_owned_by_a_zeroizing_buffer() {
+        let plaintext = auth_plain_payload(
+            "alice@boxplot.test",
+            "BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291",
+        );
+        let encoded = encode_auth_plain(&plaintext);
+        assert!(!encoded.contains("BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291"));
+    }
+
+    #[test]
+    fn smtp_framing_writes_exact_borrowed_command_bytes() {
+        let mut wire = Vec::new();
+        write_smtp_command(&mut wire, "AUTH PLAIN abc").expect("framing succeeds");
+        assert_eq!(wire, b"AUTH PLAIN abc\r\n");
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     time::Duration,
@@ -122,8 +123,10 @@ impl ImapConnection {
         }
         let initial_uids = self.search_uids()?;
         let mut messages = Vec::with_capacity(initial_uids.len());
+        let mut initial_flags = BTreeMap::new();
         for uid in initial_uids.iter().copied() {
             let fetched = self.fetch(uid).map_err(snapshot_fetch_error)?;
+            initial_flags.insert(uid, canonical_flags(&fetched.flags));
             messages.push(parse_message(&fetched.raw)?.metadata(
                 mailbox.to_owned(),
                 selected.uid_validity,
@@ -135,12 +138,17 @@ impl ImapConnection {
         }
         let final_status = self.status(mailbox)?;
         let final_uids = self.search_uids()?;
+        let final_flags = self
+            .fetch_flag_snapshot(&final_uids)
+            .map_err(snapshot_fetch_error)?;
         ensure_snapshot_stable(
             selected.uid_validity,
             &initial_status,
             &initial_uids,
             &final_status,
             &final_uids,
+            &initial_flags,
+            &final_flags,
         )?;
         Ok(NativeMailboxSnapshotDto {
             mailbox: final_status,
@@ -274,6 +282,32 @@ impl ImapConnection {
         Ok(uids)
     }
 
+    fn fetch_flag_snapshot(
+        &mut self,
+        uids: &[u32],
+    ) -> Result<BTreeMap<u32, Vec<String>>, NativeMailErrorDto> {
+        let mut snapshot = BTreeMap::new();
+        for uid in uids.iter().copied() {
+            let lines = self.command(&format!("UID FETCH {uid} (UID FLAGS)"))?;
+            let line = lines
+                .iter()
+                .find(|line| line.text.starts_with("* ") && line.text.contains(" FETCH "))
+                .ok_or_else(|| NativeMailErrorDto::state_invalid("imap_message_absent"))?;
+            let fetched_uid = u32::try_from(number_after(&line.text, "UID")?)
+                .map_err(|_| NativeMailErrorDto::protocol("imap_uid_invalid"))?;
+            if fetched_uid != uid {
+                return Err(NativeMailErrorDto::state_invalid("imap_message_absent"));
+            }
+            let flags = between(&line.text, "FLAGS (", ")")
+                .ok_or_else(|| NativeMailErrorDto::protocol("imap_flags_missing"))?
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            snapshot.insert(uid, canonical_flags(&flags));
+        }
+        Ok(snapshot)
+    }
+
     fn command(&mut self, command: &str) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
         self.command_with_outcome(command, false)
     }
@@ -289,9 +323,7 @@ impl ImapConnection {
     ) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
         let tag = format!("B{:04}", self.next_tag);
         self.next_tag = self.next_tag.saturating_add(1);
-        self.writer
-            .write_all(format!("{tag} {command}\r\n").as_bytes())
-            .and_then(|_| self.writer.flush())
+        write_imap_command(&mut self.writer, &tag, command)
             .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))
             .map_err(|error| mutation_outcome(error, mutation))?;
         let mut lines = Vec::new();
@@ -352,6 +384,8 @@ fn ensure_snapshot_stable(
     initial_uids: &[u32],
     final_status: &NativeMailboxDto,
     final_uids: &[u32],
+    initial_flags: &BTreeMap<u32, Vec<String>>,
+    final_flags: &BTreeMap<u32, Vec<String>>,
 ) -> Result<(), NativeMailErrorDto> {
     let initial_count = u64::try_from(initial_uids.len()).unwrap_or(u64::MAX);
     let final_count = u64::try_from(final_uids.len()).unwrap_or(u64::MAX);
@@ -361,10 +395,26 @@ fn ensure_snapshot_stable(
         || initial_status.messages != initial_count
         || final_status.messages != final_count
         || initial_uids != final_uids
+        || initial_flags != final_flags
     {
         return Err(NativeMailErrorDto::conflict("imap_snapshot_changed"));
     }
     Ok(())
+}
+
+fn canonical_flags(flags: &[String]) -> Vec<String> {
+    let mut canonical = flags.to_vec();
+    canonical.sort();
+    canonical.dedup();
+    canonical
+}
+
+fn write_imap_command(writer: &mut impl Write, tag: &str, command: &str) -> std::io::Result<()> {
+    writer.write_all(tag.as_bytes())?;
+    writer.write_all(b" ")?;
+    writer.write_all(command.as_bytes())?;
+    writer.write_all(b"\r\n")?;
+    writer.flush()
 }
 
 fn snapshot_fetch_error(error: NativeMailErrorDto) -> NativeMailErrorDto {
@@ -507,11 +557,12 @@ fn imap_date_to_rfc3339(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_snapshot_stable, imap_date_to_rfc3339, literal_length, login_command,
-        mutation_outcome, quote,
+        canonical_flags, ensure_snapshot_stable, imap_date_to_rfc3339, literal_length,
+        login_command, mutation_outcome, quote, write_imap_command,
     };
     use crate::net::dto::NativeMailboxDto;
     use crate::net::errors::{NativeMailErrorDto, NativeMailOutcome, NativeMailRetry};
+    use std::collections::BTreeMap;
 
     #[test]
     fn parses_literal_and_date() {
@@ -544,18 +595,77 @@ mod tests {
             uid_validity: 7,
             uid_next: 4,
         };
-        assert!(ensure_snapshot_stable(7, &status, &[1, 2, 3], &status, &[1, 2, 3]).is_ok());
-        assert!(ensure_snapshot_stable(7, &status, &[1, 2, 3], &status, &[1, 2, 4]).is_err());
-        assert!(ensure_snapshot_stable(7, &status, &[1, 2], &status, &[1, 2]).is_err());
+        let flags = flag_snapshot(&[(1, &["\\Seen"]), (2, &[]), (3, &[])]);
+        assert!(
+            ensure_snapshot_stable(7, &status, &[1, 2, 3], &status, &[1, 2, 3], &flags, &flags,)
+                .is_ok()
+        );
+        assert!(
+            ensure_snapshot_stable(7, &status, &[1, 2, 3], &status, &[1, 2, 4], &flags, &flags,)
+                .is_err()
+        );
+        assert!(
+            ensure_snapshot_stable(7, &status, &[1, 2], &status, &[1, 2], &flags, &flags,).is_err()
+        );
 
         let changed_uid_next = NativeMailboxDto {
             uid_next: 5,
             ..status.clone()
         };
         assert!(
-            ensure_snapshot_stable(7, &status, &[1, 2, 3], &changed_uid_next, &[1, 2, 3],).is_err()
+            ensure_snapshot_stable(
+                7,
+                &status,
+                &[1, 2, 3],
+                &changed_uid_next,
+                &[1, 2, 3],
+                &flags,
+                &flags,
+            )
+            .is_err()
         );
-        assert!(ensure_snapshot_stable(8, &status, &[1, 2, 3], &status, &[1, 2, 3]).is_err());
+        assert!(
+            ensure_snapshot_stable(8, &status, &[1, 2, 3], &status, &[1, 2, 3], &flags, &flags,)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn flagged_only_change_invalidates_snapshot() {
+        let initial = flag_snapshot(&[(42, &[])]);
+        let final_flags = flag_snapshot(&[(42, &["\\Flagged"])]);
+        assert_flag_change_is_rejected(&initial, &final_flags);
+    }
+
+    #[test]
+    fn seen_change_invalidates_snapshot() {
+        let initial = flag_snapshot(&[(42, &[])]);
+        let final_flags = flag_snapshot(&[(42, &["\\Seen"])]);
+        assert_flag_change_is_rejected(&initial, &final_flags);
+    }
+
+    #[test]
+    fn seen_swap_with_equal_aggregate_unseen_invalidates_snapshot() {
+        let initial = flag_snapshot(&[(1, &[]), (2, &["\\Seen"])]);
+        let final_flags = flag_snapshot(&[(1, &["\\Seen"]), (2, &[])]);
+        assert_flag_change_is_rejected(&initial, &final_flags);
+    }
+
+    #[test]
+    fn stable_flags_are_accepted() {
+        let flags = flag_snapshot(&[(1, &["\\Flagged", "\\Seen"]), (2, &[])]);
+        assert_flag_snapshot_is_stable(&flags, &flags);
+    }
+
+    #[test]
+    fn flag_order_and_duplicates_do_not_create_false_conflicts() {
+        let initial = canonical_flags(&[
+            "\\Seen".to_owned(),
+            "\\Flagged".to_owned(),
+            "\\Seen".to_owned(),
+        ]);
+        let final_flags = canonical_flags(&["\\Flagged".to_owned(), "\\Seen".to_owned()]);
+        assert_eq!(initial, final_flags);
     }
 
     #[test]
@@ -567,5 +677,85 @@ mod tests {
         .expect("LOGIN command");
         assert!(command.starts_with("LOGIN "));
         assert!(!command.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn imap_framing_writes_exact_borrowed_command_bytes() {
+        let mut wire = Vec::new();
+        write_imap_command(&mut wire, "B0001", "LOGIN \"alice\" \"secret\"")
+            .expect("framing succeeds");
+        assert_eq!(wire, b"B0001 LOGIN \"alice\" \"secret\"\r\n");
+    }
+
+    fn flag_snapshot(values: &[(u32, &[&str])]) -> BTreeMap<u32, Vec<String>> {
+        values
+            .iter()
+            .map(|(uid, flags)| {
+                let flags = flags
+                    .iter()
+                    .map(|flag| (*flag).to_owned())
+                    .collect::<Vec<_>>();
+                (*uid, canonical_flags(&flags))
+            })
+            .collect()
+    }
+
+    fn assert_flag_change_is_rejected(
+        initial_flags: &BTreeMap<u32, Vec<String>>,
+        final_flags: &BTreeMap<u32, Vec<String>>,
+    ) {
+        let mut status = NativeMailboxDto {
+            name: "INBOX".to_owned(),
+            messages: u64::try_from(initial_flags.len()).expect("test count fits"),
+            unseen: 1,
+            uid_validity: 7,
+            uid_next: 43,
+        };
+        let uids = initial_flags.keys().copied().collect::<Vec<_>>();
+        if uids == [42]
+            && final_flags
+                .get(&42)
+                .is_some_and(|flags| flags.contains(&"\\Seen".to_owned()))
+        {
+            status.unseen = 0;
+        }
+        assert!(
+            ensure_snapshot_stable(
+                7,
+                &status,
+                &uids,
+                &status,
+                &uids,
+                initial_flags,
+                final_flags,
+            )
+            .is_err()
+        );
+    }
+
+    fn assert_flag_snapshot_is_stable(
+        initial_flags: &BTreeMap<u32, Vec<String>>,
+        final_flags: &BTreeMap<u32, Vec<String>>,
+    ) {
+        let uids = initial_flags.keys().copied().collect::<Vec<_>>();
+        let status = NativeMailboxDto {
+            name: "INBOX".to_owned(),
+            messages: u64::try_from(uids.len()).expect("test count fits"),
+            unseen: 1,
+            uid_validity: 7,
+            uid_next: 43,
+        };
+        assert!(
+            ensure_snapshot_stable(
+                7,
+                &status,
+                &uids,
+                &status,
+                &uids,
+                initial_flags,
+                final_flags,
+            )
+            .is_ok()
+        );
     }
 }
