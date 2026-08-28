@@ -40,8 +40,21 @@ el Worker selecciona/compone el adapter una vez.
 
 El puente `src/remote/compat/` concentra la conversión Remote* hacia el
 vocabulario local `Jmap*` congelado. Domain, P-01/P-02/P-03, los 25 comandos
-IPC, SQLCipher y E2EE no cambian. IMAP, SMTP, sockets nativos, reconciliación
-SMTP y el bridge E2EE del Worker permanecen diferidos.
+IPC, SQLCipher y E2EE no cambian. La implementación nativa se aborda en el
+bloque posterior NATIVE-MAIL-PROTOCOLS-01.
+
+## NATIVE-MAIL-PROTOCOLS-01
+
+**Estado: COMPLETE.** ADR-009 implementa el primer backend no-JMAP sobre la
+frontera congelada: `ImapRemoteMail` + `SmtpSubmission`, IPC nativo tipado y
+red Rust separada del Local Engine. El flujo Alice/Bob se verifica contra
+Servidor-Boxplot con snapshots completos, BODY.PEEK, Seen/Flagged, MOVE, HTML,
+Bcc, metadata de attachments, límites y reinicio.
+
+El MVP plaintext está limitado a loopback verificado antes de que salgan
+credenciales. TLS externo, bridge Persona A, scheduler, reconciliación SMTP y
+E2EE integrado permanecen en bloques posteriores. Coordinator, Outbox, Domain,
+Ports, los 25 comandos `local_*`, persistencia y E2EE no cambian.
 
 
 ## SPRINT 2 

@@ -101,11 +101,15 @@ Rust posee SQLite/SQLCipher, migraciones, queries, transacciones, secure store, 
 
 No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa como proxy HTTP/WebSocket, no almacena el token JMAP, no renderiza UI y no maneja Pinia. El networking de correo del Rust Local Engine es ninguno.
 
-### Red nativa IMAP/SMTP — diferida (ADR-008)
+### Red nativa IMAP/SMTP — MVP loopback (ADR-008, ADR-009)
 
 **Ruta futura:** `src-tauri/src/net/`.
 
-Cuando se implemente, abrirá TCP/TLS únicamente para protocolos nativos que lo requieren. Será una capa distinta del Rust Local Engine: no adquirirá `EngineLease`, no conocerá `SyncPort`/`ReadRepository`/SQLite/SQLCipher y no traducirá IMAP a DTOs JMAP. No existe todavía implementación IMAP/SMTP en este repositorio.
+`src-tauri/src/net/` abre sockets IMAP/SMTP y expone nueve comandos `native_*`
+tipados. Es una capa distinta del Rust Local Engine: no adquiere `EngineLease`,
+no conoce `SyncPort`/`ReadRepository`/SQLite/SQLCipher y no traduce IMAP a DTOs
+JMAP. El MVP plaintext acepta exclusivamente loopback verificado; TLS externo
+permanece diferido.
 
 ## Dependency direction
 
@@ -128,7 +132,7 @@ Las dependencias permitidas son:
 | JMAP | Web APIs de networking; protocolo y librería JMAP aprobada |
 | Rust commands | Local Engine; seguridad y errores Rust; Tauri mínimo |
 | Rust Local Engine | `rusqlite`/SQLCipher y servicios nativos de seguridad necesarios |
-| Rust net futuro (ADR-008) | Crates TLS/IMAP/SMTP pinneados con versión exacta; Tauri mínimo para IPC |
+| Rust net (ADR-009) | `std::net` con timeouts finitos, `mail-parser` fijado y Tauri mínimo para IPC; TLS externo diferido |
 
 Una conveniencia local no justifica invertir o saltar esta dirección.
 
@@ -158,7 +162,7 @@ Estas categorías no se mezclan. `LocalReady + RemoteAnonymous` es válido.
 
 ## Networking ownership
 
-Presentation, Application, Domain, Ports y los adaptadores Tauri tienen networking de correo **ninguno**. Coordinator consume `RemoteMail`; Outbox consume `RemoteMail` + `Submission`, sin ramas de protocolo. Solo `src/remote/jmap/` y la composición explícita conocen `JmapClient`; este último habla JMAP por `fetch`/WebSocket. Rust Local Engine tiene networking de correo **ninguno**. La futura red nativa IMAP/SMTP quedará detrás de adapters propios y separada del Local Engine.
+Presentation, Application, Domain y Ports tienen networking de correo **ninguno**. Coordinator consume `RemoteMail`; Outbox consume `RemoteMail` + `Submission`, sin ramas de protocolo. Solo `src/remote/jmap/` conoce `JmapClient`; `src/remote/imap/` y `src/remote/smtp/` dependen del IPC nativo tipado. Rust Local Engine tiene networking de correo **ninguno**; `src-tauri/src/net/` permanece separado del motor.
 
 ## Persistence ownership
 
