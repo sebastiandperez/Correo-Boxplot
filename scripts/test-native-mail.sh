@@ -11,4 +11,4 @@ fi
 
 BOXPLOT_MAIL_SERVER_DIR="$server_dir" \
   cargo test --locked --manifest-path "$repository_dir/src-tauri/Cargo.toml" \
-  --test native_mail_real -- --ignored --nocapture
+  --test native_mail_real -- --ignored --nocapture --test-threads=1
