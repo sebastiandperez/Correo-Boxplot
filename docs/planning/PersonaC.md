@@ -56,6 +56,20 @@ credenciales. TLS externo, bridge Persona A, scheduler, reconciliación SMTP y
 E2EE integrado permanecen en bloques posteriores. Coordinator, Outbox, Domain,
 Ports, los 25 comandos `local_*`, persistencia y E2EE no cambian.
 
+### NATIVE-MAIL-HARDENING-01
+
+**Estado: COMPLETE.** La resolución loopback ocurre una sola vez por endpoint y
+la conexión reutiliza exactamente un `SocketAddr` del conjunto validado. Los
+snapshots IMAP comparan UID sets y status antes/después, y `syncEmails()` añade
+una barrera de fingerprint account-wide con un único reintento acotado. Una
+inestabilidad nunca publica un replace parcial.
+
+Los `Debug` de request/sesión redactan el password. El password no se persiste y
+los buffers credential-bearing explícitamente controlados por la aplicación se
+zeroizan donde es práctico, sin afirmar borrado absoluto de temporales del
+compilador o librerías. Contratos, Coordinator, Outbox e inventarios IPC siguen
+congelados.
+
 
 ## SPRINT 2 
 

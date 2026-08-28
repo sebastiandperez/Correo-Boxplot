@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeMailOpenRequest {
     pub host: String,
@@ -8,6 +8,19 @@ pub struct NativeMailOpenRequest {
     pub password: String,
     pub imap_port: u16,
     pub smtp_port: u16,
+}
+
+impl std::fmt::Debug for NativeMailOpenRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativeMailOpenRequest")
+            .field("host", &self.host)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("imap_port", &self.imap_port)
+            .field("smtp_port", &self.smtp_port)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -171,4 +184,33 @@ pub struct NativeSmtpSubmitRequest {
 pub struct NativeSmtpSubmitResponse {
     pub accepted: bool,
     pub receipt_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NativeMailOpenRequest, NativeMailOpenResponse};
+
+    const CANARY: &str = "BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291";
+
+    #[test]
+    fn open_request_debug_redacts_password_and_response_has_no_secret_field() {
+        let request = NativeMailOpenRequest {
+            host: "127.0.0.1".to_owned(),
+            username: "alice@boxplot.test".to_owned(),
+            password: CANARY.to_owned(),
+            imap_port: 1143,
+            smtp_port: 1587,
+        };
+        let debug = format!("{request:?}");
+        assert!(!debug.contains(CANARY));
+        assert!(debug.contains("[REDACTED]"));
+
+        let response = serde_json::to_value(NativeMailOpenResponse {
+            session_id: "session".to_owned(),
+            authenticated_user: "alice@boxplot.test".to_owned(),
+        })
+        .expect("response serializes");
+        assert_eq!(response.as_object().map(|value| value.len()), Some(2));
+        assert!(response.get("password").is_none());
+    }
 }

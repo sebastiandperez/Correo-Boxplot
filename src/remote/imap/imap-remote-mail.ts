@@ -103,43 +103,73 @@ export class ImapRemoteMail implements RemoteMail {
   ): Promise<RemoteCollectionSync<RemoteEmail, RemoteEmailId>> {
     void previousState
     this.assertAccount(accountId)
-    try {
-      const mailboxes = sortMailboxes(
-        await this.ipc.listMailboxes(this.sessionId),
-      )
-      const snapshots = []
-      for (const mailbox of mailboxes) {
-        snapshots.push(
-          await this.ipc.snapshotMailbox(this.sessionId, mailbox.name),
-        )
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await this.syncEmailsAttempt()
+      } catch (error: unknown) {
+        const remoteError = toNativeRemoteError(error)
+        if (
+          attempt === 0 &&
+          remoteError.kind === 'conflict' &&
+          remoteError.retry === 'safeImmediate'
+        ) {
+          continue
+        }
+        throw remoteError
       }
-      const records = snapshots.flatMap((snapshot) => snapshot.messages)
-      const snapshot = records.map(mapNativeEmail)
-      return validateRemoteCollectionSync(
-        {
-          mode: 'replace',
-          state: state(
-            'emails',
-            records
-              .map((value) => [
-                value.mailbox,
-                value.uidValidity,
-                value.uid,
-                [...value.flags].sort(),
-                value.internalDate,
-                value.size,
-              ])
-              .sort((left, right) =>
-                JSON.stringify(left).localeCompare(JSON.stringify(right)),
-              ),
-          ),
-          snapshot,
-        },
-        (email) => email.id,
-      )
-    } catch (error: unknown) {
-      throw toNativeRemoteError(error)
     }
+    throw snapshotConflict()
+  }
+
+  private async syncEmailsAttempt(): Promise<
+    RemoteCollectionSync<RemoteEmail, RemoteEmailId>
+  > {
+    const initialMailboxes = sortMailboxes(
+      await this.ipc.listMailboxes(this.sessionId),
+    )
+    const snapshots = []
+    for (const mailbox of initialMailboxes) {
+      snapshots.push(
+        await this.ipc.snapshotMailbox(this.sessionId, mailbox.name),
+      )
+    }
+    const finalMailboxes = sortMailboxes(
+      await this.ipc.listMailboxes(this.sessionId),
+    )
+    const snapshotMailboxes = sortMailboxes(
+      snapshots.map((snapshot) => snapshot.mailbox),
+    )
+    const initialFingerprint = mailboxFingerprint(initialMailboxes)
+    if (
+      initialFingerprint !== mailboxFingerprint(snapshotMailboxes) ||
+      initialFingerprint !== mailboxFingerprint(finalMailboxes)
+    ) {
+      throw snapshotConflict()
+    }
+    const records = snapshots.flatMap((snapshot) => snapshot.messages)
+    const snapshot = records.map(mapNativeEmail)
+    return validateRemoteCollectionSync(
+      {
+        mode: 'replace',
+        state: state(
+          'emails',
+          records
+            .map((value) => [
+              value.mailbox,
+              value.uidValidity,
+              value.uid,
+              [...value.flags].sort(),
+              value.internalDate,
+              value.size,
+            ])
+            .sort((left, right) =>
+              JSON.stringify(left).localeCompare(JSON.stringify(right)),
+            ),
+        ),
+        snapshot,
+      },
+      (email) => email.id,
+    )
   }
 
   async queryMailbox(
@@ -298,6 +328,26 @@ function sortMailboxes<T extends { name: string }>(values: readonly T[]): T[] {
   )
 }
 
+function mailboxFingerprint(
+  values: readonly {
+    name: string
+    uidValidity: number
+    uidNext: number
+    messages: number
+    unseen: number
+  }[],
+): string {
+  return JSON.stringify(
+    values.map((value) => [
+      value.name,
+      value.uidValidity,
+      value.uidNext,
+      value.messages,
+      value.unseen,
+    ]),
+  )
+}
+
 function compareEmails(left: RemoteEmail, right: RemoteEmail): number {
   return (
     right.receivedAt.localeCompare(left.receivedAt) ||
@@ -321,4 +371,16 @@ function invalidState(message: string): RemoteError {
     session: 'keep',
     outcome: 'knownNotApplied',
   })
+}
+
+function snapshotConflict(): RemoteError {
+  return new RemoteError(
+    'IMAP account snapshot changed during synchronization',
+    {
+      kind: 'conflict',
+      retry: 'safeImmediate',
+      session: 'keep',
+      outcome: 'knownNotApplied',
+    },
+  )
 }

@@ -20,15 +20,25 @@ Ports or the Local Engine.
 - TypeScript maps native IMAP DTOs into protocol-neutral `Remote*` values and
   maps `SubmissionMessage` into typed native SMTP IPC.
 - The nine `native_*` commands are separate from the frozen 25 `local_*`
-  commands. The password appears only in `native_mail_open`, then remains in a
-  zeroizing, memory-only Rust session until close or runtime drop.
-- Plaintext native mail is allowed only after host resolution proves every
-  destination address is loopback (`127.0.0.0/8` or `::1`). Non-loopback
-  targets fail closed before connect, authentication or content transmission.
+  commands. The password appears only in `native_mail_open`, is never persisted,
+  and then remains in a memory-only Rust session until close or runtime drop.
+  Explicit owned credential buffers under application control are zeroized
+  where practical; this does not claim erasure of every compiler or library
+  temporary.
+- Plaintext native mail is allowed only after a single host resolution proves
+  every destination address is loopback (`127.0.0.0/8` or `::1`). The exact
+  `SocketAddr` selected from that validated set is used for the connection;
+  resolution is not repeated between validation and use. Non-loopback targets
+  fail closed before connect, authentication or content transmission.
 - External IMAP/SMTP TLS is deferred to NATIVE-MAIL-TLS-01. There is no
   opportunistic downgrade or JMAP fallback.
-- IMAP MVP synchronization is a complete authoritative replacement. UIDNEXT
-  cannot safely model flag changes, moves or deletions, so no delta is claimed.
+- IMAP MVP synchronization is a complete authoritative replacement guarded by
+  bounded consistency checks. Each mailbox compares its exact UID set and
+  status before and after fetching; account-wide mailbox fingerprints are also
+  compared before and after collection. Concurrent mutation causes one bounded
+  retry or a fail-closed conflict, and no partial replacement is returned.
+  UIDNEXT cannot safely model flag changes, moves or deletions, so no delta is
+  claimed.
 - IMAP message identity is mailbox + UIDVALIDITY + UID. A stale UIDVALIDITY is
   rejected before a UID operation. MOVE may allocate a new UID and therefore a
   new `RemoteEmailId`; the next full snapshot reconciles it.

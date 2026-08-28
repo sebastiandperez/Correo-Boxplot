@@ -60,7 +60,7 @@ impl ImapConnection {
             return Err(NativeMailErrorDto::protocol("imap_greeting_rejected"));
         }
         validate_atom(username)?;
-        let login = Zeroizing::new(format!("LOGIN {} {}", quote(username)?, quote(password)?));
+        let login = login_command(username, password)?;
         match connection.command(&login) {
             Ok(_) => Ok(connection),
             Err(error) if error.kind == NativeMailErrorKind::Rejected => {
@@ -116,24 +116,14 @@ impl ImapConnection {
         mailbox: &str,
     ) -> Result<NativeMailboxSnapshotDto, NativeMailErrorDto> {
         let selected = self.select(mailbox)?;
-        let lines = self.command("UID SEARCH ALL")?;
-        let search = lines
-            .iter()
-            .find(|line| line.text.starts_with("* SEARCH"))
-            .ok_or_else(|| NativeMailErrorDto::protocol("imap_search_missing"))?;
-        let uids = search
-            .text
-            .split_whitespace()
-            .skip(2)
-            .map(|value| {
-                value
-                    .parse::<u32>()
-                    .map_err(|_| NativeMailErrorDto::protocol("imap_uid_invalid"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut messages = Vec::with_capacity(uids.len());
-        for uid in uids {
-            let fetched = self.fetch(uid)?;
+        let initial_status = self.status(mailbox)?;
+        if initial_status.uid_validity != selected.uid_validity {
+            return Err(NativeMailErrorDto::conflict("imap_snapshot_changed"));
+        }
+        let initial_uids = self.search_uids()?;
+        let mut messages = Vec::with_capacity(initial_uids.len());
+        for uid in initial_uids.iter().copied() {
+            let fetched = self.fetch(uid).map_err(snapshot_fetch_error)?;
             messages.push(parse_message(&fetched.raw)?.metadata(
                 mailbox.to_owned(),
                 selected.uid_validity,
@@ -143,14 +133,17 @@ impl ImapConnection {
                 fetched.size,
             ));
         }
-        let mailbox_status = self.status(mailbox)?;
-        if mailbox_status.uid_validity != selected.uid_validity
-            || mailbox_status.messages != u64::try_from(messages.len()).unwrap_or(u64::MAX)
-        {
-            return Err(NativeMailErrorDto::conflict("imap_snapshot_changed"));
-        }
+        let final_status = self.status(mailbox)?;
+        let final_uids = self.search_uids()?;
+        ensure_snapshot_stable(
+            selected.uid_validity,
+            &initial_status,
+            &initial_uids,
+            &final_status,
+            &final_uids,
+        )?;
         Ok(NativeMailboxSnapshotDto {
-            mailbox: mailbox_status,
+            mailbox: final_status,
             messages,
         })
     }
@@ -261,6 +254,26 @@ impl ImapConnection {
         })
     }
 
+    fn search_uids(&mut self) -> Result<Vec<u32>, NativeMailErrorDto> {
+        let lines = self.command("UID SEARCH ALL")?;
+        let search = lines
+            .iter()
+            .find(|line| line.text.starts_with("* SEARCH"))
+            .ok_or_else(|| NativeMailErrorDto::protocol("imap_search_missing"))?;
+        let mut uids = search
+            .text
+            .split_whitespace()
+            .skip(2)
+            .map(|value| {
+                value
+                    .parse::<u32>()
+                    .map_err(|_| NativeMailErrorDto::protocol("imap_uid_invalid"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        uids.sort_unstable();
+        Ok(uids)
+    }
+
     fn command(&mut self, command: &str) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
         self.command_with_outcome(command, false)
     }
@@ -333,6 +346,35 @@ impl ImapConnection {
     }
 }
 
+fn ensure_snapshot_stable(
+    selected_uid_validity: u32,
+    initial_status: &NativeMailboxDto,
+    initial_uids: &[u32],
+    final_status: &NativeMailboxDto,
+    final_uids: &[u32],
+) -> Result<(), NativeMailErrorDto> {
+    let initial_count = u64::try_from(initial_uids.len()).unwrap_or(u64::MAX);
+    let final_count = u64::try_from(final_uids.len()).unwrap_or(u64::MAX);
+    if initial_status.uid_validity != selected_uid_validity
+        || final_status.uid_validity != selected_uid_validity
+        || initial_status != final_status
+        || initial_status.messages != initial_count
+        || final_status.messages != final_count
+        || initial_uids != final_uids
+    {
+        return Err(NativeMailErrorDto::conflict("imap_snapshot_changed"));
+    }
+    Ok(())
+}
+
+fn snapshot_fetch_error(error: NativeMailErrorDto) -> NativeMailErrorDto {
+    if error.kind == NativeMailErrorKind::StateInvalid {
+        NativeMailErrorDto::conflict("imap_snapshot_changed")
+    } else {
+        error
+    }
+}
+
 fn mutation_outcome(mut error: NativeMailErrorDto, mutation: bool) -> NativeMailErrorDto {
     if mutation {
         error.retry = NativeMailRetry::Reconcile;
@@ -353,13 +395,35 @@ struct FetchedMessage {
 }
 
 fn quote(value: &str) -> Result<String, NativeMailErrorDto> {
+    let mut output = String::with_capacity(value.len() + 2);
+    push_quoted(&mut output, value)?;
+    Ok(output)
+}
+
+fn login_command(username: &str, password: &str) -> Result<Zeroizing<String>, NativeMailErrorDto> {
+    let mut command = Zeroizing::new(String::with_capacity(
+        username.len() + password.len() + "LOGIN  ".len() + 4,
+    ));
+    command.push_str("LOGIN ");
+    push_quoted(&mut command, username)?;
+    command.push(' ');
+    push_quoted(&mut command, password)?;
+    Ok(command)
+}
+
+fn push_quoted(output: &mut String, value: &str) -> Result<(), NativeMailErrorDto> {
     if value.contains(['\r', '\n', '\0']) {
         return Err(NativeMailErrorDto::protocol("imap_argument_invalid"));
     }
-    Ok(format!(
-        "\"{}\"",
-        value.replace('\\', "\\\\").replace('"', "\\\"")
-    ))
+    output.push('"');
+    for character in value.chars() {
+        if matches!(character, '\\' | '"') {
+            output.push('\\');
+        }
+        output.push(character);
+    }
+    output.push('"');
+    Ok(())
 }
 
 fn validate_atom(value: &str) -> Result<(), NativeMailErrorDto> {
@@ -442,7 +506,11 @@ fn imap_date_to_rfc3339(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{imap_date_to_rfc3339, literal_length, mutation_outcome, quote};
+    use super::{
+        ensure_snapshot_stable, imap_date_to_rfc3339, literal_length, login_command,
+        mutation_outcome, quote,
+    };
+    use crate::net::dto::NativeMailboxDto;
     use crate::net::errors::{NativeMailErrorDto, NativeMailOutcome, NativeMailRetry};
 
     #[test]
@@ -465,5 +533,39 @@ mod tests {
         let error = mutation_outcome(NativeMailErrorDto::unavailable("imap_read_failed"), true);
         assert_eq!(error.retry, NativeMailRetry::Reconcile);
         assert_eq!(error.outcome, NativeMailOutcome::Unknown);
+    }
+
+    #[test]
+    fn exact_uid_set_and_mailbox_status_guard_authoritative_snapshot() {
+        let status = NativeMailboxDto {
+            name: "INBOX".to_owned(),
+            messages: 3,
+            unseen: 3,
+            uid_validity: 7,
+            uid_next: 4,
+        };
+        assert!(ensure_snapshot_stable(7, &status, &[1, 2, 3], &status, &[1, 2, 3]).is_ok());
+        assert!(ensure_snapshot_stable(7, &status, &[1, 2, 3], &status, &[1, 2, 4]).is_err());
+        assert!(ensure_snapshot_stable(7, &status, &[1, 2], &status, &[1, 2]).is_err());
+
+        let changed_uid_next = NativeMailboxDto {
+            uid_next: 5,
+            ..status.clone()
+        };
+        assert!(
+            ensure_snapshot_stable(7, &status, &[1, 2, 3], &changed_uid_next, &[1, 2, 3],).is_err()
+        );
+        assert!(ensure_snapshot_stable(8, &status, &[1, 2, 3], &status, &[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn login_command_uses_a_zeroizing_owned_buffer() {
+        let command = login_command(
+            "alice@boxplot.test",
+            "BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291",
+        )
+        .expect("LOGIN command");
+        assert!(command.starts_with("LOGIN "));
+        assert!(!command.contains("[REDACTED]"));
     }
 }
