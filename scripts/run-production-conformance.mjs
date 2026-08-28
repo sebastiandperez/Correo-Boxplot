@@ -130,7 +130,20 @@ try {
     Array.isArray(result?.smoke) &&
     result.smoke.length === 5 &&
     result.smoke.every((value) => value.passed)
-  if (!contractsPass || !smokePass || result.productionCommandCount !== 25) {
+  const remoteBoundaryHardeningPass =
+    result?.remoteBoundaryHardening?.passed === true &&
+    result.remoteBoundaryHardening.sameMutationId === true &&
+    result.remoteBoundaryHardening.lifecycleAfterReopen === 'inFlight' &&
+    result.remoteBoundaryHardening.secondOutboxResult === 'alreadyInFlight' &&
+    result.remoteBoundaryHardening.submissionCallsAfterReopen === 0 &&
+    result.remoteBoundaryHardening.fakeSentEmailCreated === false &&
+    result.remoteBoundaryHardening.secondReopenPreserved === true
+  if (
+    !contractsPass ||
+    !smokePass ||
+    !remoteBoundaryHardeningPass ||
+    result.productionCommandCount !== 25
+  ) {
     process.exitCode = 1
   }
 } finally {

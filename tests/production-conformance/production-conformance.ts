@@ -10,6 +10,7 @@ import {
   type ProductionContractRuntime,
   wrongKeyIsRejected,
 } from './production-local-engine.harness'
+import { runPersistentOutboxRestartHardening } from './remote-boundary-hardening'
 
 defineReadRepositoryContract(productionLocalEngineHarness)
 defineSyncPortContract(productionLocalEngineHarness)
@@ -113,9 +114,11 @@ async function runProductionSmoke(): Promise<readonly SmokeResult[]> {
 async function main(): Promise<void> {
   const contracts = await runRegisteredTests()
   const smokeResults = await runProductionSmoke()
+  const remoteBoundaryHardening = await runPersistentOutboxRestartHardening()
   const result = {
     contracts,
     smoke: smokeResults,
+    remoteBoundaryHardening,
     productionCommandCount: 25,
   }
   Object.assign(window, { __PROD_CONFORMANCE_RESULT__: result })
