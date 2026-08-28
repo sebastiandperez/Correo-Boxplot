@@ -132,6 +132,22 @@ fn native_mail_alice_bob_acceptance() {
         .expect("Bob Inbox snapshot");
     let received = bob_inbox.messages.first().expect("Bob received message");
     assert_eq!(received.subject.as_deref(), Some("Hola Bob"));
+    assert_eq!(
+        received
+            .from
+            .as_ref()
+            .and_then(|values| values.first())
+            .map(|value| value.email.as_str()),
+        Some("alice@boxplot.test")
+    );
+    assert_eq!(
+        received
+            .to
+            .as_ref()
+            .and_then(|values| values.first())
+            .map(|value| value.email.as_str()),
+        Some("bob@boxplot.test")
+    );
     assert_eq!(received.preview, "Mensaje desde Alice");
     assert!(received.size > 0);
     assert!(!received.internal_date.is_empty());
@@ -352,9 +368,12 @@ fn native_mail_alice_bob_acceptance() {
         })
         .expect("attachment metadata");
     assert_eq!(attachments.len(), 1);
+    assert!(!attachments[0].part_id.is_empty());
     assert_eq!(attachments[0].name.as_deref(), Some("note.txt"));
     assert_eq!(attachments[0].media_type, "text/plain");
+    assert!(attachments[0].size > 0);
     assert_eq!(attachments[0].disposition.as_deref(), Some("attachment"));
+    assert_eq!(attachments[0].cid.as_deref(), Some("fixture@example"));
 
     let spoof = runtime
         .smtp_submit(&submission(

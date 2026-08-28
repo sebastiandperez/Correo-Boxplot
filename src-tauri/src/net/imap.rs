@@ -185,7 +185,7 @@ impl ImapConnection {
                 "UID STORE {uid} {}FLAGS.SILENT ({flag})",
                 if *add { "+" } else { "-" }
             );
-            if let Err(mut error) = self.command(&command) {
+            if let Err(mut error) = self.mutation_command(&command) {
                 if applied {
                     error.retry = NativeMailRetry::Reconcile;
                     error.outcome = NativeMailOutcome::Unknown;
@@ -208,14 +208,16 @@ impl ImapConnection {
         if selected.uid_validity != expected_uid_validity {
             return Err(NativeMailErrorDto::state_invalid("uidvalidity_changed"));
         }
-        let lines = self.command(&format!("UID MOVE {uid} {}", quote(destination)?))?;
+        let lines = self.mutation_command(&format!("UID MOVE {uid} {}", quote(destination)?))?;
         let destination_uid = lines
             .iter()
             .find(|line| line.text.contains("[COPYUID "))
             .and_then(|line| line.text.split(']').next())
             .and_then(|value| value.split_whitespace().last())
             .and_then(|value| value.parse::<u32>().ok())
-            .ok_or_else(|| NativeMailErrorDto::protocol("imap_copyuid_missing"))?;
+            .ok_or_else(|| {
+                mutation_outcome(NativeMailErrorDto::protocol("imap_copyuid_missing"), true)
+            })?;
         Ok(NativeMoveResponse {
             source_mailbox: mailbox.to_owned(),
             source_uid_validity: expected_uid_validity,
@@ -260,25 +262,46 @@ impl ImapConnection {
     }
 
     fn command(&mut self, command: &str) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
+        self.command_with_outcome(command, false)
+    }
+
+    fn mutation_command(&mut self, command: &str) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
+        self.command_with_outcome(command, true)
+    }
+
+    fn command_with_outcome(
+        &mut self,
+        command: &str,
+        mutation: bool,
+    ) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
         let tag = format!("B{:04}", self.next_tag);
         self.next_tag = self.next_tag.saturating_add(1);
         self.writer
             .write_all(format!("{tag} {command}\r\n").as_bytes())
             .and_then(|_| self.writer.flush())
-            .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))?;
+            .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))
+            .map_err(|error| mutation_outcome(error, mutation))?;
         let mut lines = Vec::new();
         loop {
-            let text = self.read_text_line()?;
+            let text = self
+                .read_text_line()
+                .map_err(|error| mutation_outcome(error, mutation))?;
             let literal_length = literal_length(&text);
             let literal = match literal_length {
                 Some(length) => {
                     let mut value = vec![0_u8; length];
                     self.reader
                         .read_exact(&mut value)
-                        .map_err(|_| NativeMailErrorDto::unavailable("imap_literal_failed"))?;
-                    let trailer = self.read_text_line()?;
+                        .map_err(|_| NativeMailErrorDto::unavailable("imap_literal_failed"))
+                        .map_err(|error| mutation_outcome(error, mutation))?;
+                    let trailer = self
+                        .read_text_line()
+                        .map_err(|error| mutation_outcome(error, mutation))?;
                     if trailer != ")" {
-                        return Err(NativeMailErrorDto::protocol("imap_literal_trailer_invalid"));
+                        return Err(mutation_outcome(
+                            NativeMailErrorDto::protocol("imap_literal_trailer_invalid"),
+                            mutation,
+                        ));
                     }
                     Some(value)
                 }
@@ -308,6 +331,14 @@ impl ImapConnection {
         }
         String::from_utf8(line).map_err(|_| NativeMailErrorDto::protocol("imap_utf8_invalid"))
     }
+}
+
+fn mutation_outcome(mut error: NativeMailErrorDto, mutation: bool) -> NativeMailErrorDto {
+    if mutation {
+        error.retry = NativeMailRetry::Reconcile;
+        error.outcome = NativeMailOutcome::Unknown;
+    }
+    error
 }
 
 struct SelectedMailbox {
@@ -411,7 +442,8 @@ fn imap_date_to_rfc3339(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{imap_date_to_rfc3339, literal_length, quote};
+    use super::{imap_date_to_rfc3339, literal_length, mutation_outcome, quote};
+    use crate::net::errors::{NativeMailErrorDto, NativeMailOutcome, NativeMailRetry};
 
     #[test]
     fn parses_literal_and_date() {
@@ -426,5 +458,12 @@ mod tests {
     fn quotes_without_allowing_command_injection() {
         assert_eq!(quote("A \\\" B").expect("valid"), "\"A \\\\\\\" B\"");
         assert!(quote("INBOX\r\nLOGOUT").is_err());
+    }
+
+    #[test]
+    fn mutation_transport_failure_requires_reconciliation() {
+        let error = mutation_outcome(NativeMailErrorDto::unavailable("imap_read_failed"), true);
+        assert_eq!(error.retry, NativeMailRetry::Reconcile);
+        assert_eq!(error.outcome, NativeMailOutcome::Unknown);
     }
 }
