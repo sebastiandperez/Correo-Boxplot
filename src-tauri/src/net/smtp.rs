@@ -63,9 +63,7 @@ pub fn submit(
     };
     client.expect_code(220, false)?;
     client.command("EHLO boxplot.invalid", 250, false)?;
-    let credentials =
-        Zeroizing::new(STANDARD.encode(format!("\0{authenticated_user}\0{password}")));
-    let auth_command = Zeroizing::new(format!("AUTH PLAIN {}", credentials.as_str()));
+    let auth_command = auth_plain_command(authenticated_user, password);
     match client.command(&auth_command, 235, false) {
         Ok(()) => {}
         Err(error) if error.code == Some("smtp_rejected") => return Err(NativeMailErrorDto::auth()),
@@ -89,6 +87,19 @@ pub fn submit(
         accepted: true,
         receipt_id: built.message_id,
     })
+}
+
+fn auth_plain_command(username: &str, password: &str) -> Zeroizing<String> {
+    let mut plaintext = Zeroizing::new(Vec::with_capacity(username.len() + password.len() + 2));
+    plaintext.push(0);
+    plaintext.extend_from_slice(username.as_bytes());
+    plaintext.push(0);
+    plaintext.extend_from_slice(password.as_bytes());
+    let encoded = Zeroizing::new(STANDARD.encode(plaintext.as_slice()));
+    let mut command = Zeroizing::new(String::with_capacity(11 + encoded.len()));
+    command.push_str("AUTH PLAIN ");
+    command.push_str(encoded.as_str());
+    command
 }
 
 pub struct BuiltMessage {
@@ -303,7 +314,7 @@ fn dot_stuff(value: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::build_message;
+    use super::{auth_plain_command, build_message};
     use crate::net::dto::{NativeAddressDto, NativeSmtpSubmitRequest, NativeSubmissionBodyDto};
 
     fn request() -> NativeSmtpSubmitRequest {
@@ -347,6 +358,16 @@ mod tests {
         let mut value = request();
         value.subject = "ok\r\nBcc: attacker@example.test".to_owned();
         assert!(build_message(&value).is_err());
+    }
+
+    #[test]
+    fn auth_plain_command_is_owned_by_a_zeroizing_buffer() {
+        let command = auth_plain_command(
+            "alice@boxplot.test",
+            "BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291",
+        );
+        assert!(command.starts_with("AUTH PLAIN "));
+        assert!(!command.contains("BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291"));
     }
 
     #[test]

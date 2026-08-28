@@ -34,12 +34,30 @@ struct NativeMailSession {
 
 impl std::fmt::Debug for NativeMailSession {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        NativeMailSessionDebug {
+            username: &self.username,
+            password: self.password.as_str(),
+            smtp_endpoint: self.smtp_endpoint,
+        }
+        .fmt(formatter)
+    }
+}
+
+struct NativeMailSessionDebug<'a> {
+    username: &'a str,
+    password: &'a str,
+    smtp_endpoint: std::net::SocketAddr,
+}
+
+impl std::fmt::Debug for NativeMailSessionDebug<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let _credential_length = self.password.len();
         formatter
             .debug_struct("NativeMailSession")
             .field("username", &self.username)
             .field("password", &"[REDACTED]")
             .field("smtp_endpoint", &self.smtp_endpoint)
-            .field("imap", &self.imap)
+            .field("imap", &"ImapConnection { .. }")
             .finish()
     }
 }
@@ -220,7 +238,7 @@ fn flag_name(flag: NativeFlag) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{ManagedNativeMailRuntime, NativeMailSession};
+    use super::{ManagedNativeMailRuntime, NativeMailSessionDebug};
     use crate::net::{
         dto::NativeMailOpenRequest,
         errors::{NativeMailErrorKind, NativeMailOutcome},
@@ -228,14 +246,17 @@ mod tests {
     use std::fmt::Write as _;
 
     #[test]
-    fn debug_never_exposes_password_source() {
+    fn native_session_debug_never_exposes_password_source() {
+        let canary = "BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291";
+        let session_debug = NativeMailSessionDebug {
+            username: "alice@boxplot.test",
+            password: canary,
+            smtp_endpoint: "127.0.0.1:1587".parse().expect("SMTP endpoint"),
+        };
         let mut value = String::new();
-        let _ = write!(
-            &mut value,
-            "{:#?}",
-            std::any::type_name::<NativeMailSession>()
-        );
-        assert!(!value.contains("BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291"));
+        let _ = write!(&mut value, "{session_debug:#?}");
+        assert!(!value.contains(canary));
+        assert!(value.contains("[REDACTED]"));
     }
 
     #[test]

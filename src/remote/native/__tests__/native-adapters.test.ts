@@ -160,6 +160,107 @@ describe('ImapRemoteMail', () => {
     })
   })
 
+  it('discards an account snapshot when the mailbox fingerprint changes, then retries once', async () => {
+    const ipc = new FakeNativeMailIpc()
+    const stable = ipc.mailboxes
+    const changed = stable.map((mailbox) =>
+      mailbox.name === 'INBOX'
+        ? { ...mailbox, uidNext: mailbox.uidNext + 1 }
+        : mailbox,
+    )
+    const list = vi
+      .spyOn(ipc, 'listMailboxes')
+      .mockResolvedValueOnce(stable)
+      .mockResolvedValueOnce(changed)
+      .mockResolvedValueOnce(stable)
+      .mockResolvedValueOnce(stable)
+    const mail = new ImapRemoteMail(ipc, 's', 'alice@boxplot.test')
+
+    const result = await mail.syncEmails(mail.accountId, null)
+
+    expect(result.mode).toBe('replace')
+    expect(list).toHaveBeenCalledTimes(4)
+    expect(
+      ipc.calls.filter(([kind]) => kind === 'snapshotMailbox'),
+    ).toHaveLength(6)
+  })
+
+  it('surfaces conflict after two unstable account snapshots and returns no partial replace', async () => {
+    const ipc = new FakeNativeMailIpc()
+    const stable = ipc.mailboxes
+    const changed = stable.map((mailbox) =>
+      mailbox.name === 'Trash'
+        ? {
+            ...mailbox,
+            messages: mailbox.messages + 1,
+            uidNext: mailbox.uidNext + 1,
+          }
+        : mailbox,
+    )
+    const list = vi
+      .spyOn(ipc, 'listMailboxes')
+      .mockResolvedValueOnce(stable)
+      .mockResolvedValueOnce(changed)
+      .mockResolvedValueOnce(stable)
+      .mockResolvedValueOnce(changed)
+    const mail = new ImapRemoteMail(ipc, 's', 'alice@boxplot.test')
+
+    await expect(mail.syncEmails(mail.accountId, null)).rejects.toMatchObject({
+      kind: 'conflict',
+      retry: 'safeImmediate',
+      outcome: 'knownNotApplied',
+    })
+    expect(list).toHaveBeenCalledTimes(4)
+  })
+
+  it('retries a per-mailbox snapshot conflict once without exposing the discarded attempt', async () => {
+    const ipc = new FakeNativeMailIpc()
+    const conflict = {
+      kind: 'conflict',
+      retry: 'safeImmediate',
+      session: 'keep',
+      outcome: 'knownNotApplied',
+      code: 'imap_snapshot_changed',
+    } as const
+    const snapshot = vi.spyOn(ipc, 'snapshotMailbox')
+    snapshot.mockRejectedValueOnce(conflict)
+    const mail = new ImapRemoteMail(ipc, 's', 'alice@boxplot.test')
+
+    const result = await mail.syncEmails(mail.accountId, null)
+
+    expect(result.mode).toBe('replace')
+    expect(snapshot).toHaveBeenCalledTimes(4)
+  })
+
+  it('never returns an impossible mixed snapshot when a message moves between mailboxes', async () => {
+    const ipc = new FakeNativeMailIpc()
+    const beforeMove = ipc.mailboxes
+    const afterMove = beforeMove.map((mailbox) =>
+      mailbox.name === 'INBOX'
+        ? { ...mailbox, messages: 0, unseen: 0 }
+        : mailbox.name === 'Trash'
+          ? { ...mailbox, messages: 1, uidNext: 2 }
+          : mailbox,
+    )
+    vi.spyOn(ipc, 'listMailboxes')
+      .mockResolvedValueOnce(beforeMove)
+      .mockImplementationOnce(async () => {
+        ipc.mailboxes = afterMove
+        ipc.messages = [message({ mailbox: 'Trash', uidValidity: 3, uid: 1 })]
+        return afterMove
+      })
+      .mockResolvedValueOnce(afterMove)
+      .mockResolvedValueOnce(afterMove)
+    const mail = new ImapRemoteMail(ipc, 's', 'alice@boxplot.test')
+
+    const result = await mail.syncEmails(mail.accountId, null)
+
+    expect(result.mode).toBe('replace')
+    if (result.mode !== 'replace') throw new Error('expected replace')
+    expect(result.snapshot).toHaveLength(1)
+    expect(decodeImapEmailId(result.snapshot[0]!.id).mailbox).toBe('Trash')
+  })
+
   it('maps flags and creates deterministic state', async () => {
     const ipc = new FakeNativeMailIpc()
     ipc.messages = [message({ flags: ['\\Seen', '\\Flagged'] })]
