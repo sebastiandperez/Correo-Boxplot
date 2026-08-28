@@ -9,6 +9,7 @@
   "include": [
     "./browser-vitest-shim.ts",
     "./production-conformance.ts",
-    "./production-local-engine.harness.ts"
+    "./production-local-engine.harness.ts",
+    "./remote-boundary-hardening.ts"
   ]
 }
