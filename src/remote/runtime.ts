@@ -18,6 +18,9 @@ export type RemoteConnectionFactories = Readonly<{
   jmap: (
     config: Extract<RemoteConnectionConfig, { provider: 'jmap' }>,
   ) => RemoteConnection
+  imapSmtp?: (
+    config: Extract<RemoteConnectionConfig, { provider: 'imapSmtp' }>,
+  ) => RemoteConnection
 }>
 
 export function createRemoteConnection(
@@ -28,11 +31,17 @@ export function createRemoteConnection(
     case 'jmap':
       return factories.jmap(config)
     case 'imapSmtp':
-      throw new RemoteError('IMAP/SMTP remote adapter is not implemented', {
-        kind: 'unsupported',
-        retry: 'never',
-        session: 'keep',
-        outcome: 'notApplicable',
-      })
+      if (factories.imapSmtp === undefined) {
+        throw new RemoteError(
+          'IMAP/SMTP connection factory is not configured',
+          {
+            kind: 'unsupported',
+            retry: 'never',
+            session: 'keep',
+            outcome: 'notApplicable',
+          },
+        )
+      }
+      return factories.imapSmtp(config)
   }
 }
