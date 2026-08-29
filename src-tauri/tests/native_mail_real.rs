@@ -438,6 +438,146 @@ fn native_mail_alice_bob_acceptance() {
     runtime.close(&reopened.session_id).expect("close reopened");
 }
 
+#[test]
+#[ignore = "requires sibling Servidor-Boxplot; run scripts/test-native-mail.sh"]
+fn independent_body_peek_and_move_identity_verification() {
+    let _server = DemoServer::start(true);
+    let runtime = ManagedNativeMailRuntime::default();
+    let alice = open(&runtime, "alice@boxplot.test", "alice123");
+    let bob = open(&runtime, "bob@boxplot.test", "bob123");
+
+    runtime
+        .smtp_submit(&submission(
+            &alice.session_id,
+            "alice@boxplot.test",
+            vec![address("bob@boxplot.test")],
+            vec![],
+            "Independent BODY.PEEK and MOVE",
+            NativeSubmissionBodyDto::Plain {
+                text: "independent unread body".to_owned(),
+                html: None,
+            },
+            "independent-body-peek-move",
+        ))
+        .expect("independent fixture accepted");
+
+    let inbox = runtime
+        .snapshot_mailbox(&bob.session_id, "INBOX")
+        .expect("initial independent Inbox snapshot");
+    let received = inbox
+        .messages
+        .iter()
+        .find(|message| message.subject.as_deref() == Some("Independent BODY.PEEK and MOVE"))
+        .expect("independent message present")
+        .clone();
+    assert!(!received.flags.contains(&"\\Seen".to_owned()));
+    let target = NativeMessageRequest {
+        session_id: bob.session_id.clone(),
+        mailbox: "INBOX".to_owned(),
+        uid_validity: received.uid_validity,
+        uid: received.uid,
+    };
+
+    runtime.fetch_body(&target).expect("independent body fetch");
+    assert!(
+        !runtime
+            .snapshot_mailbox(&bob.session_id, "INBOX")
+            .expect("snapshot after body fetch")
+            .messages[0]
+            .flags
+            .contains(&"\\Seen".to_owned())
+    );
+    assert!(
+        runtime
+            .fetch_attachments(&target)
+            .expect("independent attachment metadata fetch")
+            .is_empty()
+    );
+    assert!(
+        !runtime
+            .snapshot_mailbox(&bob.session_id, "INBOX")
+            .expect("snapshot after attachment fetch")
+            .messages[0]
+            .flags
+            .contains(&"\\Seen".to_owned())
+    );
+
+    for (flag, wire) in [
+        (NativeFlag::Seen, "\\Seen"),
+        (NativeFlag::Flagged, "\\Flagged"),
+    ] {
+        runtime
+            .store_flags(&NativeStoreFlagsRequest {
+                session_id: bob.session_id.clone(),
+                mailbox: "INBOX".to_owned(),
+                uid_validity: received.uid_validity,
+                uid: received.uid,
+                add: vec![flag],
+                remove: vec![],
+            })
+            .expect("independent flag add");
+        assert!(
+            runtime
+                .snapshot_mailbox(&bob.session_id, "INBOX")
+                .expect("snapshot after flag add")
+                .messages[0]
+                .flags
+                .contains(&wire.to_owned())
+        );
+        runtime
+            .store_flags(&NativeStoreFlagsRequest {
+                session_id: bob.session_id.clone(),
+                mailbox: "INBOX".to_owned(),
+                uid_validity: received.uid_validity,
+                uid: received.uid,
+                add: vec![],
+                remove: vec![flag],
+            })
+            .expect("independent flag remove");
+        assert!(
+            !runtime
+                .snapshot_mailbox(&bob.session_id, "INBOX")
+                .expect("snapshot after flag remove")
+                .messages[0]
+                .flags
+                .contains(&wire.to_owned())
+        );
+    }
+
+    let moved = runtime
+        .move_message(&NativeMoveRequest {
+            session_id: bob.session_id.clone(),
+            mailbox: "INBOX".to_owned(),
+            uid_validity: received.uid_validity,
+            uid: received.uid,
+            destination_mailbox: "Trash".to_owned(),
+        })
+        .expect("independent move accepted");
+    assert!(
+        runtime
+            .snapshot_mailbox(&bob.session_id, "INBOX")
+            .expect("source snapshot after move")
+            .messages
+            .is_empty()
+    );
+    let trash = runtime
+        .snapshot_mailbox(&bob.session_id, "Trash")
+        .expect("destination snapshot after move");
+    let destination = trash
+        .messages
+        .iter()
+        .find(|message| message.subject.as_deref() == Some("Independent BODY.PEEK and MOVE"))
+        .expect("moved message has destination identity");
+    assert_eq!(destination.uid, moved.destination_uid);
+    assert_ne!(
+        ("INBOX", received.uid_validity, received.uid),
+        ("Trash", destination.uid_validity, destination.uid)
+    );
+
+    runtime.close(&alice.session_id).expect("close Alice");
+    runtime.close(&bob.session_id).expect("close Bob");
+}
+
 fn open(
     runtime: &ManagedNativeMailRuntime,
     username: &str,
