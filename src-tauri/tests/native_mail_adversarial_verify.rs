@@ -16,7 +16,9 @@ use correo_boxplot_lib::net::{
         NativeMoveRequest, NativeSmtpSubmitRequest, NativeStoreFlagsRequest,
         NativeSubmissionBodyDto,
     },
-    errors::{NativeMailErrorKind, NativeMailOutcome, NativeMailRetry},
+    errors::{
+        NativeMailErrorKind, NativeMailOutcome, NativeMailRetry, NativeMailSessionDisposition,
+    },
 };
 
 const USER: &str = "alice@boxplot.test";
@@ -137,13 +139,23 @@ impl ImapPeer {
     }
 
     fn full_fetch(&mut self, uid: u32, flags: &[&str], raw: &[u8]) {
+        self.full_fetch_with_uid_attribute(uid, &format!("UID {uid}"), flags, raw);
+    }
+
+    fn full_fetch_with_uid_attribute(
+        &mut self,
+        requested_uid: u32,
+        uid_attribute: &str,
+        flags: &[&str],
+        raw: &[u8],
+    ) {
         let (tag, command) = self.command();
         assert_eq!(
             command,
-            format!("UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])")
+            format!("UID FETCH {requested_uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])")
         );
         let header = format!(
-            "* {uid} FETCH (UID {uid} FLAGS ({}) INTERNALDATE \"28-Aug-2026 12:01:02 +0000\" RFC822.SIZE {} BODY[] {{{}}}\r\n",
+            "* 1 FETCH ({uid_attribute} FLAGS ({}) INTERNALDATE \"28-Aug-2026 12:01:02 +0000\" RFC822.SIZE {} BODY[] {{{}}}\r\n",
             flags.join(" "),
             raw.len(),
             raw.len()
@@ -163,6 +175,347 @@ impl ImapPeer {
             )],
         );
     }
+}
+
+#[test]
+fn parser_repair_wrong_full_fetch_uid_never_returns_snapshot_body_or_attachments() {
+    let snapshot_raw = raw_message("Wrong full UID", "body-for-99");
+    let snapshot_server = spawn_server(move |stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        peer.select(7);
+        peer.status(1, 1, 43, 7);
+        peer.search(&[42]);
+        peer.full_fetch_with_uid_attribute(42, "UID 99", &[], snapshot_raw.as_slice());
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, snapshot_server.port, unused_port());
+    let error = runtime
+        .snapshot_mailbox(&session, "INBOX")
+        .expect_err("wrong full-FETCH UID must not produce a snapshot");
+    assert_eq!(error.kind, NativeMailErrorKind::Conflict);
+    assert_eq!(error.code, Some("imap_snapshot_changed"));
+    snapshot_server.finish();
+
+    for attachments in [false, true] {
+        let raw = if attachments {
+            concat!(
+                "From: alice@boxplot.test\r\nTo: bob@boxplot.test\r\n",
+                "Subject: wrong UID attachment\r\n",
+                "Content-Type: multipart/mixed; boundary=x\r\n\r\n",
+                "--x\r\nContent-Type: text/plain\r\n\r\nbody-for-99\r\n",
+                "--x\r\nContent-Type: text/plain; name=secret.txt\r\n",
+                "Content-Disposition: attachment; filename=secret.txt\r\n\r\nsecret\r\n",
+                "--x--\r\n"
+            )
+            .as_bytes()
+            .to_vec()
+        } else {
+            raw_message("Wrong direct UID", "body-for-99")
+        };
+        let server = spawn_server(move |stream| {
+            let mut peer = ImapPeer::new(stream, false);
+            peer.authenticate();
+            peer.select(7);
+            peer.full_fetch_with_uid_attribute(42, "UID 99", &[], raw.as_slice());
+        });
+        let runtime = ManagedNativeMailRuntime::default();
+        let session = open(&runtime, server.port, unused_port());
+        let target = NativeMessageRequest {
+            session_id: session,
+            mailbox: "INBOX".to_owned(),
+            uid_validity: 7,
+            uid: 42,
+        };
+        let error = if attachments {
+            runtime
+                .fetch_attachments(&target)
+                .expect_err("wrong UID must not supply attachment metadata")
+        } else {
+            runtime
+                .fetch_body(&target)
+                .expect_err("wrong UID must not supply body")
+        };
+        assert_eq!(error.kind, NativeMailErrorKind::StateInvalid);
+        assert_eq!(error.code, Some("imap_uid_mismatch"));
+        assert_eq!(error.session, NativeMailSessionDisposition::Keep);
+        server.finish();
+    }
+}
+
+#[test]
+fn parser_repair_missing_and_invalid_full_fetch_uid_expire_session() {
+    for uid_attribute in ["", "UID abc", "UID 4294967296"] {
+        let raw = raw_message("Invalid UID", "must-not-return");
+        let server = spawn_server(move |stream| {
+            let mut peer = ImapPeer::new(stream, false);
+            peer.authenticate();
+            peer.select(7);
+            peer.full_fetch_with_uid_attribute(42, uid_attribute, &[], raw.as_slice());
+        });
+        let runtime = ManagedNativeMailRuntime::default();
+        let session = open(&runtime, server.port, unused_port());
+        let error = runtime
+            .fetch_body(&NativeMessageRequest {
+                session_id: session.clone(),
+                mailbox: "INBOX".to_owned(),
+                uid_validity: 7,
+                uid: 42,
+            })
+            .expect_err("missing/malformed returned UID must fail");
+        assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+        assert_eq!(
+            error.code,
+            Some(if uid_attribute.is_empty() {
+                "imap_uid_missing"
+            } else {
+                "imap_uid_invalid"
+            })
+        );
+        assert_eq!(error.session, NativeMailSessionDisposition::Expire);
+        assert_eq!(
+            runtime
+                .list_mailboxes(&session)
+                .expect_err("protocol error expires session")
+                .kind,
+            NativeMailErrorKind::StateInvalid
+        );
+        server.finish();
+    }
+}
+
+#[test]
+fn parser_repair_huge_and_malformed_literal_lengths_fail_before_body_read() {
+    for (literal, code) in [
+        ("2097153", "imap_literal_too_large"),
+        ("184467440737095516160", "imap_literal_length_invalid"),
+        ("", "imap_literal_length_invalid"),
+        ("abc", "imap_literal_length_invalid"),
+        ("-1", "imap_literal_length_invalid"),
+    ] {
+        let server = spawn_server(move |stream| {
+            let mut peer = ImapPeer::new(stream, false);
+            peer.authenticate();
+            peer.select(7);
+            let (_tag, command) = peer.command();
+            assert!(command.starts_with("UID FETCH 42 "));
+            peer.write(format!("* 1 FETCH (UID 42 FLAGS () BODY[] {{{literal}}}\r\n").as_bytes());
+            let _ = peer.writer.shutdown(Shutdown::Write);
+        });
+        let runtime = ManagedNativeMailRuntime::default();
+        let session = open(&runtime, server.port, unused_port());
+        let error = runtime
+            .fetch_body(&NativeMessageRequest {
+                session_id: session.clone(),
+                mailbox: "INBOX".to_owned(),
+                uid_validity: 7,
+                uid: 42,
+            })
+            .expect_err("invalid literal length must fail before reading body");
+        assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+        assert_eq!(error.code, Some(code));
+        assert_eq!(error.session, NativeMailSessionDisposition::Expire);
+        server.finish();
+    }
+}
+
+#[test]
+fn parser_repair_oversized_no_newline_line_fails_without_waiting_for_newline() {
+    let server = spawn_server(|stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        let (_tag, command) = peer.command();
+        assert!(command.starts_with("LIST "));
+        peer.write(&vec![b'x'; 64 * 1024 + 1]);
+        let _ = read_line(&mut peer.reader);
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, server.port, unused_port());
+    let started = Instant::now();
+    let error = runtime
+        .list_mailboxes(&session)
+        .expect_err("oversized unterminated line must fail at the bound");
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_line_too_large"));
+    assert_eq!(error.session, NativeMailSessionDisposition::Expire);
+    server.finish();
+}
+
+#[test]
+fn parser_repair_duplicate_and_cumulative_literals_fail_closed() {
+    let raw = raw_message("Duplicate", "first");
+    let duplicate = spawn_server(move |stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        peer.select(7);
+        let (tag, command) = peer.command();
+        assert!(command.starts_with("UID FETCH 42 "));
+        for sequence in [1, 2] {
+            peer.write(
+                format!(
+                    "* {sequence} FETCH (UID 42 FLAGS () INTERNALDATE \"28-Aug-2026 12:01:02 +0000\" RFC822.SIZE {} BODY[] {{{}}}\r\n",
+                    raw.len(),
+                    raw.len()
+                )
+                .as_bytes(),
+            );
+            peer.write(raw.as_slice());
+            peer.write(b")\r\n");
+        }
+        peer.tagged(&tag, &[]);
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, duplicate.port, unused_port());
+    let error = runtime
+        .fetch_body(&NativeMessageRequest {
+            session_id: session,
+            mailbox: "INBOX".to_owned(),
+            uid_validity: 7,
+            uid: 42,
+        })
+        .expect_err("two literal-bearing FETCH responses are invalid");
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_fetch_duplicate"));
+    duplicate.finish();
+
+    let cumulative = spawn_server(|stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        peer.select(7);
+        let (_tag, command) = peer.command();
+        assert!(command.starts_with("UID FETCH 42 "));
+        peer.write(
+            b"* 1 FETCH (UID 42 FLAGS () INTERNALDATE \"28-Aug-2026 12:01:02 +0000\" RFC822.SIZE 2097152 BODY[] {2097152}\r\n",
+        );
+        peer.write(&vec![b'x'; 2 * 1024 * 1024]);
+        peer.write(b")\r\n");
+        peer.write(b"* 2 FETCH (UID 42 BODY[] {1}\r\n");
+        let _ = peer.writer.shutdown(Shutdown::Write);
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, cumulative.port, unused_port());
+    let error = runtime
+        .fetch_body(&NativeMessageRequest {
+            session_id: session,
+            mailbox: "INBOX".to_owned(),
+            uid_validity: 7,
+            uid: 42,
+        })
+        .expect_err("cumulative literals above the command budget are invalid");
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_literal_too_large"));
+    assert_eq!(error.session, NativeMailSessionDisposition::Expire);
+    cumulative.finish();
+}
+
+#[test]
+fn parser_repair_response_line_and_text_budgets_fail_finitely() {
+    let too_many = spawn_server(|stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        let (_tag, command) = peer.command();
+        assert!(command.starts_with("LIST "));
+        for _ in 0..4097 {
+            if peer.writer.write_all(b"* OK filler\r\n").is_err() {
+                break;
+            }
+        }
+        let _ = peer.writer.flush();
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, too_many.port, unused_port());
+    let error = runtime
+        .list_mailboxes(&session)
+        .expect_err("response line count is bounded");
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_response_too_large"));
+    too_many.finish();
+
+    let cumulative_text = spawn_server(|stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        let (_tag, command) = peer.command();
+        assert!(command.starts_with("LIST "));
+        let mut line = Vec::with_capacity(65_532);
+        line.extend_from_slice(b"* OK ");
+        line.extend(std::iter::repeat_n(b'x', 65_525));
+        line.extend_from_slice(b"\r\n");
+        for _ in 0..17 {
+            if peer.writer.write_all(&line).is_err() {
+                break;
+            }
+            let _ = peer.writer.flush();
+        }
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, cumulative_text.port, unused_port());
+    let error = runtime
+        .list_mailboxes(&session)
+        .expect_err("cumulative response text is bounded");
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_response_too_large"));
+    cumulative_text.finish();
+}
+
+#[test]
+fn parser_repair_malformed_tag_greeting_and_select_are_typed_failures() {
+    let malformed_tag = spawn_server(|stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        let (tag, command) = peer.command();
+        assert!(command.starts_with("LIST "));
+        peer.write(format!("{tag} WHAT nonsense\r\n").as_bytes());
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, malformed_tag.port, unused_port());
+    let error = runtime
+        .list_mailboxes(&session)
+        .expect_err("unknown tagged status is malformed protocol");
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_tagged_response_invalid"));
+    malformed_tag.finish();
+
+    for greeting in ["HELLO\r\n", "* PREAUTH unsupported\r\n", "garbage\r\n"] {
+        let server = spawn_server(move |mut stream| {
+            stream
+                .write_all(greeting.as_bytes())
+                .expect("malformed greeting");
+            stream.flush().expect("greeting flush");
+        });
+        let runtime = ManagedNativeMailRuntime::default();
+        let error = runtime
+            .open(request("127.0.0.1", server.port, unused_port(), PASSWORD))
+            .expect_err("non-OK greeting must not register a session");
+        assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+        assert_eq!(error.code, Some("imap_greeting_rejected"));
+        server.finish();
+    }
+
+    let missing_uidvalidity = spawn_server(|stream| {
+        let mut peer = ImapPeer::new(stream, false);
+        peer.authenticate();
+        let (tag, command) = peer.command();
+        assert!(command.starts_with("SELECT "));
+        peer.tagged(&tag, &[]);
+        assert!(
+            read_line(&mut peer.reader).is_err(),
+            "no UID command follows a SELECT without UIDVALIDITY"
+        );
+    });
+    let runtime = ManagedNativeMailRuntime::default();
+    let session = open(&runtime, missing_uidvalidity.port, unused_port());
+    let error = runtime
+        .fetch_body(&NativeMessageRequest {
+            session_id: session,
+            mailbox: "INBOX".to_owned(),
+            uid_validity: 7,
+            uid: 42,
+        })
+        .expect_err("SELECT without UIDVALIDITY fails before UID FETCH");
+    assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+    assert_eq!(error.code, Some("imap_uidvalidity_missing"));
+    missing_uidvalidity.finish();
 }
 
 fn spawn_server(handler: impl FnOnce(TcpStream) + Send + 'static) -> TestServer {

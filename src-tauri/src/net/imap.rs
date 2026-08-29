@@ -14,6 +14,10 @@ use super::{
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_IMAP_LINE_BYTES: usize = 64 * 1024;
+const MAX_IMAP_LITERAL_BYTES: usize = 2 * 1024 * 1024;
+const MAX_IMAP_RESPONSE_LINES: usize = 4096;
+const MAX_IMAP_RESPONSE_TEXT_BYTES: usize = 1024 * 1024;
 
 struct ResponseLine {
     text: String,
@@ -241,10 +245,19 @@ impl ImapConnection {
         let lines = self.command(&format!(
             "UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])"
         ))?;
-        let line = lines
-            .into_iter()
-            .find(|line| line.literal.is_some())
+        let mut fetched = lines.into_iter().filter(|line| {
+            line.literal.is_some() && line.text.starts_with("* ") && line.text.contains(" FETCH ")
+        });
+        let line = fetched
+            .next()
             .ok_or_else(|| NativeMailErrorDto::state_invalid("imap_message_absent"))?;
+        if fetched.next().is_some() {
+            return Err(NativeMailErrorDto::protocol("imap_fetch_duplicate"));
+        }
+        let fetched_uid = fetch_uid(&line.text)?;
+        if fetched_uid != uid {
+            return Err(NativeMailErrorDto::state_invalid("imap_uid_mismatch"));
+        }
         let flags = between(&line.text, "FLAGS (", ")")
             .unwrap_or_default()
             .split_whitespace()
@@ -327,13 +340,28 @@ impl ImapConnection {
             .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))
             .map_err(|error| mutation_outcome(error, mutation))?;
         let mut lines = Vec::new();
+        let mut response_line_count = 0_usize;
+        let mut response_text_bytes = 0_usize;
+        let mut response_literal_bytes = 0_usize;
         loop {
             let text = self
                 .read_text_line()
                 .map_err(|error| mutation_outcome(error, mutation))?;
-            let literal_length = literal_length(&text);
+            account_response_text(&mut response_line_count, &mut response_text_bytes, &text)
+                .map_err(|error| mutation_outcome(error, mutation))?;
+            let literal_length =
+                parse_literal_length(&text).map_err(|error| mutation_outcome(error, mutation))?;
             let literal = match literal_length {
                 Some(length) => {
+                    response_literal_bytes = response_literal_bytes
+                        .checked_add(length)
+                        .filter(|total| *total <= MAX_IMAP_LITERAL_BYTES)
+                        .ok_or_else(|| {
+                            mutation_outcome(
+                                NativeMailErrorDto::protocol("imap_literal_too_large"),
+                                mutation,
+                            )
+                        })?;
                     let mut value = vec![0_u8; length];
                     self.reader
                         .read_exact(&mut value)
@@ -342,6 +370,12 @@ impl ImapConnection {
                     let trailer = self
                         .read_text_line()
                         .map_err(|error| mutation_outcome(error, mutation))?;
+                    account_response_text(
+                        &mut response_line_count,
+                        &mut response_text_bytes,
+                        &trailer,
+                    )
+                    .map_err(|error| mutation_outcome(error, mutation))?;
                     if trailer != ")" {
                         return Err(mutation_outcome(
                             NativeMailErrorDto::protocol("imap_literal_trailer_invalid"),
@@ -352,30 +386,76 @@ impl ImapConnection {
                 }
                 None => None,
             };
-            if text.starts_with(&format!("{tag} ")) {
-                if text.starts_with(&format!("{tag} OK")) {
-                    return Ok(lines);
-                }
-                return Err(NativeMailErrorDto::rejected("imap_command_rejected"));
+            if let Some(tagged) = text
+                .strip_prefix(&tag)
+                .and_then(|rest| rest.strip_prefix(' '))
+            {
+                return match tagged.split_whitespace().next() {
+                    Some("OK") => Ok(lines),
+                    Some("NO" | "BAD") => {
+                        Err(NativeMailErrorDto::rejected("imap_command_rejected"))
+                    }
+                    _ => Err(mutation_outcome(
+                        NativeMailErrorDto::protocol("imap_tagged_response_invalid"),
+                        mutation,
+                    )),
+                };
             }
             lines.push(ResponseLine { text, literal });
         }
     }
 
     fn read_text_line(&mut self) -> Result<String, NativeMailErrorDto> {
-        let mut line = Vec::new();
-        let read = self
-            .reader
-            .read_until(b'\n', &mut line)
+        read_bounded_text_line(&mut self.reader)
+    }
+}
+
+fn read_bounded_text_line(reader: &mut impl BufRead) -> Result<String, NativeMailErrorDto> {
+    let mut line = Vec::new();
+    loop {
+        let available = reader
+            .fill_buf()
             .map_err(|_| NativeMailErrorDto::unavailable("imap_read_failed"))?;
-        if read == 0 {
+        if available.is_empty() {
             return Err(NativeMailErrorDto::unavailable("imap_connection_closed"));
         }
-        while matches!(line.last(), Some(b'\n' | b'\r')) {
-            line.pop();
+
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let take = newline.map_or(available.len(), |position| position + 1);
+        let next_length = line
+            .len()
+            .checked_add(take)
+            .filter(|length| *length <= MAX_IMAP_LINE_BYTES)
+            .ok_or_else(|| NativeMailErrorDto::protocol("imap_line_too_large"))?;
+        line.reserve(next_length - line.len());
+        line.extend_from_slice(&available[..take]);
+        reader.consume(take);
+
+        if newline.is_some() {
+            break;
         }
-        String::from_utf8(line).map_err(|_| NativeMailErrorDto::protocol("imap_utf8_invalid"))
     }
+
+    while matches!(line.last(), Some(b'\n' | b'\r')) {
+        line.pop();
+    }
+    String::from_utf8(line).map_err(|_| NativeMailErrorDto::protocol("imap_utf8_invalid"))
+}
+
+fn account_response_text(
+    line_count: &mut usize,
+    text_bytes: &mut usize,
+    text: &str,
+) -> Result<(), NativeMailErrorDto> {
+    *line_count = line_count
+        .checked_add(1)
+        .filter(|count| *count <= MAX_IMAP_RESPONSE_LINES)
+        .ok_or_else(|| NativeMailErrorDto::protocol("imap_response_too_large"))?;
+    *text_bytes = text_bytes
+        .checked_add(text.len())
+        .filter(|bytes| *bytes <= MAX_IMAP_RESPONSE_TEXT_BYTES)
+        .ok_or_else(|| NativeMailErrorDto::protocol("imap_response_too_large"))?;
+    Ok(())
 }
 
 fn ensure_snapshot_stable(
@@ -507,6 +587,22 @@ fn number_after(value: &str, key: &str) -> Result<u64, NativeMailErrorDto> {
         .ok_or_else(|| NativeMailErrorDto::protocol("imap_numeric_response_invalid"))
 }
 
+fn fetch_uid(value: &str) -> Result<u32, NativeMailErrorDto> {
+    let mut tokens = value
+        .split(|character: char| character.is_ascii_whitespace() || matches!(character, '(' | ')'))
+        .filter(|token| !token.is_empty());
+    while let Some(token) = tokens.next() {
+        if token == "UID" {
+            return tokens
+                .next()
+                .ok_or_else(|| NativeMailErrorDto::protocol("imap_uid_invalid"))?
+                .parse::<u32>()
+                .map_err(|_| NativeMailErrorDto::protocol("imap_uid_invalid"));
+        }
+    }
+    Err(NativeMailErrorDto::protocol("imap_uid_missing"))
+}
+
 fn bracket_number(value: &str, key: &str) -> Option<u32> {
     let marker = format!("[{key} ");
     value.split_once(&marker)?.1.split(']').next()?.parse().ok()
@@ -517,8 +613,28 @@ fn between<'a>(value: &'a str, start: &str, end: &str) -> Option<&'a str> {
     Some(rest.split_once(end)?.0)
 }
 
-fn literal_length(value: &str) -> Option<usize> {
-    value.strip_suffix('}')?.rsplit_once('{')?.1.parse().ok()
+fn parse_literal_length(value: &str) -> Result<Option<usize>, NativeMailErrorDto> {
+    if !value.ends_with('}') {
+        return Ok(None);
+    }
+    let Some((_, literal)) = value.rsplit_once('{') else {
+        return Ok(None);
+    };
+    let literal = literal
+        .strip_suffix('}')
+        .ok_or_else(|| NativeMailErrorDto::protocol("imap_literal_length_invalid"))?;
+    if literal.is_empty() || !literal.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(NativeMailErrorDto::protocol("imap_literal_length_invalid"));
+    }
+    let parsed = literal
+        .parse::<u64>()
+        .map_err(|_| NativeMailErrorDto::protocol("imap_literal_length_invalid"))?;
+    let length = usize::try_from(parsed)
+        .map_err(|_| NativeMailErrorDto::protocol("imap_literal_length_invalid"))?;
+    if length > MAX_IMAP_LITERAL_BYTES {
+        return Err(NativeMailErrorDto::protocol("imap_literal_too_large"));
+    }
+    Ok(Some(length))
 }
 
 fn imap_date_to_rfc3339(value: &str) -> Option<String> {
@@ -557,19 +673,99 @@ fn imap_date_to_rfc3339(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_flags, ensure_snapshot_stable, imap_date_to_rfc3339, literal_length,
-        login_command, mutation_outcome, quote, write_imap_command,
+        MAX_IMAP_LINE_BYTES, MAX_IMAP_LITERAL_BYTES, account_response_text, canonical_flags,
+        ensure_snapshot_stable, fetch_uid, imap_date_to_rfc3339, login_command, mutation_outcome,
+        parse_literal_length, quote, read_bounded_text_line, write_imap_command,
     };
     use crate::net::dto::NativeMailboxDto;
-    use crate::net::errors::{NativeMailErrorDto, NativeMailOutcome, NativeMailRetry};
-    use std::collections::BTreeMap;
+    use crate::net::errors::{
+        NativeMailErrorDto, NativeMailErrorKind, NativeMailOutcome, NativeMailRetry,
+    };
+    use std::{collections::BTreeMap, io::Cursor};
 
     #[test]
     fn parses_literal_and_date() {
-        assert_eq!(literal_length("* 1 FETCH (BODY[] {42}"), Some(42));
+        assert_eq!(parse_literal_length("* 1 FETCH (BODY[] {42}"), Ok(Some(42)));
         assert_eq!(
             imap_date_to_rfc3339("28-Aug-2026 12:01:02 +0000").as_deref(),
             Some("2026-08-28T12:01:02+00:00")
+        );
+    }
+
+    #[test]
+    fn parses_mandatory_fetch_uid_without_using_sequence_number() {
+        assert_eq!(fetch_uid("* 17 FETCH (UID 42 FLAGS ())"), Ok(42));
+        assert_eq!(
+            fetch_uid("* 17 FETCH (FLAGS ())")
+                .expect_err("UID is mandatory")
+                .code,
+            Some("imap_uid_missing")
+        );
+        assert_eq!(
+            fetch_uid("* 17 FETCH (UID 4294967296 FLAGS ())")
+                .expect_err("UID must fit u32")
+                .code,
+            Some("imap_uid_invalid")
+        );
+    }
+
+    #[test]
+    fn literal_parser_rejects_malformed_overflow_and_oversized_lengths() {
+        assert_eq!(parse_literal_length("* OK ordinary response"), Ok(None));
+        assert_eq!(
+            parse_literal_length(&format!("* 1 FETCH (BODY[] {{{MAX_IMAP_LITERAL_BYTES}}}")),
+            Ok(Some(MAX_IMAP_LITERAL_BYTES))
+        );
+        for value in ["{}", "{abc}", "{-1}", "{184467440737095516160}"] {
+            let error = parse_literal_length(value).expect_err("invalid literal marker");
+            assert_eq!(error.kind, NativeMailErrorKind::Protocol);
+            assert_eq!(error.code, Some("imap_literal_length_invalid"));
+        }
+        assert_eq!(
+            parse_literal_length(&format!("{{{}}}", MAX_IMAP_LITERAL_BYTES + 1))
+                .expect_err("oversized literal")
+                .code,
+            Some("imap_literal_too_large")
+        );
+    }
+
+    #[test]
+    fn bounded_line_reader_accepts_exact_limit_and_rejects_one_more_byte() {
+        let mut accepted = vec![b'x'; MAX_IMAP_LINE_BYTES - 2];
+        accepted.extend_from_slice(b"\r\n");
+        let parsed = read_bounded_text_line(&mut Cursor::new(accepted)).expect("boundary line");
+        assert_eq!(parsed.len(), MAX_IMAP_LINE_BYTES - 2);
+
+        let mut rejected = vec![b'x'; MAX_IMAP_LINE_BYTES - 1];
+        rejected.extend_from_slice(b"\r\n");
+        let error =
+            read_bounded_text_line(&mut Cursor::new(rejected)).expect_err("line above byte limit");
+        assert_eq!(error.code, Some("imap_line_too_large"));
+    }
+
+    #[test]
+    fn cumulative_response_accounting_is_checked_and_bounded() {
+        let mut lines = 0;
+        let mut bytes = 0;
+        account_response_text(&mut lines, &mut bytes, "OK").expect("small response");
+        assert_eq!((lines, bytes), (1, 2));
+
+        let mut lines = super::MAX_IMAP_RESPONSE_LINES;
+        let mut bytes = 0;
+        assert_eq!(
+            account_response_text(&mut lines, &mut bytes, "x")
+                .expect_err("line count bound")
+                .code,
+            Some("imap_response_too_large")
+        );
+
+        let mut lines = 0;
+        let mut bytes = super::MAX_IMAP_RESPONSE_TEXT_BYTES;
+        assert_eq!(
+            account_response_text(&mut lines, &mut bytes, "x")
+                .expect_err("text byte bound")
+                .code,
+            Some("imap_response_too_large")
         );
     }
 
