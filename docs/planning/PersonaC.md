@@ -70,6 +70,21 @@ zeroizan donde es práctico, sin afirmar borrado absoluto de temporales del
 compilador o librerías. Contratos, Coordinator, Outbox e inventarios IPC siguen
 congelados.
 
+## REMOTE-APPLICATION-01
+
+**Estado: COMPLETE · pendiente de verificación independiente.** ADR-010 añade
+`RemoteApplication` como lifecycle protocol-neutral por `AccountKey`. Connect
+autentica y exige un binding exacto `ServiceKey + RemoteAccountId`; una cuenta
+nueva solo se registra ante un único descriptor remoto. No hay rebind
+silencioso, retención de credenciales ni sincronización implícita.
+
+Refresh usa el `Coordinator` real y persiste exclusivamente mediante `SyncPort`.
+Disconnect, dispose y generaciones por cuenta impiden que operaciones tardías
+resuciten sesiones o status. La composición Tauri productiva habilita
+IMAP/SMTP; JMAP conserva de forma explícita su Worker hasta una migración
+separada. A2-02/A2-03/A2-04/A2-05 y la ejecución de Outbox/body siguen abiertos;
+este bloque solo los desbloquea.
+
 
 ## SPRINT 2 
 

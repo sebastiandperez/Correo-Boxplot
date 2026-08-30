@@ -38,7 +38,9 @@ La secuencia obligatoria del core es:
 15. SQLCIPHER-PACKAGING-01 — completo en Linux y Windows x86_64 MSVC: source 4.17.0/SQLite 3.53.3 y OpenSSL 3.6.3 vendored, runtime exacto fail-closed, compatibilidad 4.14, DEB y NSIS instalado verificados.
 16. SPRINT1-INTEGRATION-GATE-01 — A-01→A-08 completos sobre la cadena productiva local; SQLCipher Development → Vue, P-03 → reread → UI y SendMutation durable verificados sin servidor remoto.
 17. REMOTE-BOUNDARY-01 — completado; JMAP detrás de RemoteMail/Submission, Coordinator/Outbox protocol-neutral.
-18. Adapters IMAP/SMTP, BodyMaterializer E2EE y aceptación remota — siguientes bloques separados.
+18. NATIVE-MAIL-PROTOCOLS + hardening/parser reverify — completos y congelados.
+19. REMOTE-APPLICATION-01 — implementación completa; verificación independiente siguiente.
+20. BodyMaterializer E2EE, Outbox execution y aceptación remota — bloques separados posteriores.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
