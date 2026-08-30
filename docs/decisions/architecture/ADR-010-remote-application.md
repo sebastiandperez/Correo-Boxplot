@@ -1,6 +1,40 @@
 # ADR-010 — Orquestación protocol-neutral de RemoteApplication
 
-**Status:** ACCEPTED
+**Status:** ACCEPTED · FULLY FROZEN
+
+## Freeze record
+
+`RemoteApplication` quedó formalmente **FULLY FROZEN** después de
+`REMOTE-APPLICATION-REVERIFY-AND-FREEZE-01`. La verificación independiente
+original encontró `RA-VF-001`; `REMOTE-APPLICATION-REPAIR-01` corrigió la
+autoridad reentrante y el reverify final aprobó todos los gates `RF01`–`RF70`.
+
+```text
+unresolved P0: 0
+unresolved P1: 0
+```
+
+Superficie pública congelada:
+
+```text
+connect
+disconnect
+refreshAccount
+getStatus
+subscribe
+dispose
+```
+
+También quedan congelados el binding exacto por cuenta, el lifecycle de
+sesión, la autoridad por generaciones, status, suscripciones, keep/expire y
+dispose. El core continúa sin envío, materialización de body, ejecución de
+Outbox, persistencia de credenciales, ramas de provider o exposición de
+`RemoteSession`.
+
+Los archivos core `types.ts`, `errors.ts`, `session-registry.ts` y
+`remote-application.ts` se tratan como read-only para trabajo posterior. La
+composición productiva IMAP/SMTP está aceptada; la migración del lifecycle JMAP
+desde el Worker permanece diferida.
 
 ## Context
 
@@ -59,7 +93,6 @@ su texto ni reabrir Domain, Ports, IPC o persistencia.
 
 ## Deferred
 
-- Verificación adversarial independiente de `RemoteApplication`.
 - Migración del lifecycle JMAP desde el Worker.
 - Integración de AccountSetup, routing inicial, UI de status y botón Refresh.
 - Materialización de body/E2EE, ejecución de Outbox y reconciliación SMTP.

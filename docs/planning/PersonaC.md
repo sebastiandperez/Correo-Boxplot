@@ -72,7 +72,7 @@ congelados.
 
 ## REMOTE-APPLICATION-01
 
-**Estado: COMPLETE · pendiente de verificación independiente.** ADR-010 añade
+**Estado: FULLY FROZEN.** ADR-010 añade
 `RemoteApplication` como lifecycle protocol-neutral por `AccountKey`. Connect
 autentica y exige un binding exacto `ServiceKey + RemoteAccountId`; una cuenta
 nueva solo se registra ante un único descriptor remoto. No hay rebind
@@ -82,8 +82,9 @@ Refresh usa el `Coordinator` real y persiste exclusivamente mediante `SyncPort`.
 Disconnect, dispose y generaciones por cuenta impiden que operaciones tardías
 resuciten sesiones o status. La composición Tauri productiva habilita
 IMAP/SMTP; JMAP conserva de forma explícita su Worker hasta una migración
-separada. A2-02/A2-03/A2-04/A2-05 y la ejecución de Outbox/body siguen abiertos;
-este bloque solo los desbloquea.
+separada. `REMOTE-APPLICATION-REVERIFY-AND-FREEZE-01` verificó la reparación
+reentrante y cerró `RF01`–`RF70` sin P0/P1. A2-02/A2-03/A2-04/A2-05 y la
+ejecución de Outbox/body siguen abiertos; este bloque solo los desbloquea.
 
 
 ## SPRINT 2 

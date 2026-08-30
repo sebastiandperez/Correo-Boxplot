@@ -26,7 +26,7 @@ function inertSession(onClose: () => void): RemoteSession {
 }
 
 describe('RemoteApplication independent reentrant lifecycle verification', () => {
-  it('reproduces remote open beginning after an authenticating listener disconnects', async () => {
+  it('verifies remote open does not begin after an authenticating listener disconnects', async () => {
     const local = createMemoryLocalEngine()
     const timeline: string[] = []
     const close = vi.fn()
@@ -63,12 +63,10 @@ describe('RemoteApplication independent reentrant lifecycle verification', () =>
     expect(timeline).toEqual([
       'listener-authenticating',
       'listener-after-disconnect-call',
-      'factory',
-      'open',
     ])
     await expect(disconnect).resolves.toBeUndefined()
     await expect(connecting).rejects.toMatchObject({ kind: 'cancelled' })
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(close).not.toHaveBeenCalled()
     expect(application.getStatus(ACCOUNT_KEY)).toEqual({
       auth: 'anonymous',
       connectivity: 'offline',
@@ -82,7 +80,7 @@ describe('RemoteApplication independent reentrant lifecycle verification', () =>
     })
   })
 
-  it('reproduces remote open beginning after an authenticating listener disposes', async () => {
+  it('verifies remote open does not begin after an authenticating listener disposes', async () => {
     const local = createMemoryLocalEngine()
     const timeline: string[] = []
     const close = vi.fn()
@@ -119,12 +117,10 @@ describe('RemoteApplication independent reentrant lifecycle verification', () =>
     expect(timeline).toEqual([
       'listener-authenticating',
       'listener-after-dispose-call',
-      'factory',
-      'open',
     ])
     await expect(disposing).resolves.toBeUndefined()
     await expect(connecting).rejects.toMatchObject({ kind: 'cancelled' })
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(close).not.toHaveBeenCalled()
     expect(application.getStatus(ACCOUNT_KEY)).toEqual({
       auth: 'anonymous',
       connectivity: 'offline',
