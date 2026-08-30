@@ -26,11 +26,13 @@ import type { ReadRepository } from '../ports/read-repository'
 import type { SyncPort } from '../ports/sync-port'
 import type { useMailStore } from './stores/mail'
 import type { useRuntimeStore } from './stores/runtime'
+import type { RemoteApplication } from './remote'
 
 import { JmapWorkerClient } from './worker-client'
 
 export interface ApplicationContext {
   readonly workerClient?: JmapWorkerClient
+  readonly remoteApplication?: RemoteApplication
   readonly readRepository: ReadRepository
   readonly syncPort: SyncPort
   readonly localChangeSource: LocalChangeSource
@@ -44,6 +46,7 @@ export function createApplicationContext(
     syncPort: dependencies.syncPort,
     localChangeSource: dependencies.localChangeSource,
     workerClient: dependencies.workerClient,
+    remoteApplication: dependencies.remoteApplication,
   }
 }
 

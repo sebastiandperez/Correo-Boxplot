@@ -64,7 +64,8 @@ sin networking remoto.
 - Reconciliación SMTP después de aceptación sin Email ID.
 - Integración Worker de BodyMaterializer/E2EE.
 - Migración futura del vocabulario `Jmap*` en Domain, IPC y persistencia.
-- RemoteApplication y la aceptación Alice/Bob de extremo a extremo.
+- La aceptación Alice/Bob de extremo a extremo. `RemoteApplication` fue
+  resuelta posteriormente por ADR-010 sin modificar esta frontera.
 
 ## Supersedes
 

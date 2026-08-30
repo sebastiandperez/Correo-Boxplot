@@ -45,6 +45,13 @@ No ejecuta SQL, no consulta SQLite, no conoce SQLCipher o la DEK, no llama JMAP 
 
 Contiene Pinia, selección, composer temporal, proyecciones visibles y coordinación de lecturas locales. Convierte intenciones de UI en operaciones de Application, consume `ReadRepository`, reacciona a invalidaciones mediante `LocalChangeSource` P-03 y produce estado reactivo para Vue.
 
+`src/app/remote/` contiene `RemoteApplication` (ADR-010): lifecycle y status
+remotos scoped por cuenta, binding local/remoto y refresh mediante el
+`Coordinator`. Su core recibe una factory protocol-neutral, no importa Pinia ni
+protocolos concretos y no retiene credenciales. La composición Tauri separada
+selecciona IMAP/SMTP; el lifecycle JMAP del Worker permanece explícitamente
+separado hasta su migración.
+
 Puede depender de Domain, Ports y Pinia. No depende directamente de SQLite, SQL, SQLCipher, comandos Tauri concretos, transporte JMAP, `jmap-jam`, `fetch` o WebSocket. Pinia no es persistencia, segunda base de datos ni autoridad durable.
 
 ### Domain
@@ -122,7 +129,7 @@ Las dependencias permitidas son:
 | Desde | Puede depender de |
 | --- | --- |
 | Presentation | Application pública; tipos/proyecciones de Domain; seguridad de render |
-| Application | Domain; Ports; Pinia |
+| Application | Domain; Ports; Pinia; Coordinator y Remote Boundary mediante orquestación protocol-neutral |
 | Domain | Nada específico de infraestructura |
 | Ports | Domain; errores propios de contrato |
 | Tauri adapters | Ports; Domain; API Tauri mínima para IPC |

@@ -1,5 +1,6 @@
 import {
   jmapBlobIdFromString,
+  jmapAccountIdFromString,
   jmapEmailIdFromString,
   jmapIdentityIdFromString,
   jmapMailboxIdFromString,
@@ -10,6 +11,7 @@ import {
   scopedMailboxId,
   scopedThreadId,
   type AccountKey,
+  type JmapAccountId,
   type ScopedBlobId,
   type ScopedEmailId,
   type ScopedIdentityId,
@@ -19,17 +21,27 @@ import {
 import { collectionSyncStateFromString } from '../../domain/sync-cursor'
 import {
   remoteBlobIdFromString,
+  remoteAccountIdFromString,
   remoteEmailIdFromString,
   remoteIdentityIdFromString,
   remoteMailboxIdFromString,
   remoteThreadIdFromString,
   type RemoteBlobId,
+  type RemoteAccountId,
   type RemoteEmailId,
   type RemoteIdentityId,
   type RemoteMailboxId,
   type RemoteSyncState,
   type RemoteThreadId,
 } from '../types'
+
+export function localAccountId(id: RemoteAccountId): JmapAccountId {
+  return jmapAccountIdFromString(id)
+}
+
+export function remoteAccountId(id: JmapAccountId): RemoteAccountId {
+  return remoteAccountIdFromString(id)
+}
 
 /**
  * The local `Jmap*` spelling is frozen compatibility vocabulary in Domain,
