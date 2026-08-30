@@ -52,6 +52,13 @@ protocolos concretos y no retiene credenciales. La composición Tauri separada
 selecciona IMAP/SMTP; el lifecycle JMAP del Worker permanece explícitamente
 separado hasta su migración.
 
+La composición aditiva de body materialization comparte ese mismo lifecycle:
+expone `BodyMaterializer` a Application y mantiene `RemoteBodySource` como una
+capacidad interna mínima, scoped por cuenta. El materializador relee P-01,
+obtiene el cuerpo mediante `RemoteMail`, usa `E2eePort` cuando corresponde y
+escribe exclusivamente con `SyncPort.cacheEmailBody`; no entrega el body remoto
+a UI ni abre una sesión paralela.
+
 Puede depender de Domain, Ports y Pinia. No depende directamente de SQLite, SQL, SQLCipher, comandos Tauri concretos, transporte JMAP, `jmap-jam`, `fetch` o WebSocket. Pinia no es persistencia, segunda base de datos ni autoridad durable.
 
 ### Domain
@@ -89,6 +96,10 @@ Un adaptador Web/PWA futuro podrá satisfacer los mismos ports, pero su diseño 
 **Ruta esperada al implementarse:** `src/sync/`.
 
 Aloja Coordinator y Outbox. Orquesta sincronización, `ensure…`, reconciliación y procesamiento durable de `PendingMutation`.
+
+También aloja `BodyMaterializer`, caso de uso protocol-neutral que conserva la
+caché local como fuente de verdad. La capacidad de sesión que consume se crea
+en Application composition; el módulo no conoce JMAP, IMAP, SMTP, Tauri ni UI.
 
 Puede depender de Domain, `SyncPort`, la interfaz del JMAP Client y abstracciones de conectividad/sesión. No depende de componentes Vue, no usa Pinia como fuente de dominio, no ejecuta SQL ni accede directamente a SQLite. Coordinator y Outbox persisten exclusivamente mediante `SyncPort`.
 

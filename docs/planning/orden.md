@@ -50,9 +50,12 @@ P0/P1 — consumers e integración remota
 ├── A-01…A-08 Application / Presentation sobre Ports · COMPLETE
 ├── C-01…C-08 JMAP Client después de Domain frozen
 ├── REMOTE-BOUNDARY-01 · COMPLETE / ADR-008 ACCEPTED
+├── NATIVE-MAIL-PROTOCOLS + hardening/parser reverify · COMPLETE / FROZEN
+├── REMOTE-APPLICATION-01 · COMPLETE / FROZEN
+├── BODY-MATERIALIZATION-E2EE-01 · COMPLETE / READY FOR COMBINED VERIFY
 ├── Coordinator → RemoteMail; collection state separado de queryState
 ├── Outbox → RemoteMail + Submission; PendingMutation discriminada
-└── IMAP/SMTP + E2EE Worker bridge · DEFERRED TO SEPARATE BLOCKS
+└── MUTATION-EXECUTION-RECONCILIATION-01 · NEXT
 
 P0 — aceptación final Tauri
 │

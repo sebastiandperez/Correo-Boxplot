@@ -1,4 +1,5 @@
 export * from './errors'
 export * from './remote-application'
+export * from './remote-runtime-composition'
 export * from './tauri-remote-composition'
 export * from './types'

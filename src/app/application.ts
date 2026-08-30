@@ -27,12 +27,14 @@ import type { SyncPort } from '../ports/sync-port'
 import type { useMailStore } from './stores/mail'
 import type { useRuntimeStore } from './stores/runtime'
 import type { RemoteApplication } from './remote'
+import type { BodyMaterializer } from '../sync/body-materializer'
 
 import { JmapWorkerClient } from './worker-client'
 
 export interface ApplicationContext {
   readonly workerClient?: JmapWorkerClient
   readonly remoteApplication?: RemoteApplication
+  readonly bodyMaterializer?: BodyMaterializer
   readonly readRepository: ReadRepository
   readonly syncPort: SyncPort
   readonly localChangeSource: LocalChangeSource
@@ -47,6 +49,7 @@ export function createApplicationContext(
     localChangeSource: dependencies.localChangeSource,
     workerClient: dependencies.workerClient,
     remoteApplication: dependencies.remoteApplication,
+    bodyMaterializer: dependencies.bodyMaterializer,
   }
 }
 

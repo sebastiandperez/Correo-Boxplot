@@ -86,6 +86,28 @@ separada. `REMOTE-APPLICATION-REVERIFY-AND-FREEZE-01` verificó la reparación
 reentrante y cerró `RF01`–`RF70` sin P0/P1. A2-02/A2-03/A2-04/A2-05 y la
 ejecución de Outbox/body siguen abiertos; este bloque solo los desbloquea.
 
+## BODY-MATERIALIZATION-E2EE-01
+
+**Estado: COMPLETE / READY FOR COMBINED VERIFY.** `BodyMaterializer` conserva
+`ownerAbsent`, `notCached` y `cached`, usa la misma sesión activa gobernada por
+`RemoteApplication` y persiste exclusivamente un `EmailBody` completo mediante
+`SyncPort.cacheEmailBody`. La capacidad remota es mínima, scoped por
+`AccountKey` e invalida resultados tardíos tras disconnect, expiry o dispose;
+no abre una segunda sesión ni retiene credenciales.
+
+Los cuerpos E2EE V1 se parsean estrictamente y se descifran mediante el
+`E2eePort` congelado. Sender, recipient, identidad local y subject esperados
+proceden de `Email`/`Identity` committed, nunca del envelope. No hay auto-trust,
+auto-provisioning de keys, sanitización de HTML ni cache de ciphertext en caso
+de error. La composición productiva expone aditivamente
+`RemoteApplication + BodyMaterializer` sin red o IPC E2EE al construirla. JMAP
+por este lifecycle sigue diferido hasta migrar su Worker. El freeze
+independiente se combinará con `MUTATION-EXECUTION-RECONCILIATION-01`.
+Un `RemoteError` de body con `session=keep` conserva la capacidad. Con
+`session=expire`, la composición la invalida inmediatamente y falla cerrado
+para operaciones futuras; no altera el estado privado del `RemoteApplication`
+congelado, que conserva ownership del cierre físico en su lifecycle público.
+
 
 ## SPRINT 2 
 
@@ -98,7 +120,7 @@ ejecución de Outbox/body siguen abiertos; este bloque solo los desbloquea.
 | **C2-05 `INITIAL-EMAIL-SYNC-01`**        | **NEW** `src/sync/email-sync.ts`, `src/sync/mailbox-view-sync.ts`                                                   | JMAP: query/get. IMAP: `SELECT → UID SEARCH → UID FETCH metadata`. Convertir a Domain Email + memberships + `MailboxView`; preservar orden remoto.                                                                                                      | Bob puede pulsar Refresh y ver el correo de Alice en la lista real de la aplicación.                                        |
 | **C2-06 `IMAP-SYNC-STATE-01`**           | **NEW** `src/sync/imap-state.ts` o en adapter si corresponde, tests asociados                                       | Mantener `UIDVALIDITY`, UID/UIDNEXT y demás estado IMAP dentro del `CollectionSyncCursor.state` **opaco**. Si cambia UIDVALIDITY, invalidar/reconstruir ese mailbox. No QRESYNC/MODSEQ/CONDSTORE.                                                       | Permite refresh incremental razonable sin contaminar Domain con conceptos IMAP.                                             |
 | **C2-07 `REFRESH-SYNC-01`**              | `src/sync/coordinator.ts`, **NEW** `src/sync/refresh.ts`                                                            | Implementar el caso de uso que consumirá el botón **Actualizar** de A. JMAP usa changes/queryChanges; IMAP usa el mecanismo mínimo de UID. Al terminar, solo escribe con SyncPort; A recibe P-03 y relee.                                               | Nuestro servidor no tiene IDLE, así que esta tarea es la que permite recibir correo durante la demo.                        |
-| **C2-08 `BODY-MATERIALIZATION-E2EE-01`** | **NEW** `src/sync/body-materializer.ts`, **NEW** `src/remote/mime/boxplot-e2ee.ts`, `src/e2ee/port.ts` solo consumo | Ante `EmailBody = notCached`, descargar body remoto. Si es plaintext, normalizar. Si `Content-Type: application/vnd.boxplot.e2ee+json`, parsear `BoxplotE2eeEnvelope` y llamar `E2eePort.decryptFrom()`. Luego `SyncPort.cacheEmailBody()`.             | Bob abre el correo cifrado y ve plaintext; el servidor solo tuvo ciphertext. La UI nunca recibe body directamente de IMAP.  |
+| **C2-08 `BODY-MATERIALIZATION-E2EE-01` · COMPLETE** | `src/sync/body-materializer.ts`, `src/remote/mime/boxplot-e2ee.ts`, composición aditiva `src/app/remote/` | Ante `EmailBody = notCached`, usa la sesión activa, materializa plaintext o descifra E2EE con metadata committed y persiste solo mediante `cacheEmailBody`. | Implementado con cache local autoritativa, invalidación account-scoped, cero auto-trust/auto-key y listo para verificación combinada. |
 | **C2-09 `OUTBOX-RUNNER-01`**             | **NEW** `src/outbox/outbox-runner.ts`, `src/outbox/types.ts`                                                        | Leer `listPendingMutations()`, despachar `SendMutation`, `KeywordMutation` y `MailboxMembershipMutation`, aplicar lifecycle ya definido por B y soportar retry.                                                                                         | Convierte la cola durable que ya existe en acciones remotas reales.                                                         |
 | **C2-10 `E2EE-SEND-01`**                 | **NEW** `src/outbox/send-executor.ts`, `src/remote/mime/boxplot-e2ee.ts`, consumir `src/e2ee/send-intent.ts`        | Para envío E2EE V1: validar destinatario único → `encryptSendIntent()` / `E2eePort` → `BoxplotE2eeEnvelope` → MIME `application/vnd.boxplot.e2ee+json` → `SmtpSubmission`. Confirmar solo tras aceptación remota.                                       | Alice puede escribir plaintext, pero SMTP/Servidor-Boxplot reciben ciphertext. Este es el corazón de la demo E2EE.          |
 | **C2-11 `KEYWORD-EXECUTOR-01`**          | **NEW** `src/outbox/keyword-executor.ts`                                                                            | Ejecutar `KeywordMutation`. JMAP → keyword patch; IMAP → `UID STORE ±FLAGS (\Seen/\Flagged)`. Tras éxito, avanzar/remover PendingMutation mediante P-02 existente.                                                                                      | Seen y Flagged dejan de ser únicamente cambios optimistas locales y sobreviven a una resincronización.                      |

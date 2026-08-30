@@ -1,0 +1,448 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { createMemoryLocalEngine } from '../../../adapters/memory'
+import { account, remoteAccountRef } from '../../../domain/account'
+import { email } from '../../../domain/email'
+import type { E2eePort } from '../../../e2ee/port'
+import { createApplicationContext } from '../../application'
+import { localAccountId, localEmailId } from '../../../remote/compat/domain-ids'
+import { RemoteError } from '../../../remote/errors'
+import { imapAccountId, imapEmailId } from '../../../remote/imap/ids'
+import type { RemoteMail } from '../../../remote/mail'
+import type { NativeMailIpcPort } from '../../../remote/native/ipc'
+import type { RemoteSession } from '../../../remote/session'
+import { FakeRemoteMail, FakeSubmission } from '../../../remote/testing'
+import { remoteAccountId } from '../../../remote/compat/domain-ids'
+import {
+  createTestAccount,
+  createTestCollectionSyncCursor,
+  createTestEmail,
+  createTestEmailMailbox,
+  createTestMailbox,
+} from '../../../tests/contracts/fixtures'
+import { createRemoteProductRuntime } from '../remote-runtime-composition'
+import { createTauriRemoteRuntime } from '../tauri-remote-composition'
+
+function crypto(): E2eePort {
+  const unavailable = async () => ({
+    ok: false as const,
+    error: { kind: 'unexpected' as const },
+  })
+  return {
+    ensureLocalIdentity: unavailable,
+    trustPeerPublicKey: unavailable,
+    peerKeyStatus: unavailable,
+    encryptFor: unavailable,
+    decryptFrom: unavailable,
+  }
+}
+
+async function seedLocal(
+  count = 3,
+  engine = createMemoryLocalEngine(),
+  token = `capability-${Math.random()}`,
+) {
+  const owner = createTestAccount(token)
+  const mailbox = createTestMailbox(owner, 'inbox', { role: 'inbox' })
+  const emails = Array.from({ length: count }, (_, index) =>
+    createTestEmail(owner, `body-${index}`),
+  )
+  await engine.syncPort.registerAccount(owner)
+  await engine.syncPort.applyCollectionSync({
+    kind: 'mailbox',
+    mode: 'replace',
+    expectedCursor: { kind: 'absent' },
+    nextCursor: createTestCollectionSyncCursor(owner, 'mailbox', 'm1'),
+    snapshot: [mailbox],
+  })
+  await engine.syncPort.applyCollectionSync({
+    kind: 'email',
+    mode: 'replace',
+    expectedCursor: { kind: 'absent' },
+    nextCursor: createTestCollectionSyncCursor(owner, 'email', 'e1'),
+    snapshot: emails.map((value) => ({
+      email: value,
+      memberships: [createTestEmailMailbox(value, mailbox)],
+    })),
+  })
+  return { engine, owner, mailbox, emails }
+}
+
+function session(
+  accountId: ReturnType<typeof remoteAccountId>,
+  mail: RemoteMail,
+): RemoteSession {
+  return {
+    accounts: [{ id: accountId, capabilities: ['mail'] }],
+    mail,
+    submission: new FakeSubmission(async () => ({
+      kind: 'accepted',
+      remoteEmailId: null,
+      receiptId: null,
+    })),
+    close: vi.fn(async () => undefined),
+  }
+}
+
+function request(setup: Awaited<ReturnType<typeof seedLocal>>) {
+  return {
+    accountKey: setup.owner.key,
+    serviceKey: setup.owner.remoteRef.serviceKey,
+    config: {
+      provider: 'imapSmtp' as const,
+      host: 'localhost',
+      username: 'alice',
+      password: 'BODY_REMOTE_PASSWORD_CANARY_7419',
+      imapPort: 1143,
+      smtpPort: 1025,
+    },
+  }
+}
+
+async function expectMaterializationKind(
+  operation: Promise<unknown>,
+  kind: string,
+) {
+  await expect(operation).rejects.toMatchObject({
+    name: 'BodyMaterializationError',
+    kind,
+  })
+}
+
+describe('account-scoped remote body capability', () => {
+  it('B26-B27 starts no fetch before connect and removes access on disconnect', async () => {
+    const setup = await seedLocal()
+    const fetchBody = vi.fn(async () => ({
+      kind: 'plain' as const,
+      text: 'body',
+      html: null,
+    }))
+    const remoteSession = session(
+      remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+      new FakeRemoteMail({ fetchBody }),
+    )
+    const open = vi.fn(async () => remoteSession)
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({ open }),
+    })
+
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+      'notConnected',
+    )
+    expect(open).not.toHaveBeenCalled()
+    await runtime.remoteApplication.connect(request(setup))
+    await expect(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+    ).resolves.toBe('materialized')
+    expect(open).toHaveBeenCalledTimes(1)
+    await runtime.remoteApplication.disconnect(setup.owner.key)
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[1].id),
+      'notConnected',
+    )
+    expect(fetchBody).toHaveBeenCalledTimes(1)
+  })
+
+  it('B28 invalidates capability when frozen refresh expires the session', async () => {
+    const setup = await seedLocal()
+    const failure = new RemoteError('expired', {
+      kind: 'auth',
+      retry: 'never',
+      session: 'expire',
+      outcome: 'notApplicable',
+    })
+    const mail = new FakeRemoteMail({
+      syncIdentities: async () => Promise.reject(failure),
+    })
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({
+        open: async () =>
+          session(remoteAccountId(setup.owner.remoteRef.jmapAccountId), mail),
+      }),
+    })
+    await runtime.remoteApplication.connect(request(setup))
+    await expect(
+      runtime.remoteApplication.refreshAccount(setup.owner.key),
+    ).rejects.toMatchObject({ kind: 'auth' })
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+      'notConnected',
+    )
+  })
+
+  it.each(['disconnect', 'dispose'] as const)(
+    'B29-B30 prevents cache after %s during an already-started fetch',
+    async (lifecycle) => {
+      const setup = await seedLocal()
+      let resolve!: (value: { kind: 'plain'; text: string; html: null }) => void
+      const pending = new Promise<{
+        kind: 'plain'
+        text: string
+        html: null
+      }>((done) => (resolve = done))
+      const fetchBody = vi.fn(async () => pending)
+      const mail = new FakeRemoteMail({ fetchBody })
+      const runtime = createRemoteProductRuntime({
+        readRepository: setup.engine.readRepository,
+        syncPort: setup.engine.syncPort,
+        e2eePort: crypto(),
+        connectionFactory: () => ({
+          open: async () =>
+            session(remoteAccountId(setup.owner.remoteRef.jmapAccountId), mail),
+        }),
+      })
+      await runtime.remoteApplication.connect(request(setup))
+      const operation = runtime.bodyMaterializer.materialize(setup.emails[0].id)
+      await vi.waitFor(() => expect(fetchBody).toHaveBeenCalled())
+      if (lifecycle === 'disconnect') {
+        await runtime.remoteApplication.disconnect(setup.owner.key)
+      } else {
+        await runtime.remoteApplication.dispose()
+      }
+      resolve({ kind: 'plain', text: 'stale', html: null })
+      await expectMaterializationKind(operation, 'cancelled')
+      await expect(
+        setup.engine.readRepository.readEmailBody(setup.emails[0].id),
+      ).resolves.toMatchObject({ value: { kind: 'notCached' } })
+    },
+  )
+
+  it('a session-expiring body error fails closed for future body access', async () => {
+    const setup = await seedLocal(2)
+    const fetchBody = vi.fn(async () => {
+      throw new RemoteError('expired', {
+        kind: 'auth',
+        retry: 'never',
+        session: 'expire',
+        outcome: 'notApplicable',
+      })
+    })
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({
+        open: async () =>
+          session(
+            remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+            new FakeRemoteMail({ fetchBody }),
+          ),
+      }),
+    })
+    await runtime.remoteApplication.connect(request(setup))
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+      'remote',
+    )
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[1].id),
+      'notConnected',
+    )
+    expect(fetchBody).toHaveBeenCalledTimes(1)
+  })
+
+  it('B24 retains the active capability after a session-keep remote error', async () => {
+    const setup = await seedLocal(2)
+    const fetchBody = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new RemoteError('temporary', {
+          kind: 'network',
+          retry: 'safeBackoff',
+          session: 'keep',
+          outcome: 'knownNotApplied',
+        }),
+      )
+      .mockResolvedValueOnce({ kind: 'plain', text: 'recovered', html: null })
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({
+        open: async () =>
+          session(
+            remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+            new FakeRemoteMail({ fetchBody }),
+          ),
+      }),
+    })
+    await runtime.remoteApplication.connect(request(setup))
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+      'remote',
+    )
+    await expect(
+      runtime.bodyMaterializer.materialize(setup.emails[1].id),
+    ).resolves.toBe('materialized')
+    expect(fetchBody).toHaveBeenCalledTimes(2)
+  })
+
+  it('B31 keeps body authority and cancellation scoped to each account', async () => {
+    const engine = createMemoryLocalEngine()
+    const setupA = await seedLocal(1, engine, 'capability-account-a')
+    const setupB = await seedLocal(1, engine, 'capability-account-b')
+    const fetchA = vi.fn(async () => ({
+      kind: 'plain' as const,
+      text: 'A',
+      html: null,
+    }))
+    const fetchB = vi.fn(async () => ({
+      kind: 'plain' as const,
+      text: 'B',
+      html: null,
+    }))
+    const runtime = createRemoteProductRuntime({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: (config) => ({
+        open: async () => {
+          const selected =
+            config.provider === 'imapSmtp' && config.username === 'account-b'
+              ? { setup: setupB, fetch: fetchB }
+              : { setup: setupA, fetch: fetchA }
+          return session(
+            remoteAccountId(selected.setup.owner.remoteRef.jmapAccountId),
+            new FakeRemoteMail({ fetchBody: selected.fetch }),
+          )
+        },
+      }),
+    })
+    await runtime.remoteApplication.connect(request(setupA))
+    await runtime.remoteApplication.connect({
+      ...request(setupB),
+      config: { ...request(setupB).config, username: 'account-b' },
+    })
+    await runtime.remoteApplication.disconnect(setupB.owner.key)
+    await expect(
+      runtime.bodyMaterializer.materialize(setupA.emails[0].id),
+    ).resolves.toBe('materialized')
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setupB.emails[0].id),
+      'notConnected',
+    )
+    expect(fetchA).toHaveBeenCalledTimes(1)
+    expect(fetchB).not.toHaveBeenCalled()
+  })
+})
+
+class NativeBodyIpc implements NativeMailIpcPort {
+  readonly open = vi.fn(async () => ({
+    sessionId: 'native-body-session',
+    authenticatedUser: 'alice@boxplot.test',
+  }))
+  readonly close = vi.fn(async () => undefined)
+  readonly fetchBody = vi.fn(async () => ({
+    kind: 'plain' as const,
+    text: 'native body',
+    html: null,
+  }))
+  async listMailboxes() {
+    return []
+  }
+  async snapshotMailbox(): Promise<never> {
+    throw new Error('unused')
+  }
+  async fetchAttachments() {
+    return []
+  }
+  async storeFlags() {}
+  async move(): Promise<never> {
+    throw new Error('unused')
+  }
+  async smtpSubmit(): Promise<never> {
+    throw new Error('unused')
+  }
+}
+
+describe('productive Tauri remote body composition', () => {
+  it('B25 reuses the exact native session opened by RemoteApplication', async () => {
+    const engine = createMemoryLocalEngine()
+    const ipc = new NativeBodyIpc()
+    const accountId = imapAccountId('alice@boxplot.test')
+    const baseAccount = createTestAccount('native-body')
+    const owner = account(
+      baseAccount.key,
+      remoteAccountRef(
+        baseAccount.remoteRef.serviceKey,
+        localAccountId(accountId),
+      ),
+    )
+    const mailbox = createTestMailbox(owner, 'inbox', { role: 'inbox' })
+    const remoteId = imapEmailId({ mailbox: 'INBOX', uidValidity: 7, uid: 42 })
+    const baseEmail = createTestEmail(owner, 'native-body')
+    const message = email({
+      ...baseEmail,
+      id: localEmailId(owner.key, remoteId),
+    })
+    await engine.syncPort.registerAccount(owner)
+    await engine.syncPort.applyCollectionSync({
+      kind: 'mailbox',
+      mode: 'replace',
+      expectedCursor: { kind: 'absent' },
+      nextCursor: createTestCollectionSyncCursor(owner, 'mailbox', 'm1'),
+      snapshot: [mailbox],
+    })
+    await engine.syncPort.applyCollectionSync({
+      kind: 'email',
+      mode: 'replace',
+      expectedCursor: { kind: 'absent' },
+      nextCursor: createTestCollectionSyncCursor(owner, 'email', 'e1'),
+      snapshot: [
+        {
+          email: message,
+          memberships: [createTestEmailMailbox(message, mailbox)],
+        },
+      ],
+    })
+    const runtime = createTauriRemoteRuntime({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      nativeMailIpc: ipc,
+      e2eePort: crypto(),
+    })
+
+    expect(ipc.open).not.toHaveBeenCalled()
+    await runtime.remoteApplication.connect({
+      accountKey: owner.key,
+      serviceKey: owner.remoteRef.serviceKey,
+      config: {
+        provider: 'imapSmtp',
+        host: 'localhost',
+        username: 'alice@boxplot.test',
+        password: 'BODY_REMOTE_PASSWORD_CANARY_7419',
+        imapPort: 1143,
+        smtpPort: 1025,
+      },
+    })
+    expect(ipc.open).toHaveBeenCalledTimes(1)
+    await runtime.bodyMaterializer.materialize(message.id)
+    expect(ipc.open).toHaveBeenCalledTimes(1)
+    expect(ipc.fetchBody).toHaveBeenCalledWith({
+      sessionId: 'native-body-session',
+      mailbox: 'INBOX',
+      uidValidity: 7,
+      uid: 42,
+    })
+
+    const context = createApplicationContext({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      localChangeSource: engine.localChangeSource,
+      remoteApplication: runtime.remoteApplication,
+      bodyMaterializer: runtime.bodyMaterializer,
+    })
+    expect(context.bodyMaterializer).toBe(runtime.bodyMaterializer)
+    expect(context.remoteApplication).toBe(runtime.remoteApplication)
+    expect(context.readRepository).toBe(engine.readRepository)
+    expect(context.syncPort).toBe(engine.syncPort)
+    expect(context.localChangeSource).toBe(engine.localChangeSource)
+  })
+})

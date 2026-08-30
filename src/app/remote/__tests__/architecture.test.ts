@@ -64,7 +64,7 @@ describe('REMOTE-APPLICATION architecture gates', () => {
     expect(registry).toContain('generation: number')
   })
 
-  it('keeps the core production directory deliberately small', () => {
+  it('keeps the frozen core plus the narrow additive body composition explicit', () => {
     const productionFiles = readdirSync(
       resolve(sourceRoot, 'app/remote'),
     ).filter((file) => file.endsWith('.ts'))
@@ -72,6 +72,8 @@ describe('REMOTE-APPLICATION architecture gates', () => {
       'errors.ts',
       'index.ts',
       'remote-application.ts',
+      'remote-body-source.ts',
+      'remote-runtime-composition.ts',
       'session-registry.ts',
       'tauri-remote-composition.ts',
       'types.ts',

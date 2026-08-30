@@ -40,7 +40,8 @@ La secuencia obligatoria del core es:
 17. REMOTE-BOUNDARY-01 — completado; JMAP detrás de RemoteMail/Submission, Coordinator/Outbox protocol-neutral.
 18. NATIVE-MAIL-PROTOCOLS + hardening/parser reverify — completos y congelados.
 19. REMOTE-APPLICATION-01 — implementación, reparación reentrante, reverify independiente y freeze completos; `RF01`–`RF70` PASS, sin P0/P1.
-20. BodyMaterializer E2EE, Outbox execution y aceptación remota — bloques separados posteriores.
+20. BODY-MATERIALIZATION-E2EE-01 — implementación completa y self-gates B01–B40; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody. Freeze independiente pendiente del verifier combinado.
+21. MUTATION-EXECUTION-RECONCILIATION-01 — siguiente bloque; Outbox execution, E2EE send, mutations y reconciliación.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
