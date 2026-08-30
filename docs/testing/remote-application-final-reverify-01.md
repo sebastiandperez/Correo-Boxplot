@@ -301,3 +301,22 @@ initiate a new remote operation afterward.
 
 Phase A has no unresolved P0/P1 and is eligible for the integrating verifier's
 strictly subsequent Phase B documentation freeze.
+
+## Phase B freeze
+
+Phase B completed after the Phase A evidence commit remained green.
+
+```text
+RemoteApplication core: FULLY FROZEN
+unresolved P0: 0
+unresolved P1: 0
+production files modified by verifier: 0
+```
+
+ADR-010, Persona C planning, and the executable roadmap now record the freeze.
+The public API, exact account binding, generation authority, status,
+subscriptions, keep/expire behavior, disposal, and protocol-neutral core are
+read-only architecture for subsequent normal work.
+
+This freeze does not implement body materialization, Outbox execution, SMTP
+reconciliation, Alice/Bob acceptance, or JMAP Worker migration.
