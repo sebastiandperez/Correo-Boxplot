@@ -58,15 +58,19 @@ export class DefaultRemoteApplication implements RemoteApplication {
 
     const generation = this.nextGeneration(request.accountKey)
     this.pendingConnects.set(request.accountKey, generation)
-    this.publishStatus(request.accountKey, {
-      auth: 'authenticating',
-      connectivity: 'offline',
-      lastError: null,
-    })
 
     let session: RemoteSession | null = null
     try {
+      this.publishStatus(request.accountKey, {
+        auth: 'authenticating',
+        connectivity: 'offline',
+        lastError: null,
+      })
+      this.assertConnectAuthority(request.accountKey, generation)
+
       const connection = this.dependencies.connectionFactory(request.config)
+      this.assertConnectAuthority(request.accountKey, generation)
+
       session = await connection.open()
       this.assertConnectAuthority(request.accountKey, generation)
 
