@@ -27,6 +27,7 @@ import {
 import { serializeBoxplotE2eeEnvelope } from '../remote/mime/boxplot-e2ee'
 import {
   RemoteMutationSourceError,
+  type AccountScopedRemoteMutationReconciler,
   type RemoteMutationSource,
   type RemoteSubmissionDraft,
 } from '../remote/mutation-source'
@@ -41,6 +42,7 @@ export type MutationRunnerDependencies = Readonly<{
   readRepository: ReadRepository
   syncPort: SyncPort
   remoteMutationSource: RemoteMutationSource
+  remoteMutationReconciler?: AccountScopedRemoteMutationReconciler
   e2eePort: E2eePort
   refreshAccount?: (accountKey: AccountKey) => Promise<void>
   now?: () => MutationInstant
@@ -173,8 +175,9 @@ export class DefaultMutationRunner implements MutationRunner {
           localEmailId(mutation.accountKey, result.remoteEmailId),
         ),
       )
-      await this.confirmAndRemove(mutation, confirmed)
-      return { kind: 'confirmed' }
+      return (await this.confirmAndRemove(mutation, confirmed))
+        ? { kind: 'confirmed' }
+        : { kind: 'needsReconciliation' }
     } catch (error: unknown) {
       return this.settleRemoteFailure(mutation, error)
     }
@@ -190,8 +193,9 @@ export class DefaultMutationRunner implements MutationRunner {
         { add: [...mutation.change.add], remove: [...mutation.change.remove] },
       )
       const confirmed = confirmEmailUpdateMutation(mutation)
-      await this.confirmAndRemove(mutation, confirmed)
-      return { kind: 'confirmed' }
+      return (await this.confirmAndRemove(mutation, confirmed))
+        ? { kind: 'confirmed' }
+        : { kind: 'needsReconciliation' }
     } catch (error: unknown) {
       return this.settleRemoteFailure(mutation, error)
     }
@@ -210,8 +214,9 @@ export class DefaultMutationRunner implements MutationRunner {
         },
       )
       const confirmed = confirmEmailUpdateMutation(mutation)
-      await this.confirmAndRemove(mutation, confirmed)
-      return { kind: 'confirmed' }
+      return (await this.confirmAndRemove(mutation, confirmed))
+        ? { kind: 'confirmed' }
+        : { kind: 'needsReconciliation' }
     } catch (error: unknown) {
       return this.settleRemoteFailure(mutation, error)
     }
@@ -223,6 +228,9 @@ export class DefaultMutationRunner implements MutationRunner {
   ): Promise<MutationExecutionOutcome> {
     if (!(error instanceof RemoteMutationSourceError)) {
       return { kind: 'needsReconciliation' }
+    }
+    if (error.failure.kind === 'notConnected') {
+      return this.settleRetry(mutation)
     }
     if (error.failure.kind !== 'remote') {
       return { kind: 'needsReconciliation' }
@@ -256,22 +264,27 @@ export class DefaultMutationRunner implements MutationRunner {
       mutation,
       nextRetryInstant(mutation.lifecycle.attemptCount, this.now()),
     )
-    await this.replace(mutation, next)
-    return { kind: 'retrying' }
+    return (await this.replace(mutation, next))
+      ? { kind: 'retrying' }
+      : { kind: 'needsReconciliation' }
   }
 
   private async settleTerminal(
     mutation: PendingMutation,
   ): Promise<MutationExecutionOutcome> {
     const next = failMutationTerminal(mutation)
-    await this.replace(mutation, next)
-    return { kind: 'failedTerminal' }
+    return (await this.replace(mutation, next))
+      ? { kind: 'failedTerminal' }
+      : { kind: 'needsReconciliation' }
   }
 
   private async reconcile(
     mutation: PendingMutation,
   ): Promise<MutationExecutionOutcome> {
-    if (mutation.kind !== 'keyword') return { kind: 'needsReconciliation' }
+    if (mutation.kind === 'send') return this.reconcileSend(mutation)
+    if (mutation.kind === 'mailboxMembership') {
+      return this.reconcileMembership(mutation)
+    }
     if (
       this.dependencies.refreshAccount === undefined ||
       !this.dependencies.remoteMutationSource.isConnected(mutation.accountKey)
@@ -291,8 +304,61 @@ export class DefaultMutationRunner implements MutationRunner {
         [...mutation.change.remove].every((value) => !keywords.has(value))
       if (!applied) return this.settleRetry(mutation)
       const confirmed = confirmEmailUpdateMutation(mutation)
-      await this.confirmAndRemove(mutation, confirmed)
-      return { kind: 'confirmed' }
+      return (await this.confirmAndRemove(mutation, confirmed))
+        ? { kind: 'confirmed' }
+        : { kind: 'needsReconciliation' }
+    } catch {
+      return { kind: 'needsReconciliation' }
+    }
+  }
+
+  private async reconcileSend(
+    mutation: SendMutation,
+  ): Promise<MutationExecutionOutcome> {
+    const reconciler = this.dependencies.remoteMutationReconciler
+    if (reconciler === undefined) return { kind: 'needsReconciliation' }
+    try {
+      const evidence = await reconciler.reconcileSend(
+        mutation.accountKey,
+        mutation.mutationId,
+      )
+      if (evidence.kind === 'inconclusive') {
+        return { kind: 'needsReconciliation' }
+      }
+      const confirmed = confirmSendMutation(
+        mutation,
+        sendConfirmation(localEmailId(mutation.accountKey, evidence.emailId)),
+      )
+      return (await this.confirmAndRemove(mutation, confirmed))
+        ? { kind: 'confirmed' }
+        : { kind: 'needsReconciliation' }
+    } catch {
+      return { kind: 'needsReconciliation' }
+    }
+  }
+
+  private async reconcileMembership(
+    mutation: MailboxMembershipMutation,
+  ): Promise<MutationExecutionOutcome> {
+    const reconciler = this.dependencies.remoteMutationReconciler
+    if (reconciler === undefined) return { kind: 'needsReconciliation' }
+    try {
+      const evidence = await reconciler.reconcileMembership(
+        mutation.accountKey,
+        mutation.mutationId,
+        remoteEmailId(mutation.emailId),
+        {
+          add: mutation.change.add.map(remoteMailboxId),
+          remove: mutation.change.remove.map(remoteMailboxId),
+        },
+      )
+      if (evidence.kind === 'inconclusive') {
+        return { kind: 'needsReconciliation' }
+      }
+      const confirmed = confirmEmailUpdateMutation(mutation)
+      return (await this.confirmAndRemove(mutation, confirmed))
+        ? { kind: 'confirmed' }
+        : { kind: 'needsReconciliation' }
     } catch {
       return { kind: 'needsReconciliation' }
     }
@@ -314,22 +380,25 @@ export class DefaultMutationRunner implements MutationRunner {
   private async confirmAndRemove(
     expected: PendingMutation,
     confirmed: PendingMutation,
-  ): Promise<void> {
-    await this.replace(expected, confirmed)
+  ): Promise<boolean> {
+    if (!(await this.replace(expected, confirmed))) return false
     await this.removeConfirmed(confirmed)
+    return true
   }
 
   private async replace(
     expected: PendingMutation,
     next: PendingMutation,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const result =
       await this.dependencies.syncPort.replacePendingMutationIfCurrent(
         expected,
         next,
       )
+    if (!result.ok && result.error.kind === 'conflict') return false
     if (!result.ok)
       throw new Error(`mutation settlement failed: ${result.error.kind}`)
+    return true
   }
 
   private async removeConfirmed(mutation: PendingMutation): Promise<void> {

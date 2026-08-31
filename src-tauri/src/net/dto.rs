@@ -120,6 +120,30 @@ pub struct NativeMessageRequest {
     pub uid: u32,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeFindMessageIdRequest {
+    pub session_id: String,
+    pub mailbox: String,
+    pub message_id: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeFoundEmailIdDto {
+    pub mailbox: String,
+    pub uid_validity: u32,
+    pub uid: u32,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum NativeFindMessageIdResponse {
+    NotFound,
+    Found { email_id: NativeFoundEmailIdDto },
+    Ambiguous,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NativeFlag {

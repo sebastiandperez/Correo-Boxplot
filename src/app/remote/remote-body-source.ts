@@ -12,9 +12,14 @@ import type {
 } from '../../remote/mail'
 import {
   RemoteMutationSourceError,
+  type AccountScopedRemoteMutationReconciler,
   type RemoteSubmissionDraft,
   type RemoteMutationSource,
 } from '../../remote/mutation-source'
+import type {
+  RemoteMutationEvidence,
+  RemoteMutationReconciler,
+} from '../../remote/reconciliation'
 import type { Submission } from '../../remote/submission'
 import type { RemoteEmailId } from '../../remote/types'
 
@@ -23,11 +28,15 @@ export type ActiveBodyCapability = Readonly<{
   remoteAccountId: import('../../remote/types').RemoteAccountId
   mail: RemoteMail
   submission: Submission
+  reconciler: RemoteMutationReconciler | null
   generation: number
 }>
 
 export class RemoteBodyCapabilityStore
-  implements RemoteBodySource, RemoteMutationSource
+  implements
+    RemoteBodySource,
+    RemoteMutationSource,
+    AccountScopedRemoteMutationReconciler
 {
   private readonly active = new Map<AccountKey, ActiveBodyCapability>()
   private readonly generations = new Map<AccountKey, number>()
@@ -124,6 +133,52 @@ export class RemoteBodyCapabilityStore
         change,
       )
       this.assertMutationCurrent(capability)
+    } catch (error: unknown) {
+      this.handleMutationFailure(capability, error)
+    }
+  }
+
+  async reconcileSend(
+    accountKey: AccountKey,
+    idempotencyKey: string,
+  ): Promise<RemoteMutationEvidence> {
+    const capability = this.mutationCapability(accountKey)
+    const reconciler = capability.reconciler
+    if (reconciler === null) {
+      throw new RemoteMutationSourceError({ kind: 'unexpected' })
+    }
+    try {
+      const evidence = await reconciler.reconcileSend({
+        remoteAccountId: capability.remoteAccountId,
+        idempotencyKey,
+      })
+      this.assertMutationCurrent(capability)
+      return evidence
+    } catch (error: unknown) {
+      this.handleMutationFailure(capability, error)
+    }
+  }
+
+  async reconcileMembership(
+    accountKey: AccountKey,
+    idempotencyKey: string,
+    emailId: RemoteEmailId,
+    change: RemoteMembershipChange,
+  ): Promise<RemoteMutationEvidence> {
+    const capability = this.mutationCapability(accountKey)
+    const reconciler = capability.reconciler
+    if (reconciler === null) {
+      throw new RemoteMutationSourceError({ kind: 'unexpected' })
+    }
+    try {
+      const evidence = await reconciler.reconcileMembership({
+        remoteAccountId: capability.remoteAccountId,
+        idempotencyKey,
+        emailId,
+        change,
+      })
+      this.assertMutationCurrent(capability)
+      return evidence
     } catch (error: unknown) {
       this.handleMutationFailure(capability, error)
     }

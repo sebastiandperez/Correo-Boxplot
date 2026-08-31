@@ -125,7 +125,7 @@ una intención E2EE antes de implementar su executor dedicado.
 
 ## MUTATION-EXECUTION-RECONCILIATION-01
 
-**Estado: PARTIAL / CONTRACT REVIEW COMPLETE; REPAIR REQUIRED.** El
+**Estado: COMPLETE / READY FOR COMBINED VERIFY.** El
 `MutationRunner` productivo
 lee la cola durable única, reclama `pending`/`retrying` mediante CAS antes del
 efecto remoto y ejecuta Send plain/E2EE, Keyword y Membership usando la misma
@@ -146,12 +146,19 @@ coincidencias quedan inconclusas y una sola confirma. MOVE ambiguo puede
 permanecer `inFlight` indefinidamente cuando no existe identidad causal exacta;
 no se reproduce ni se confirma por ausencia o heurística.
 
-La superficie nativa vigente de nueve comandos no expone búsqueda exacta por
-Message-ID. ADR-012 aprueba explícitamente una única extensión
-`native_imap_find_message_id` (inventario futuro 10), con 0/1/many y bounds
-fail-closed. La siguiente tarea es
-`MUTATION-EXECUTION-RECONCILIATION-REPAIR-01`; este review no implementa todavía
-el comando ni el settlement.
+La superficie nativa expone diez comandos tras la extensión aprobada
+`native_imap_find_message_id`, con 0/1/many, verificación exacta posterior al
+SEARCH por substring y bounds fail-closed. El adapter usa el reconciler de la
+misma sesión activa account-scoped; no abre otra conexión ni retiene
+credenciales. El runner confirma únicamente con el `RemoteEmailId` real de una
+coincidencia única; cero, múltiples o fallo de consulta conservan `inFlight` y
+nunca reenvían SMTP ni MOVE a ciegas.
+
+El runtime Tauri IMAP/SMTP compone solo `DefaultMutationRunner`. El Worker JMAP
+conserva temporalmente solo el Outbox legado hasta su migración separada, por lo
+que una cuenta/protocolo no tiene dos motores productivos simultáneos. La
+implementación espera el verifier independiente combinado y no se declara
+frozen en este bloque.
 
 ## SPRINT 2 
 

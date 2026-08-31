@@ -9,9 +9,9 @@ use std::{
 use correo_boxplot_lib::net::{
     ManagedNativeMailRuntime,
     dto::{
-        NativeAddressDto, NativeFlag, NativeMailOpenRequest, NativeMessageRequest,
-        NativeMoveRequest, NativeSmtpSubmitRequest, NativeStoreFlagsRequest,
-        NativeSubmissionBodyDto,
+        NativeAddressDto, NativeFindMessageIdRequest, NativeFindMessageIdResponse, NativeFlag,
+        NativeMailOpenRequest, NativeMessageRequest, NativeMoveRequest, NativeSmtpSubmitRequest,
+        NativeStoreFlagsRequest, NativeSubmissionBodyDto,
     },
     errors::{NativeMailErrorKind, NativeMailOutcome, NativeMailRetry},
 };
@@ -122,6 +122,29 @@ fn native_mail_alice_bob_acceptance() {
         ))
         .expect("Alice submission accepted");
     assert!(accepted.accepted);
+    let reconciled = runtime
+        .find_message_id(&NativeFindMessageIdRequest {
+            session_id: alice.session_id.clone(),
+            mailbox: "Sent".to_owned(),
+            message_id: accepted.receipt_id.clone(),
+        })
+        .expect("accepted Message-ID is discoverable through the same session");
+    assert!(matches!(
+        reconciled,
+        NativeFindMessageIdResponse::Found {
+            email_id
+        } if email_id.mailbox == "Sent" && email_id.uid_validity > 0 && email_id.uid > 0
+    ));
+    assert_eq!(
+        runtime
+            .find_message_id(&NativeFindMessageIdRequest {
+                session_id: alice.session_id.clone(),
+                mailbox: "Sent".to_owned(),
+                message_id: "<missing@boxplot.invalid>".to_owned(),
+            })
+            .expect("missing Message-ID is a normal result"),
+        NativeFindMessageIdResponse::NotFound
+    );
 
     let alice_sent = runtime
         .snapshot_mailbox(&alice.session_id, "Sent")
@@ -406,6 +429,51 @@ fn native_mail_alice_bob_acceptance() {
         .expect_err("oversized rejected before DATA");
     assert_eq!(oversized.kind, NativeMailErrorKind::TooLarge);
     assert_eq!(oversized.outcome, NativeMailOutcome::KnownNotApplied);
+
+    assert_eq!(
+        runtime
+            .find_message_id(&NativeFindMessageIdRequest {
+                session_id: alice.session_id.clone(),
+                mailbox: "Sent".to_owned(),
+                message_id: "boxplot.".to_owned(),
+            })
+            .expect("substring candidate is verified exactly"),
+        NativeFindMessageIdResponse::NotFound
+    );
+    runtime
+        .smtp_submit(&submission(
+            &alice.session_id,
+            "alice@boxplot.test",
+            vec![address("bob@boxplot.test")],
+            vec![],
+            "Duplicate reconciliation marker",
+            NativeSubmissionBodyDto::Plain {
+                text: "duplicate marker".to_owned(),
+                html: None,
+            },
+            "alice-to-bob",
+        ))
+        .expect("duplicate idempotency marker accepted by demo SMTP");
+    assert_eq!(
+        runtime
+            .find_message_id(&NativeFindMessageIdRequest {
+                session_id: alice.session_id.clone(),
+                mailbox: "Sent".to_owned(),
+                message_id: accepted.receipt_id.clone(),
+            })
+            .expect("duplicate exact markers are normal ambiguous evidence"),
+        NativeFindMessageIdResponse::Ambiguous
+    );
+
+    let stale_lookup = runtime
+        .find_message_id(&NativeFindMessageIdRequest {
+            session_id: "missing-session".to_owned(),
+            mailbox: "Sent".to_owned(),
+            message_id: accepted.receipt_id,
+        })
+        .expect_err("stale reconciliation session fails closed");
+    assert_eq!(stale_lookup.kind, NativeMailErrorKind::StateInvalid);
+    assert_eq!(stale_lookup.outcome, NativeMailOutcome::NotApplicable);
 
     runtime.close(&alice.session_id).expect("close Alice");
     runtime.close(&bob.session_id).expect("close Bob");
