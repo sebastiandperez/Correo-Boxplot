@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createMemoryLocalEngine } from '../../../adapters/memory'
 import { account, remoteAccountRef } from '../../../domain/account'
 import { email } from '../../../domain/email'
+import { startMutationAttempt } from '../../../domain/pending-mutation'
 import type { E2eePort } from '../../../e2ee/port'
 import { createApplicationContext } from '../../application'
 import { localAccountId, localEmailId } from '../../../remote/compat/domain-ids'
@@ -10,6 +11,7 @@ import { RemoteError } from '../../../remote/errors'
 import { imapAccountId, imapEmailId } from '../../../remote/imap/ids'
 import type { RemoteMail } from '../../../remote/mail'
 import type { NativeMailIpcPort } from '../../../remote/native/ipc'
+import type { RemoteMutationReconciler } from '../../../remote/reconciliation'
 import type { RemoteSession } from '../../../remote/session'
 import type { Submission } from '../../../remote/submission'
 import { FakeRemoteMail, FakeSubmission } from '../../../remote/testing'
@@ -80,11 +82,13 @@ function session(
     remoteEmailId: null,
     receiptId: null,
   })),
+  reconciler?: RemoteMutationReconciler,
 ): RemoteSession {
   return {
     accounts: [{ id: accountId, capabilities: ['mail'] }],
     mail,
     submission,
+    reconciler,
     close: vi.fn(async () => undefined),
   }
 }
@@ -158,6 +162,123 @@ describe('account-scoped remote body capability', () => {
     expect(open).toHaveBeenCalledTimes(1)
     expect(fetchBody).toHaveBeenCalledTimes(1)
     expect(submission.calls).toHaveLength(1)
+  })
+
+  it('reconciles an inFlight send through the same account-scoped session capability', async () => {
+    const setup = await seedLocal(0)
+    const remoteId = remoteEmailIdFromString('authoritative-after-smtp')
+    const reconcileSend = vi.fn(async () => ({
+      kind: 'applied' as const,
+      emailId: remoteId,
+    }))
+    const submission = new FakeSubmission(async () => ({
+      kind: 'accepted' as const,
+      remoteEmailId: null,
+      receiptId: '<diagnostic-only>',
+    }))
+    const open = vi.fn(async () =>
+      session(
+        remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+        new FakeRemoteMail(),
+        submission,
+        {
+          reconcileSend,
+          reconcileMembership: vi.fn(async () => ({
+            kind: 'inconclusive' as const,
+          })),
+        },
+      ),
+    )
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({ open }),
+    })
+    const mutation = createTestSendMutation(
+      setup.owner,
+      createTestIdentity(setup.owner, 'reconcile-shared-session'),
+      'reconcile-shared-session',
+    )
+    await setup.engine.syncPort.stageSendMutation(mutation)
+    await runtime.remoteApplication.connect(request(setup))
+
+    await expect(
+      runtime.mutationRunner.runMutation(setup.owner.key, mutation.mutationId),
+    ).resolves.toEqual({ kind: 'needsReconciliation' })
+    await expect(
+      runtime.mutationRunner.runMutation(setup.owner.key, mutation.mutationId),
+    ).resolves.toEqual({ kind: 'confirmed' })
+
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(submission.calls).toHaveLength(1)
+    expect(reconcileSend).toHaveBeenCalledWith({
+      remoteAccountId: remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+      idempotencyKey: mutation.mutationId,
+    })
+  })
+
+  it('invalidates reconciliation authority when disconnect wins after lookup starts', async () => {
+    const setup = await seedLocal(0)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const reconcileSend = vi.fn(async () => {
+      await gate
+      return {
+        kind: 'applied' as const,
+        emailId: remoteEmailIdFromString('stale-result'),
+      }
+    })
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({
+        open: async () =>
+          session(
+            remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+            new FakeRemoteMail(),
+            undefined,
+            {
+              reconcileSend,
+              reconcileMembership: vi.fn(async () => ({
+                kind: 'inconclusive' as const,
+              })),
+            },
+          ),
+      }),
+    })
+    const mutation = createTestSendMutation(
+      setup.owner,
+      createTestIdentity(setup.owner, 'stale-reconcile'),
+      'stale-reconcile',
+    )
+    await setup.engine.syncPort.stageSendMutation(mutation)
+    await setup.engine.syncPort.replacePendingMutationIfCurrent(
+      mutation,
+      startMutationAttempt(mutation),
+    )
+    await runtime.remoteApplication.connect(request(setup))
+
+    const operation = runtime.mutationRunner.runMutation(
+      setup.owner.key,
+      mutation.mutationId,
+    )
+    await vi.waitFor(() => expect(reconcileSend).toHaveBeenCalledTimes(1))
+    await runtime.remoteApplication.disconnect(setup.owner.key)
+    release()
+
+    await expect(operation).resolves.toEqual({ kind: 'needsReconciliation' })
+    await expect(
+      setup.engine.readRepository.readPendingMutation(
+        setup.owner.key,
+        mutation.mutationId,
+      ),
+    ).resolves.toMatchObject({
+      value: { kind: 'present', value: { lifecycle: { status: 'inFlight' } } },
+    })
   })
 
   it('B26-B27 starts no fetch before connect and removes access on disconnect', async () => {
@@ -420,6 +541,89 @@ describe('account-scoped remote body capability', () => {
     expect(fetchA).toHaveBeenCalledTimes(1)
     expect(fetchB).not.toHaveBeenCalled()
   })
+
+  it('keeps reconciliation capability and same-looking mutation evidence account scoped', async () => {
+    const engine = createMemoryLocalEngine()
+    const setupA = await seedLocal(0, engine, 'reconcile-account-a')
+    const setupB = await seedLocal(0, engine, 'reconcile-account-b')
+    const reconcileA = vi.fn(async () => ({
+      kind: 'applied' as const,
+      emailId: remoteEmailIdFromString('same-looking-remote-email'),
+    }))
+    const reconcileB = vi.fn(async () => ({
+      kind: 'applied' as const,
+      emailId: remoteEmailIdFromString('same-looking-remote-email'),
+    }))
+    const runtime = createRemoteProductRuntime({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: (config) => ({
+        open: async () => {
+          const selected =
+            config.provider === 'imapSmtp' && config.username === 'account-b'
+              ? { setup: setupB, reconcile: reconcileB }
+              : { setup: setupA, reconcile: reconcileA }
+          return session(
+            remoteAccountId(selected.setup.owner.remoteRef.jmapAccountId),
+            new FakeRemoteMail(),
+            undefined,
+            {
+              reconcileSend: selected.reconcile,
+              reconcileMembership: vi.fn(async () => ({
+                kind: 'inconclusive' as const,
+              })),
+            },
+          )
+        },
+      }),
+    })
+    const mutationA = createTestSendMutation(
+      setupA.owner,
+      createTestIdentity(setupA.owner, 'same-looking'),
+      'same-looking',
+    )
+    const mutationB = createTestSendMutation(
+      setupB.owner,
+      createTestIdentity(setupB.owner, 'same-looking'),
+      'same-looking',
+    )
+    await engine.syncPort.stageSendMutation(mutationA)
+    await engine.syncPort.stageSendMutation(mutationB)
+    await engine.syncPort.replacePendingMutationIfCurrent(
+      mutationA,
+      startMutationAttempt(mutationA),
+    )
+    await engine.syncPort.replacePendingMutationIfCurrent(
+      mutationB,
+      startMutationAttempt(mutationB),
+    )
+
+    await runtime.remoteApplication.connect(request(setupA))
+    await runtime.remoteApplication.connect({
+      ...request(setupB),
+      config: { ...request(setupB).config, username: 'account-b' },
+    })
+    await runtime.remoteApplication.disconnect(setupB.owner.key)
+
+    await expect(
+      runtime.mutationRunner.runMutation(
+        setupA.owner.key,
+        mutationA.mutationId,
+      ),
+    ).resolves.toEqual({ kind: 'confirmed' })
+    await expect(
+      runtime.mutationRunner.runMutation(
+        setupB.owner.key,
+        mutationB.mutationId,
+      ),
+    ).resolves.toEqual({ kind: 'needsReconciliation' })
+    expect(reconcileA).toHaveBeenCalledWith({
+      remoteAccountId: remoteAccountId(setupA.owner.remoteRef.jmapAccountId),
+      idempotencyKey: mutationA.mutationId,
+    })
+    expect(reconcileB).not.toHaveBeenCalled()
+  })
 })
 
 class NativeBodyIpc implements NativeMailIpcPort {
@@ -441,6 +645,9 @@ class NativeBodyIpc implements NativeMailIpcPort {
   }
   async fetchAttachments() {
     return []
+  }
+  async findMessageId(): Promise<{ kind: 'notFound' }> {
+    throw new Error('unused')
   }
   async storeFlags() {}
   async move(): Promise<never> {

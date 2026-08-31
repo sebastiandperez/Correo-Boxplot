@@ -73,6 +73,20 @@ export type NativeMessageRequest = Readonly<{
   uidValidity: number
   uid: number
 }>
+export type NativeFindMessageIdRequest = Readonly<{
+  sessionId: string
+  mailbox: string
+  messageId: string
+}>
+export type NativeFoundEmailIdDto = Readonly<{
+  mailbox: string
+  uidValidity: number
+  uid: number
+}>
+export type NativeFindMessageIdResponse =
+  | Readonly<{ kind: 'notFound' }>
+  | Readonly<{ kind: 'found'; emailId: NativeFoundEmailIdDto }>
+  | Readonly<{ kind: 'ambiguous' }>
 export type NativeFlag = 'seen' | 'flagged'
 export type NativeStoreFlagsRequest = NativeMessageRequest &
   Readonly<{ add: readonly NativeFlag[]; remove: readonly NativeFlag[] }>
@@ -116,6 +130,9 @@ export interface NativeMailIpcPort {
   fetchAttachments(
     request: NativeMessageRequest,
   ): Promise<readonly NativeAttachmentDto[]>
+  findMessageId(
+    request: NativeFindMessageIdRequest,
+  ): Promise<NativeFindMessageIdResponse>
   storeFlags(request: NativeStoreFlagsRequest): Promise<void>
   move(request: NativeMoveRequest): Promise<NativeMoveResponse>
   smtpSubmit(

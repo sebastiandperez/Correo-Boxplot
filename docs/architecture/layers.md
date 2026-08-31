@@ -123,7 +123,7 @@ No implementa JMAP, Coordinator u Outbox; no obtiene correo por red, no actúa c
 
 **Ruta futura:** `src-tauri/src/net/`.
 
-`src-tauri/src/net/` abre sockets IMAP/SMTP y expone nueve comandos `native_*`
+`src-tauri/src/net/` abre sockets IMAP/SMTP y expone diez comandos `native_*`
 tipados. Es una capa distinta del Rust Local Engine: no adquiere `EngineLease`,
 no conoce `SyncPort`/`ReadRepository`/SQLite/SQLCipher y no traduce IMAP a DTOs
 JMAP. El MVP plaintext acepta exclusivamente loopback verificado; TLS externo

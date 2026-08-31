@@ -3,7 +3,8 @@ use tauri::State;
 use super::{
     ManagedNativeMailRuntime,
     dto::{
-        NativeAttachmentDto, NativeBodyDto, NativeMailOpenRequest, NativeMailOpenResponse,
+        NativeAttachmentDto, NativeBodyDto, NativeFindMessageIdRequest,
+        NativeFindMessageIdResponse, NativeMailOpenRequest, NativeMailOpenResponse,
         NativeMailboxDto, NativeMailboxRequest, NativeMailboxSnapshotDto, NativeMessageRequest,
         NativeMoveRequest, NativeMoveResponse, NativeSessionRequest, NativeSmtpSubmitRequest,
         NativeSmtpSubmitResponse, NativeStoreFlagsRequest,
@@ -11,13 +12,14 @@ use super::{
     errors::NativeMailErrorDto,
 };
 
-pub const NATIVE_MAIL_COMMAND_NAMES: [&str; 9] = [
+pub const NATIVE_MAIL_COMMAND_NAMES: [&str; 10] = [
     "native_mail_open",
     "native_mail_close",
     "native_imap_list_mailboxes",
     "native_imap_snapshot_mailbox",
     "native_imap_fetch_body",
     "native_imap_fetch_attachments",
+    "native_imap_find_message_id",
     "native_imap_store_flags",
     "native_imap_move",
     "native_smtp_submit",
@@ -72,6 +74,14 @@ pub fn native_imap_fetch_attachments(
 }
 
 #[tauri::command]
+pub fn native_imap_find_message_id(
+    request: NativeFindMessageIdRequest,
+    runtime: State<'_, ManagedNativeMailRuntime>,
+) -> Result<NativeFindMessageIdResponse, NativeMailErrorDto> {
+    runtime.find_message_id(&request)
+}
+
+#[tauri::command]
 pub fn native_imap_store_flags(
     request: NativeStoreFlagsRequest,
     runtime: State<'_, ManagedNativeMailRuntime>,
@@ -101,11 +111,11 @@ mod tests {
 
     #[test]
     fn native_command_inventory_is_exact_unique_and_separate_from_local() {
-        assert_eq!(NATIVE_MAIL_COMMAND_NAMES.len(), 9);
+        assert_eq!(NATIVE_MAIL_COMMAND_NAMES.len(), 10);
         let unique = NATIVE_MAIL_COMMAND_NAMES
             .into_iter()
             .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(unique.len(), 9);
+        assert_eq!(unique.len(), 10);
         assert!(unique.iter().all(|name| name.starts_with("native_")));
         assert!(unique.iter().all(|name| !name.starts_with("local_")));
     }

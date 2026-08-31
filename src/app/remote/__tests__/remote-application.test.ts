@@ -823,6 +823,7 @@ function nativeIpcStub(): NativeMailIpcPort {
     snapshotMailbox: vi.fn<NativeMailIpcPort['snapshotMailbox']>(),
     fetchBody: vi.fn<NativeMailIpcPort['fetchBody']>(),
     fetchAttachments: vi.fn<NativeMailIpcPort['fetchAttachments']>(),
+    findMessageId: vi.fn<NativeMailIpcPort['findMessageId']>(),
     storeFlags: vi.fn<NativeMailIpcPort['storeFlags']>(),
     move: vi.fn<NativeMailIpcPort['move']>(),
     smtpSubmit: vi.fn<NativeMailIpcPort['smtpSubmit']>(),

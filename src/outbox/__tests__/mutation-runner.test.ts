@@ -11,12 +11,14 @@ import {
 } from '../../domain/pending-mutation'
 import { sendIntent } from '../../domain/send-intent'
 import type { E2eePort } from '../../e2ee/port'
+import { remoteEmailId } from '../../remote/compat/domain-ids'
 import { RemoteError } from '../../remote/errors'
 import type {
   RemoteKeywordChange,
   RemoteMembershipChange,
 } from '../../remote/mail'
 import {
+  type AccountScopedRemoteMutationReconciler,
   RemoteMutationSourceError,
   type RemoteMutationSource,
   type RemoteSubmissionDraft,
@@ -86,6 +88,42 @@ class FakeMutationSource implements RemoteMutationSource {
   ): Promise<void> {
     this.membershipCalls.push({ emailId, change })
     if (this.membershipFailure !== null) throw this.membershipFailure
+  }
+}
+
+class FakeReconciler implements AccountScopedRemoteMutationReconciler {
+  readonly sendCalls: Array<{ accountKey: string; idempotencyKey: string }> = []
+  readonly membershipCalls: Array<{
+    accountKey: string
+    idempotencyKey: string
+    emailId: RemoteEmailId
+    change: RemoteMembershipChange
+  }> = []
+  sendEvidence:
+    { kind: 'applied'; emailId: RemoteEmailId } | { kind: 'inconclusive' } = {
+    kind: 'inconclusive',
+  }
+  membershipEvidence:
+    { kind: 'applied'; emailId: RemoteEmailId } | { kind: 'inconclusive' } = {
+    kind: 'inconclusive',
+  }
+  failure: unknown = null
+
+  async reconcileSend(accountKey: string, idempotencyKey: string) {
+    this.sendCalls.push({ accountKey, idempotencyKey })
+    if (this.failure !== null) throw this.failure
+    return this.sendEvidence
+  }
+
+  async reconcileMembership(
+    accountKey: string,
+    idempotencyKey: string,
+    emailId: RemoteEmailId,
+    change: RemoteMembershipChange,
+  ) {
+    this.membershipCalls.push({ accountKey, idempotencyKey, emailId, change })
+    if (this.failure !== null) throw this.failure
+    return this.membershipEvidence
   }
 }
 
@@ -460,6 +498,159 @@ describe('DefaultMutationRunner', () => {
     }
   })
 
+  it('settles an accepted-without-ID send only from one real reconciled RemoteEmailId', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const mutation = createTestSendMutation(
+      fixtures.accountA,
+      fixtures.identityA,
+      'reconciled-send',
+    )
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+    const remote = new FakeMutationSource()
+    remote.submitResult = {
+      kind: 'accepted',
+      remoteEmailId: null,
+      receiptId: 'receipt-is-not-identity',
+    }
+    const reconciler = new FakeReconciler()
+    const realId = remoteEmailIdFromString('authoritative-sent-id')
+    reconciler.sendEvidence = { kind: 'applied', emailId: realId }
+    const runner = new DefaultMutationRunner({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      remoteMutationSource: remote,
+      remoteMutationReconciler: reconciler,
+      e2eePort: e2eePort(),
+      now: () => NOW,
+    })
+
+    expect(
+      await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+    ).toEqual({ kind: 'needsReconciliation' })
+    expect(
+      await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+    ).toEqual({ kind: 'confirmed' })
+    expect(remote.submissions).toHaveLength(1)
+    expect(reconciler.sendCalls).toEqual([
+      {
+        accountKey: fixtures.accountA.key,
+        idempotencyKey: mutation.mutationId,
+      },
+    ])
+    expect(
+      unwrapOk(
+        await engine.readRepository.readPendingMutation(
+          fixtures.accountA.key,
+          mutation.mutationId,
+        ),
+      ).kind,
+    ).toBe('absent')
+  })
+
+  it('keeps failed or inconclusive reconciliation inFlight without resubmission', async () => {
+    for (const mode of ['inconclusive', 'queryFailure'] as const) {
+      const { engine, fixtures } = await createSeededMemoryApplication()
+      const mutation = createTestSendMutation(
+        fixtures.accountA,
+        fixtures.identityA,
+        `reconcile-${mode}`,
+      )
+      unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+      unwrapOk(
+        await engine.syncPort.replacePendingMutationIfCurrent(
+          mutation,
+          startMutationAttempt(mutation),
+        ),
+      )
+      const remote = new FakeMutationSource()
+      const reconciler = new FakeReconciler()
+      if (mode === 'queryFailure') reconciler.failure = new Error('offline')
+      const runner = new DefaultMutationRunner({
+        readRepository: engine.readRepository,
+        syncPort: engine.syncPort,
+        remoteMutationSource: remote,
+        remoteMutationReconciler: reconciler,
+        e2eePort: e2eePort(),
+        now: () => NOW,
+      })
+
+      expect(
+        await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+      ).toEqual({ kind: 'needsReconciliation' })
+      expect(remote.submissions).toHaveLength(0)
+      const stored = unwrapOk(
+        await engine.readRepository.readPendingMutation(
+          fixtures.accountA.key,
+          mutation.mutationId,
+        ),
+      )
+      expect(stored.kind === 'present' && stored.value.lifecycle.status).toBe(
+        'inFlight',
+      )
+    }
+  })
+
+  it('retries only when capability acquisition proves the operation never started', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const mutation = createTestSendMutation(
+      fixtures.accountA,
+      fixtures.identityA,
+      'preflight-disconnect',
+    )
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+    const remote = new FakeMutationSource()
+    remote.submitFailure = new RemoteMutationSourceError({
+      kind: 'notConnected',
+    })
+    const runner = new DefaultMutationRunner({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      remoteMutationSource: remote,
+      e2eePort: e2eePort(),
+      now: () => NOW,
+    })
+
+    expect(
+      await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+    ).toEqual({ kind: 'retrying' })
+    const stored = unwrapOk(
+      await engine.readRepository.readPendingMutation(
+        fixtures.accountA.key,
+        mutation.mutationId,
+      ),
+    )
+    expect(stored.kind === 'present' && stored.value.lifecycle.status).toBe(
+      'retrying',
+    )
+  })
+
+  it('never retries automatically when capability cancellation may follow a started operation', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const mutation = createTestSendMutation(
+      fixtures.accountA,
+      fixtures.identityA,
+      'post-start-cancel',
+    )
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+    const remote = new FakeMutationSource()
+    remote.submitFailure = new RemoteMutationSourceError({ kind: 'cancelled' })
+    const runner = new DefaultMutationRunner({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      remoteMutationSource: remote,
+      e2eePort: e2eePort(),
+      now: () => NOW,
+    })
+
+    expect(
+      await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+    ).toEqual({ kind: 'needsReconciliation' })
+    expect(
+      await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+    ).toEqual({ kind: 'needsReconciliation' })
+    expect(remote.submissions).toHaveLength(1)
+  })
+
   it('executes keyword and membership changes once and removes confirmed mutations', async () => {
     const { engine, fixtures } = await createSeededMemoryApplication()
     const keyword = createTestKeywordMutation(
@@ -532,11 +723,13 @@ describe('DefaultMutationRunner', () => {
       ),
     )
     const remote = new FakeMutationSource()
+    const reconciler = new FakeReconciler()
     const refresh = vi.fn().mockResolvedValue(undefined)
     const runner = new DefaultMutationRunner({
       readRepository: engine.readRepository,
       syncPort: engine.syncPort,
       remoteMutationSource: remote,
+      remoteMutationReconciler: reconciler,
       e2eePort: e2eePort(),
       refreshAccount: refresh,
       now: () => NOW,
@@ -550,6 +743,10 @@ describe('DefaultMutationRunner', () => {
     ).toEqual({ kind: 'needsReconciliation' })
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(remote.membershipCalls).toHaveLength(0)
+    expect(reconciler.membershipCalls).toHaveLength(1)
+    expect(reconciler.membershipCalls[0].emailId).toBe(
+      remoteEmailId(fixtures.emailA1.id),
+    )
   })
 
   it('uses CAS as the duplicate-execution barrier for concurrent runners', async () => {
@@ -596,6 +793,170 @@ describe('DefaultMutationRunner', () => {
       ),
     ).toBe(true)
     expect(remote.submissions).toHaveLength(1)
+  })
+
+  it('uses the same durable CAS barrier for a concurrent due retry', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const mutation = createTestSendMutation(
+      fixtures.accountA,
+      fixtures.identityA,
+      'retry-race',
+    )
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+    const inFlight = startMutationAttempt(mutation)
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(mutation, inFlight),
+    )
+    const due = scheduleMutationRetry(
+      inFlight,
+      mutationInstantFromString('2026-08-30T11:59:00.000Z'),
+    )
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(inFlight, due),
+    )
+
+    const remote = new FakeMutationSource()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const originalSubmit = remote.submit.bind(remote)
+    remote.submit = async (...args) => {
+      await gate
+      return originalSubmit(...args)
+    }
+    const dependencies = {
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      remoteMutationSource: remote,
+      e2eePort: e2eePort(),
+      now: () => NOW,
+    }
+    const first = new DefaultMutationRunner(dependencies).runMutation(
+      fixtures.accountA.key,
+      mutation.mutationId,
+    )
+    const second = new DefaultMutationRunner(dependencies).runMutation(
+      fixtures.accountA.key,
+      mutation.mutationId,
+    )
+    await Promise.resolve()
+    release()
+
+    const outcomes = await Promise.all([first, second])
+    expect(outcomes).toContainEqual({ kind: 'confirmed' })
+    expect(outcomes).toContainEqual({
+      kind: 'skipped',
+      reason: 'claimConflict',
+    })
+    expect(remote.submissions).toHaveLength(1)
+  })
+
+  it('keeps concurrent reconciled settlement CAS-safe without resubmission', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const mutation = createTestSendMutation(
+      fixtures.accountA,
+      fixtures.identityA,
+      'reconciliation-settlement-race',
+    )
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(
+        mutation,
+        startMutationAttempt(mutation),
+      ),
+    )
+
+    const remote = new FakeMutationSource()
+    const reconciler = new FakeReconciler()
+    reconciler.sendEvidence = {
+      kind: 'applied',
+      emailId: remoteEmailIdFromString('authoritative-race-id'),
+    }
+    let arrivals = 0
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const originalReconcile = reconciler.reconcileSend.bind(reconciler)
+    reconciler.reconcileSend = async (...args) => {
+      arrivals += 1
+      if (arrivals === 2) release()
+      await gate
+      return originalReconcile(...args)
+    }
+    const dependencies = {
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      remoteMutationSource: remote,
+      remoteMutationReconciler: reconciler,
+      e2eePort: e2eePort(),
+      now: () => NOW,
+    }
+
+    const outcomes = await Promise.all([
+      new DefaultMutationRunner(dependencies).runMutation(
+        fixtures.accountA.key,
+        mutation.mutationId,
+      ),
+      new DefaultMutationRunner(dependencies).runMutation(
+        fixtures.accountA.key,
+        mutation.mutationId,
+      ),
+    ])
+
+    expect(outcomes).toContainEqual({ kind: 'confirmed' })
+    expect(outcomes).toContainEqual({ kind: 'needsReconciliation' })
+    expect(remote.submissions).toHaveLength(0)
+    expect(reconciler.sendCalls).toHaveLength(2)
+    expect(
+      unwrapOk(
+        await engine.readRepository.readPendingMutation(
+          fixtures.accountA.key,
+          mutation.mutationId,
+        ),
+      ).kind,
+    ).toBe('absent')
+  })
+
+  it('recovers a persisted inFlight send with a new runner and never replays submit', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    const mutation = createTestSendMutation(
+      fixtures.accountA,
+      fixtures.identityA,
+      'restart-reconciliation',
+    )
+    unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+    unwrapOk(
+      await engine.syncPort.replacePendingMutationIfCurrent(
+        mutation,
+        startMutationAttempt(mutation),
+      ),
+    )
+
+    const remoteAfterRestart = new FakeMutationSource()
+    const reconcilerAfterRestart = new FakeReconciler()
+    reconcilerAfterRestart.sendEvidence = {
+      kind: 'applied',
+      emailId: remoteEmailIdFromString('persisted-restart-id'),
+    }
+    const runnerAfterRestart = new DefaultMutationRunner({
+      readRepository: engine.readRepository,
+      syncPort: engine.syncPort,
+      remoteMutationSource: remoteAfterRestart,
+      remoteMutationReconciler: reconcilerAfterRestart,
+      e2eePort: e2eePort(),
+      now: () => NOW,
+    })
+
+    await expect(
+      runnerAfterRestart.runMutation(
+        fixtures.accountA.key,
+        mutation.mutationId,
+      ),
+    ).resolves.toEqual({ kind: 'confirmed' })
+    expect(remoteAfterRestart.submissions).toHaveLength(0)
+    expect(reconcilerAfterRestart.sendCalls).toHaveLength(1)
   })
 
   it('does not claim or call remote while disconnected', async () => {

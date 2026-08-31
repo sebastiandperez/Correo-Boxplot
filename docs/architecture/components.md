@@ -126,7 +126,7 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 
 * **Responsabilidad:** Implementar transporte nativo para adapters IMAP (`RemoteMail`) y SMTP (`Submission`). IMAP no envía correo.
 * **Qué NO hace:** No traduce a JMAP, no actúa como proxy genérico, no adquiere `EngineLease` y no conoce Ports locales, SQLite o SQLCipher.
-* **Estado:** implementada por NATIVE-MAIL-PROTOCOLS-01 para loopback verificado. `ImapRemoteMail` y `SmtpSubmission` usan nueve comandos IPC `native_*` hacia `src-tauri/src/net/`.
+* **Estado:** implementada por NATIVE-MAIL-PROTOCOLS-01 para loopback verificado y extendida aditivamente por ADR-012. `ImapRemoteMail`, `SmtpSubmission` e `ImapMutationReconciler` usan diez comandos IPC `native_*` hacia `src-tauri/src/net/`.
 * **Seguridad:** credenciales memory-only; plaintext únicamente después de verificar loopback. TLS externo permanece diferido.
 
 ---
@@ -170,7 +170,7 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 * **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
 * **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. El runner reclama por CAS antes del efecto remoto, elimina confirmadas y conserva `inFlight` ante ambigüedad.
 * **Networking:** Solo mediante Remote Boundary. Una aceptación sin `RemoteEmailId` o un outcome desconocido conserva `inFlight` y produce `needsReconciliation`; MutationId se usa como idempotency key y nunca como Email ID.
-* **Límite de reconciliación:** El contrato actual no demuestra `receiptId → RemoteEmailId` para SMTP ni causalidad de un MOVE cuando desaparece el UID anterior. Esos casos permanecen `inFlight`; subject, timestamp, body, posición o ausencia no se usan como evidencia.
+* **Límite de reconciliación:** Un receipt no demuestra `RemoteEmailId`. SMTP se confirma solo cuando la sesión IMAP activa encuentra exactamente un `Message-ID` canónico y devuelve su identidad real; cero o múltiples coincidencias permanecen `inFlight`. La causalidad de un MOVE ambiguo tampoco se inventa: subject, timestamp, body, posición o ausencia no se usan como evidencia.
 
 ---
 

@@ -1,6 +1,6 @@
 # ADR-012 — Evidencia autoritativa para reconciliar mutaciones remotas
 
-**Status:** ACCEPTED · IMPLEMENTATION PENDING
+**Status:** ACCEPTED · IMPLEMENTED · AWAITING INDEPENDENT VERIFY
 
 ## Context
 
@@ -20,10 +20,10 @@ corchetes angulares forman parte del valor. Servidor-Boxplot conserva el header
 al parsear el mensaje y guarda los mismos bytes normalizados en la copia de
 `Sent`.
 
-La superficie nativa vigente tiene nueve comandos y solo ofrece
-`UID SEARCH ALL`. No puede buscar el marcador exacto ni devolver su identidad
-IMAP sin descargar y adivinar desde capas superiores. Servidor-Boxplot tampoco
-implementa todavía `UID SEARCH HEADER`.
+La superficie nativa previa tenía nueve comandos y solo ofrecía
+`UID SEARCH ALL`. La implementación añade la única extensión aprobada para
+buscar el marcador exacto y devolver su identidad IMAP. Servidor-Boxplot añade
+el subconjunto estándar `UID SEARCH HEADER Message-ID` requerido.
 
 ## Decision
 
@@ -100,8 +100,7 @@ futura con evidencia exacta podrá producir `applied` sin cambiar el contrato.
 
 ## Native reconciliation extension
 
-La superficie existente no es suficiente. Se aprueba una única extensión
-aditiva, a implementar en
+Se implementa una única extensión aditiva aprobada por
 `MUTATION-EXECUTION-RECONCILIATION-REPAIR-01`:
 
 ```text
@@ -161,9 +160,9 @@ El inventario nativo aprobado después de la reparación será:
 ```
 
 Los 25 comandos `local_*` permanecen intactos. La ampliación nativa es explícita
-y no se implementa en esta revisión contractual. Servidor-Boxplot deberá añadir
-el subconjunto estándar `UID SEARCH HEADER Message-ID` necesario para la prueba
-vertical, sin backdoor de base de datos ni endpoint de debug.
+y Servidor-Boxplot implementa el subconjunto estándar
+`UID SEARCH HEADER Message-ID` necesario para la prueba vertical, sin backdoor
+de base de datos ni endpoint de debug.
 
 ## Restart and durable state
 
@@ -196,6 +195,6 @@ factoría de confirmación existente.
   resend desde `MutationId` hasta exactamente un `RemoteEmailId`.
 - `MX-RC-02` queda resuelto aceptando `inconclusive` como estado seguro del MVP;
   la resolución automática de todo MOVE ambiguo no es requisito.
-- La próxima reparación debe implementar el reconciler, la ampliación nativa y
-  el settlement del runner, y luego pasar verificación independiente combinada.
+- El reconciler, la ampliación nativa y el settlement del runner están
+  implementados; resta la verificación independiente combinada.
 - Esta decisión no congela todavía Mutation Execution/Reconciliation.

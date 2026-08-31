@@ -77,6 +77,9 @@ class SubmissionIpc implements NativeMailIpcPort {
   async fetchAttachments(): Promise<readonly NativeAttachmentDto[]> {
     throw new Error('not used')
   }
+  async findMessageId(): Promise<{ kind: 'notFound' }> {
+    throw new Error('not used')
+  }
   async storeFlags(): Promise<void> {
     throw new Error('not used')
   }
@@ -302,8 +305,8 @@ describe('independent architecture and credential-source audit', () => {
   it('retains exact typed IPC inventories without generic JSON commands', () => {
     expect(IPC_READ_COMMANDS).toHaveLength(15)
     expect(IPC_WRITE_COMMANDS).toHaveLength(10)
-    expect(NATIVE_MAIL_COMMANDS).toHaveLength(9)
-    expect(new Set(NATIVE_MAIL_COMMANDS).size).toBe(9)
+    expect(NATIVE_MAIL_COMMANDS).toHaveLength(10)
+    expect(new Set(NATIVE_MAIL_COMMANDS).size).toBe(10)
     expect(rustCommandsSource).not.toContain('serde_json::Value')
   })
 

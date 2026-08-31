@@ -1,6 +1,8 @@
 import type {
   NativeAttachmentDto,
   NativeBodyDto,
+  NativeFindMessageIdRequest,
+  NativeFindMessageIdResponse,
   NativeMailIpcPort,
   NativeMailOpenRequest,
   NativeMailOpenResponse,
@@ -26,6 +28,7 @@ const commands = {
   snapshotMailbox: 'native_imap_snapshot_mailbox',
   fetchBody: 'native_imap_fetch_body',
   fetchAttachments: 'native_imap_fetch_attachments',
+  findMessageId: 'native_imap_find_message_id',
   storeFlags: 'native_imap_store_flags',
   move: 'native_imap_move',
   smtpSubmit: 'native_smtp_submit',
@@ -58,6 +61,11 @@ export class NativeMailIpcClient implements NativeMailIpcPort {
     request: NativeMessageRequest,
   ): Promise<readonly NativeAttachmentDto[]> {
     return this.call(commands.fetchAttachments, request)
+  }
+  findMessageId(
+    request: NativeFindMessageIdRequest,
+  ): Promise<NativeFindMessageIdResponse> {
+    return this.call(commands.findMessageId, request)
   }
   storeFlags(request: NativeStoreFlagsRequest): Promise<void> {
     return this.call(commands.storeFlags, request)

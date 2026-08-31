@@ -109,6 +109,7 @@ function nativeIpcProbe(
       throw new Error('fetchBody is outside this verifier')
     }),
     fetchAttachments: vi.fn(async () => []),
+    findMessageId: vi.fn(async () => ({ kind: 'notFound' as const })),
     storeFlags: vi.fn(async () => undefined),
     move: vi.fn(async () => {
       throw new Error('move is outside this verifier')

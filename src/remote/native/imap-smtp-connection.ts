@@ -1,5 +1,5 @@
 import type { RemoteConnection } from '../connection'
-import { ImapRemoteMail } from '../imap'
+import { ImapMutationReconciler, ImapRemoteMail } from '../imap'
 import type { RemoteConnectionConfig } from '../runtime'
 import type { RemoteSession } from '../session'
 import { SmtpSubmission } from '../smtp'
@@ -44,11 +44,17 @@ export class ImapSmtpRemoteConnection implements RemoteConnection {
         opened.sessionId,
         accountId,
       )
+      const reconciler = new ImapMutationReconciler(
+        this.ipc,
+        opened.sessionId,
+        accountId,
+      )
       let closed = false
       return {
         accounts: [{ id: accountId, capabilities: ['mail', 'submission'] }],
         mail,
         submission,
+        reconciler,
         close: async () => {
           if (closed) return
           closed = true

@@ -4,6 +4,7 @@ import type { RemoteError } from './errors'
 import type { SubmissionMessage } from './submission-message'
 import type { SubmissionResult } from './submission'
 import type { RemoteEmailId } from './types'
+import type { RemoteMutationEvidence } from './reconciliation'
 
 export type RemoteMutationSourceFailure =
   | Readonly<{ kind: 'notConnected' }>
@@ -41,4 +42,19 @@ export interface RemoteMutationSource {
     emailId: RemoteEmailId,
     change: RemoteMembershipChange,
   ): Promise<void>
+}
+
+/** Application-scoped access to the reconciler owned by the active session. */
+export interface AccountScopedRemoteMutationReconciler {
+  reconcileSend(
+    accountKey: AccountKey,
+    idempotencyKey: string,
+  ): Promise<RemoteMutationEvidence>
+
+  reconcileMembership(
+    accountKey: AccountKey,
+    idempotencyKey: string,
+    emailId: RemoteEmailId,
+    change: RemoteMembershipChange,
+  ): Promise<RemoteMutationEvidence>
 }

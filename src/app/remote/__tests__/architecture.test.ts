@@ -64,7 +64,22 @@ describe('REMOTE-APPLICATION architecture gates', () => {
     expect(registry).toContain('generation: number')
   })
 
-  it('keeps the frozen core plus the narrow additive body composition explicit', () => {
+  it('keeps exactly one productive mutation engine per protocol runtime', () => {
+    const tauri = source('app/remote/tauri-remote-composition.ts')
+    const product = source('app/remote/remote-runtime-composition.ts')
+    const jmapWorker = source('workers/jmap-worker.ts')
+
+    expect(tauri).toContain('createRemoteProductRuntime')
+    expect(tauri).not.toContain('new Outbox(')
+    expect(product).toContain('new DefaultMutationRunner(')
+    expect(product).not.toContain('new Outbox(')
+
+    expect(jmapWorker).toContain('new Outbox(')
+    expect(jmapWorker).not.toContain('DefaultMutationRunner')
+    expect(jmapWorker).not.toContain('createRemoteProductRuntime')
+  })
+
+  it('keeps the frozen core plus the narrow product composition explicit', () => {
     const productionFiles = readdirSync(
       resolve(sourceRoot, 'app/remote'),
     ).filter((file) => file.endsWith('.ts'))

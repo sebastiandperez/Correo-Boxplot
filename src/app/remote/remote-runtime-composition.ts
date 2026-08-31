@@ -138,6 +138,7 @@ class BodyCapableRemoteApplication implements RemoteApplication {
         remoteAccountId: selected,
         mail: attempt.session.mail,
         submission: attempt.session.submission,
+        reconciler: attempt.session.reconciler ?? null,
       },
       attempt.generation,
     )
@@ -177,6 +178,7 @@ export function createRemoteProductRuntime(
       readRepository: dependencies.readRepository,
       syncPort: dependencies.syncPort,
       remoteMutationSource: capabilities,
+      remoteMutationReconciler: capabilities,
       e2eePort: dependencies.e2eePort,
       refreshAccount: (accountKey) => application.refreshAccount(accountKey),
     }),

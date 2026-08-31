@@ -8,9 +8,10 @@ use zeroize::Zeroizing;
 
 use super::{
     dto::{
-        NativeAttachmentDto, NativeBodyDto, NativeFlag, NativeMailOpenRequest,
-        NativeMailOpenResponse, NativeMailboxDto, NativeMailboxSnapshotDto, NativeMessageRequest,
-        NativeMoveRequest, NativeMoveResponse, NativeSmtpSubmitRequest, NativeSmtpSubmitResponse,
+        NativeAttachmentDto, NativeBodyDto, NativeFindMessageIdRequest,
+        NativeFindMessageIdResponse, NativeFlag, NativeMailOpenRequest, NativeMailOpenResponse,
+        NativeMailboxDto, NativeMailboxSnapshotDto, NativeMessageRequest, NativeMoveRequest,
+        NativeMoveResponse, NativeSmtpSubmitRequest, NativeSmtpSubmitResponse,
         NativeStoreFlagsRequest,
     },
     errors::{NativeMailErrorDto, NativeMailSessionDisposition},
@@ -155,6 +156,21 @@ impl ManagedNativeMailRuntime {
         })
     }
 
+    pub fn find_message_id(
+        &self,
+        request: &NativeFindMessageIdRequest,
+    ) -> Result<NativeFindMessageIdResponse, NativeMailErrorDto> {
+        self.with_session_or(
+            &request.session_id,
+            NativeMailErrorDto::session_absent(),
+            |session| {
+                session
+                    .imap
+                    .find_message_id(&request.mailbox, &request.message_id)
+            },
+        )
+    }
+
     pub fn store_flags(&self, request: &NativeStoreFlagsRequest) -> Result<(), NativeMailErrorDto> {
         let mut operations = Vec::with_capacity(request.add.len() + request.remove.len());
         for flag in &request.add {
@@ -206,13 +222,26 @@ impl ManagedNativeMailRuntime {
         session_id: &str,
         operation: impl FnOnce(&mut NativeMailSession) -> Result<T, NativeMailErrorDto>,
     ) -> Result<T, NativeMailErrorDto> {
+        self.with_session_or(
+            session_id,
+            NativeMailErrorDto::state_invalid("native_session_absent"),
+            operation,
+        )
+    }
+
+    fn with_session_or<T>(
+        &self,
+        session_id: &str,
+        absent: NativeMailErrorDto,
+        operation: impl FnOnce(&mut NativeMailSession) -> Result<T, NativeMailErrorDto>,
+    ) -> Result<T, NativeMailErrorDto> {
         let session = self
             .sessions
             .lock()
             .map_err(|_| NativeMailErrorDto::unavailable("session_registry_poisoned"))?
             .get(session_id)
             .cloned()
-            .ok_or_else(|| NativeMailErrorDto::state_invalid("native_session_absent"))?;
+            .ok_or(absent)?;
         let mut session = session
             .lock()
             .map_err(|_| NativeMailErrorDto::unavailable("native_session_poisoned"))?;

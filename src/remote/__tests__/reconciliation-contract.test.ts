@@ -181,9 +181,9 @@ describe('mutation reconciliation evidence contract', () => {
     expect(localA.accountKey).not.toBe(localB.accountKey)
   })
 
-  it('proves the existing nine-command native surface cannot perform exact Message-ID lookup', () => {
-    expect(NATIVE_MAIL_COMMANDS).toHaveLength(9)
-    expect(NATIVE_MAIL_COMMANDS).not.toContain('native_imap_find_message_id')
-    expect(source('remote/native/ipc.ts')).not.toMatch(/findMessageId/)
+  it('materializes the approved additive exact Message-ID lookup command', () => {
+    expect(NATIVE_MAIL_COMMANDS).toHaveLength(10)
+    expect(NATIVE_MAIL_COMMANDS).toContain('native_imap_find_message_id')
+    expect(source('remote/native/ipc.ts')).toMatch(/findMessageId/)
   })
 })

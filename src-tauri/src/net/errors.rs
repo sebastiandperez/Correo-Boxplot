@@ -93,6 +93,16 @@ impl NativeMailErrorDto {
         }
     }
 
+    pub fn session_absent() -> Self {
+        Self {
+            kind: NativeMailErrorKind::StateInvalid,
+            retry: NativeMailRetry::Never,
+            session: NativeMailSessionDisposition::Expire,
+            outcome: NativeMailOutcome::NotApplicable,
+            code: Some("native_session_absent"),
+        }
+    }
+
     pub fn conflict(code: &'static str) -> Self {
         Self {
             kind: NativeMailErrorKind::Conflict,

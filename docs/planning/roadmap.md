@@ -42,7 +42,7 @@ La secuencia obligatoria del core es:
 19. REMOTE-APPLICATION-01 — implementación, reparación reentrante, reverify independiente y freeze completos; `RF01`–`RF70` PASS, sin P0/P1.
 20. BODY-MATERIALIZATION-E2EE-01 — implementación completa y self-gates B01–B40; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody. Freeze independiente pendiente del verifier combinado.
 21. SEND-SECURITY-MODE-CONTRACT-01 — contrato durable completo; `SendIntent.securityMode` exige `plain` o `boxplotE2eeV1`, persiste por reinicio y bloquea downgrade plaintext.
-22. MUTATION-EXECUTION-RECONCILIATION-01 — implementación parcial segura y revisión contractual completa por ADR-012; falta `MUTATION-EXECUTION-RECONCILIATION-REPAIR-01` para materializar evidencia SMTP exacta, la extensión nativa aprobada y settlement.
+22. MUTATION-EXECUTION-RECONCILIATION-REPAIR-01 — implementación completa y lista para verificación independiente combinada; evidencia SMTP exacta, extensión nativa aprobada y settlement durable materializados sin blind replay.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -222,7 +222,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
 | Remote Boundary + adapter JMAP | **REMOTE-BOUNDARY-01 COMPLETE** | Adapter IMAP/SMTP y aceptación remota |
 | Coordinador de sincronización | **Protocol-neutral core COMPLETE** | Body materialization y aceptación receive/sync |
-| Procesador de Pending Mutations | **RUNNER IMPLEMENTED · CONTRACT REVIEW COMPLETE · REPAIR REQUIRED** | ADR-012 fija evidencia `applied`/`inconclusive`; falta implementar lookup SMTP exacto y settlement sin replay |
+| Procesador de Pending Mutations | **IMPLEMENTED · AWAITING INDEPENDENT VERIFY** | ADR-012 materializado con lookup SMTP exacto, settlement durable y cero blind replay |
 
 ## 11. Registro de decisiones vigente
 
@@ -243,7 +243,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | C-11 | **MOVED TO FUTURE WEB ITERATION** | Runtime JMAP `SharedWorker` futuro conservado. |
 | C-12 | **MOVED TO 3-B** | Prioridades, batching, backoff, queryChanges y rebase scoped. |
 | C-13 | **RESOLVED · D-08** | Ciclo durable conserva outcome incierto; cleanup exacto queda para reconciliación Outbox. |
-| C-14 | **CONTRACT ACCEPTED · ADR-012 · IMPLEMENTATION PENDING** | `MutationId` rederiva el Message-ID; exactamente un match autoritativo produce `RemoteEmailId`. Receipt y heurísticas no confirman. |
+| C-14 | **IMPLEMENTED · ADR-012 · AWAITING INDEPENDENT VERIFY** | `MutationId` rederiva el Message-ID; exactamente un match autoritativo produce `RemoteEmailId`. Receipt y heurísticas no confirman. |
 | C-15 | **RESOLVED · 0-C** | Token JMAP solo en memoria del Worker. |
 
 ### De `docs/architecture/domain.md`

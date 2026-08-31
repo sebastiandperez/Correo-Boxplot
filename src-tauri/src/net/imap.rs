@@ -7,7 +7,10 @@ use std::{
 use zeroize::Zeroizing;
 
 use super::{
-    dto::{NativeMailboxDto, NativeMailboxSnapshotDto, NativeMoveResponse},
+    dto::{
+        NativeFindMessageIdResponse, NativeFoundEmailIdDto, NativeMailboxDto,
+        NativeMailboxSnapshotDto, NativeMoveResponse,
+    },
     errors::{NativeMailErrorDto, NativeMailErrorKind, NativeMailOutcome, NativeMailRetry},
     mime::parse_message,
 };
@@ -18,6 +21,7 @@ const MAX_IMAP_LINE_BYTES: usize = 64 * 1024;
 const MAX_IMAP_LITERAL_BYTES: usize = 2 * 1024 * 1024;
 const MAX_IMAP_RESPONSE_LINES: usize = 4096;
 const MAX_IMAP_RESPONSE_TEXT_BYTES: usize = 1024 * 1024;
+const MAX_MESSAGE_ID_CANDIDATES: usize = 256;
 
 struct ResponseLine {
     text: String,
@@ -173,6 +177,39 @@ impl ImapConnection {
         Ok(self.fetch(uid)?.raw)
     }
 
+    pub fn find_message_id(
+        &mut self,
+        mailbox: &str,
+        message_id: &str,
+    ) -> Result<NativeFindMessageIdResponse, NativeMailErrorDto> {
+        let selected = self.select(mailbox)?;
+        let candidates = self.search_message_id_candidates(message_id)?;
+        if message_id_candidate_limit_exceeded(&candidates) {
+            return Ok(NativeFindMessageIdResponse::Ambiguous);
+        }
+
+        let mut exact_match = None;
+        for uid in candidates {
+            if self.fetch_exact_message_id(uid)?.as_deref() != Some(message_id) {
+                continue;
+            }
+            if exact_match.replace(uid).is_some() {
+                return Ok(NativeFindMessageIdResponse::Ambiguous);
+            }
+        }
+
+        Ok(match exact_match {
+            None => NativeFindMessageIdResponse::NotFound,
+            Some(uid) => NativeFindMessageIdResponse::Found {
+                email_id: NativeFoundEmailIdDto {
+                    mailbox: mailbox.to_owned(),
+                    uid_validity: selected.uid_validity,
+                    uid,
+                },
+            },
+        })
+    }
+
     pub fn store_flags(
         &mut self,
         mailbox: &str,
@@ -277,22 +314,37 @@ impl ImapConnection {
 
     fn search_uids(&mut self) -> Result<Vec<u32>, NativeMailErrorDto> {
         let lines = self.command("UID SEARCH ALL")?;
-        let search = lines
-            .iter()
-            .find(|line| line.text.starts_with("* SEARCH"))
-            .ok_or_else(|| NativeMailErrorDto::protocol("imap_search_missing"))?;
-        let mut uids = search
-            .text
-            .split_whitespace()
-            .skip(2)
-            .map(|value| {
-                value
-                    .parse::<u32>()
-                    .map_err(|_| NativeMailErrorDto::protocol("imap_uid_invalid"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        uids.sort_unstable();
-        Ok(uids)
+        search_uids_from_response(&lines)
+    }
+
+    fn search_message_id_candidates(
+        &mut self,
+        message_id: &str,
+    ) -> Result<Vec<u32>, NativeMailErrorDto> {
+        let lines = self.command(&format!(
+            "UID SEARCH HEADER Message-ID {}",
+            quote(message_id)?
+        ))?;
+        search_uids_from_response(&lines)
+    }
+
+    fn fetch_exact_message_id(&mut self, uid: u32) -> Result<Option<String>, NativeMailErrorDto> {
+        let lines = self.command(&format!(
+            "UID FETCH {uid} (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"
+        ))?;
+        let mut fetched = lines.into_iter().filter(|line| {
+            line.literal.is_some() && line.text.starts_with("* ") && line.text.contains(" FETCH ")
+        });
+        let line = fetched
+            .next()
+            .ok_or_else(|| NativeMailErrorDto::state_invalid("imap_message_absent"))?;
+        if fetched.next().is_some() {
+            return Err(NativeMailErrorDto::protocol("imap_fetch_duplicate"));
+        }
+        if fetch_uid(&line.text)? != uid {
+            return Err(NativeMailErrorDto::state_invalid("imap_uid_mismatch"));
+        }
+        exact_message_id_header(&line.literal.unwrap_or_default())
     }
 
     fn fetch_flag_snapshot(
@@ -408,6 +460,50 @@ impl ImapConnection {
     fn read_text_line(&mut self) -> Result<String, NativeMailErrorDto> {
         read_bounded_text_line(&mut self.reader)
     }
+}
+
+fn search_uids_from_response(lines: &[ResponseLine]) -> Result<Vec<u32>, NativeMailErrorDto> {
+    let search = lines
+        .iter()
+        .find(|line| line.text.starts_with("* SEARCH"))
+        .ok_or_else(|| NativeMailErrorDto::protocol("imap_search_missing"))?;
+    let mut uids = search
+        .text
+        .split_whitespace()
+        .skip(2)
+        .map(|value| {
+            value
+                .parse::<u32>()
+                .map_err(|_| NativeMailErrorDto::protocol("imap_uid_invalid"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    uids.sort_unstable();
+    uids.dedup();
+    Ok(uids)
+}
+
+fn exact_message_id_header(raw: &[u8]) -> Result<Option<String>, NativeMailErrorDto> {
+    let text = std::str::from_utf8(raw)
+        .map_err(|_| NativeMailErrorDto::protocol("imap_message_id_header_invalid"))?;
+    let mut matches = text
+        .split("\r\n")
+        .take_while(|line| !line.is_empty())
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if !name.eq_ignore_ascii_case("Message-ID") {
+                return None;
+            }
+            value.strip_prefix(' ').map(str::to_owned)
+        });
+    let value = matches.next();
+    if matches.next().is_some() {
+        return Ok(None);
+    }
+    Ok(value)
+}
+
+fn message_id_candidate_limit_exceeded(candidates: &[u32]) -> bool {
+    candidates.len() > MAX_MESSAGE_ID_CANDIDATES
 }
 
 fn read_bounded_text_line(reader: &mut impl BufRead) -> Result<String, NativeMailErrorDto> {
@@ -674,8 +770,9 @@ fn imap_date_to_rfc3339(value: &str) -> Option<String> {
 mod tests {
     use super::{
         MAX_IMAP_LINE_BYTES, MAX_IMAP_LITERAL_BYTES, account_response_text, canonical_flags,
-        ensure_snapshot_stable, fetch_uid, imap_date_to_rfc3339, login_command, mutation_outcome,
-        parse_literal_length, quote, read_bounded_text_line, write_imap_command,
+        ensure_snapshot_stable, exact_message_id_header, fetch_uid, imap_date_to_rfc3339,
+        login_command, message_id_candidate_limit_exceeded, mutation_outcome, parse_literal_length,
+        quote, read_bounded_text_line, write_imap_command,
     };
     use crate::net::dto::NativeMailboxDto;
     use crate::net::errors::{
@@ -707,6 +804,31 @@ mod tests {
                 .code,
             Some("imap_uid_invalid")
         );
+    }
+
+    #[test]
+    fn message_id_header_is_exact_and_candidate_limit_fails_closed() {
+        assert_eq!(
+            exact_message_id_header(b"Message-ID: <boxplot.exact@boxplot.invalid>\r\n\r\n")
+                .expect("valid header")
+                .as_deref(),
+            Some("<boxplot.exact@boxplot.invalid>")
+        );
+        assert_eq!(
+            exact_message_id_header(b"Message-ID:  <boxplot.exact@boxplot.invalid> \r\n\r\n")
+                .expect("whitespace remains data")
+                .as_deref(),
+            Some(" <boxplot.exact@boxplot.invalid> ")
+        );
+        assert!(
+            exact_message_id_header(
+                b"Message-ID: <one@boxplot.invalid>\r\nMessage-ID: <two@boxplot.invalid>\r\n\r\n"
+            )
+            .expect("duplicate header is normal non-evidence")
+            .is_none()
+        );
+        assert!(!message_id_candidate_limit_exceeded(&vec![1; 256]));
+        assert!(message_id_candidate_limit_exceeded(&vec![1; 257]));
     }
 
     #[test]

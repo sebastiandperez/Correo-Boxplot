@@ -28,6 +28,8 @@ import {
 import type {
   NativeAttachmentDto,
   NativeBodyDto,
+  NativeFindMessageIdRequest,
+  NativeFindMessageIdResponse,
   NativeMailIpcPort,
   NativeMailOpenRequest,
   NativeMailOpenResponse,
@@ -51,6 +53,7 @@ class FakeNativeMailIpc implements NativeMailIpcPort {
   messages = [message()]
   body: NativeBodyDto = { kind: 'plain', text: 'hello', html: null }
   attachments: readonly NativeAttachmentDto[] = []
+  findResult: NativeFindMessageIdResponse = { kind: 'notFound' }
   openResponse: NativeMailOpenResponse = {
     sessionId: 'native-session',
     authenticatedUser: 'alice@boxplot.test',
@@ -82,6 +85,10 @@ class FakeNativeMailIpc implements NativeMailIpcPort {
   async fetchAttachments(request: NativeMessageRequest) {
     this.calls.push(['fetchAttachments', request])
     return this.attachments
+  }
+  async findMessageId(request: NativeFindMessageIdRequest) {
+    this.calls.push(['findMessageId', request])
+    return this.findResult
   }
   async storeFlags(request: NativeStoreFlagsRequest) {
     this.calls.push(['storeFlags', request])
@@ -522,7 +529,7 @@ describe('architecture isolation', () => {
 })
 
 describe('typed native IPC', () => {
-  it('exposes exactly nine explicit commands', () => {
+  it('exposes exactly ten explicit commands', () => {
     expect(NATIVE_MAIL_COMMANDS).toEqual([
       'native_mail_open',
       'native_mail_close',
@@ -530,6 +537,7 @@ describe('typed native IPC', () => {
       'native_imap_snapshot_mailbox',
       'native_imap_fetch_body',
       'native_imap_fetch_attachments',
+      'native_imap_find_message_id',
       'native_imap_store_flags',
       'native_imap_move',
       'native_smtp_submit',
@@ -558,6 +566,7 @@ describe('typed native IPC', () => {
         },
         native_imap_fetch_body: { kind: 'plain', text: null, html: null },
         native_imap_fetch_attachments: [],
+        native_imap_find_message_id: { kind: 'notFound' },
         native_imap_move: {
           sourceMailbox: 'INBOX',
           sourceUidValidity: 1,
@@ -583,6 +592,11 @@ describe('typed native IPC', () => {
     await client.snapshotMailbox('s', 'INBOX')
     await client.fetchBody(target)
     await client.fetchAttachments(target)
+    await client.findMessageId({
+      sessionId: 's',
+      mailbox: 'Sent',
+      messageId: '<message@example.test>',
+    })
     await client.storeFlags({ ...target, add: ['seen'], remove: [] })
     await client.move({ ...target, destinationMailbox: 'Trash' })
     await client.smtpSubmit({
