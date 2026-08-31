@@ -23,6 +23,7 @@ const context = createApplicationContext({
   workerClient,
   remoteApplication: remoteRuntime.remoteApplication,
   bodyMaterializer: remoteRuntime.bodyMaterializer,
+  mutationRunner: remoteRuntime.mutationRunner,
 })
 
 createApp(App).use(pinia).provide(applicationContextKey, context).mount('#app')

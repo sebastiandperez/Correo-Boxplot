@@ -168,8 +168,9 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 * **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados remotos.
 * **Datos de salida:** Operaciones remotas protocol-neutral, transiciones durables y solicitud de reconciliación.
 * **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
-* **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. `confirmed` puede permanecer durable hasta reconciliar la autoridad relevante; la política exacta de cleanup queda para Outbox.
+* **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. El runner reclama por CAS antes del efecto remoto, elimina confirmadas y conserva `inFlight` ante ambigüedad.
 * **Networking:** Solo mediante Remote Boundary. Una aceptación sin `RemoteEmailId` o un outcome desconocido conserva `inFlight` y produce `needsReconciliation`; MutationId se usa como idempotency key y nunca como Email ID.
+* **Límite de reconciliación:** El contrato actual no demuestra `receiptId → RemoteEmailId` para SMTP ni causalidad de un MOVE cuando desaparece el UID anterior. Esos casos permanecen `inFlight`; subject, timestamp, body, posición o ausencia no se usan como evidencia.
 
 ---
 

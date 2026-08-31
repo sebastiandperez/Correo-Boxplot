@@ -5,6 +5,7 @@ import type { SyncPort } from '../../ports/sync-port'
 import { remoteAccountId } from '../../remote/compat/domain-ids'
 import type { RemoteConnection } from '../../remote/connection'
 import type { RemoteSession } from '../../remote/session'
+import { DefaultMutationRunner, type MutationRunner } from '../../outbox'
 import {
   DefaultBodyMaterializer,
   type BodyMaterializer,
@@ -21,6 +22,7 @@ import type {
 export type RemoteProductRuntime = Readonly<{
   remoteApplication: RemoteApplication
   bodyMaterializer: BodyMaterializer
+  mutationRunner: MutationRunner
 }>
 
 export type RemoteProductRuntimeDependencies = Readonly<{
@@ -135,6 +137,7 @@ class BodyCapableRemoteApplication implements RemoteApplication {
         accountKey: attempt.accountKey,
         remoteAccountId: selected,
         mail: attempt.session.mail,
+        submission: attempt.session.submission,
       },
       attempt.generation,
     )
@@ -169,6 +172,13 @@ export function createRemoteProductRuntime(
       syncPort: dependencies.syncPort,
       remoteBodySource: capabilities,
       e2eePort: dependencies.e2eePort,
+    }),
+    mutationRunner: new DefaultMutationRunner({
+      readRepository: dependencies.readRepository,
+      syncPort: dependencies.syncPort,
+      remoteMutationSource: capabilities,
+      e2eePort: dependencies.e2eePort,
+      refreshAccount: (accountKey) => application.refreshAccount(accountKey),
     }),
   }
 }

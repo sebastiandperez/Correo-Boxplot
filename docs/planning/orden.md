@@ -56,7 +56,7 @@ P0/P1 — consumers e integración remota
 ├── SEND-SECURITY-MODE-CONTRACT-01 · COMPLETE / READY FOR EXECUTION
 ├── Coordinator → RemoteMail; collection state separado de queryState
 ├── Outbox → RemoteMail + Submission; PendingMutation discriminada
-└── MUTATION-EXECUTION-RECONCILIATION-01 · NEXT
+└── MUTATION-EXECUTION-RECONCILIATION-01 · PARTIAL / CONTRACT REVIEW REQUIRED
 
 P0 — aceptación final Tauri
 │

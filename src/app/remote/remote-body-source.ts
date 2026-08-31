@@ -6,16 +6,29 @@ import {
 } from '../../remote/body-source'
 import { RemoteError } from '../../remote/errors'
 import type { RemoteMail } from '../../remote/mail'
+import type {
+  RemoteKeywordChange,
+  RemoteMembershipChange,
+} from '../../remote/mail'
+import {
+  RemoteMutationSourceError,
+  type RemoteSubmissionDraft,
+  type RemoteMutationSource,
+} from '../../remote/mutation-source'
+import type { Submission } from '../../remote/submission'
 import type { RemoteEmailId } from '../../remote/types'
 
 export type ActiveBodyCapability = Readonly<{
   accountKey: AccountKey
   remoteAccountId: import('../../remote/types').RemoteAccountId
   mail: RemoteMail
+  submission: Submission
   generation: number
 }>
 
-export class RemoteBodyCapabilityStore implements RemoteBodySource {
+export class RemoteBodyCapabilityStore
+  implements RemoteBodySource, RemoteMutationSource
+{
   private readonly active = new Map<AccountKey, ActiveBodyCapability>()
   private readonly generations = new Map<AccountKey, number>()
   private statusAuthority: ((accountKey: AccountKey) => boolean) | null = null
@@ -57,6 +70,65 @@ export class RemoteBodyCapabilityStore implements RemoteBodySource {
     this.active.clear()
   }
 
+  isConnected(accountKey: AccountKey): boolean {
+    const capability = this.active.get(accountKey)
+    return capability !== undefined && this.isCurrent(capability)
+  }
+
+  async submit(
+    accountKey: AccountKey,
+    message: RemoteSubmissionDraft,
+    idempotencyKey: string,
+  ) {
+    const capability = this.mutationCapability(accountKey)
+    try {
+      const result = await capability.submission.submit(
+        { ...message, remoteAccountId: capability.remoteAccountId },
+        idempotencyKey,
+      )
+      this.assertMutationCurrent(capability)
+      return result
+    } catch (error: unknown) {
+      this.handleMutationFailure(capability, error)
+    }
+  }
+
+  async applyKeywordChange(
+    accountKey: AccountKey,
+    emailId: RemoteEmailId,
+    change: RemoteKeywordChange,
+  ): Promise<void> {
+    const capability = this.mutationCapability(accountKey)
+    try {
+      await capability.mail.applyKeywordChange(
+        capability.remoteAccountId,
+        emailId,
+        change,
+      )
+      this.assertMutationCurrent(capability)
+    } catch (error: unknown) {
+      this.handleMutationFailure(capability, error)
+    }
+  }
+
+  async applyMembershipChange(
+    accountKey: AccountKey,
+    emailId: RemoteEmailId,
+    change: RemoteMembershipChange,
+  ): Promise<void> {
+    const capability = this.mutationCapability(accountKey)
+    try {
+      await capability.mail.applyMembershipChange(
+        capability.remoteAccountId,
+        emailId,
+        change,
+      )
+      this.assertMutationCurrent(capability)
+    } catch (error: unknown) {
+      this.handleMutationFailure(capability, error)
+    }
+  }
+
   async fetchBody(
     accountKey: AccountKey,
     emailId: RemoteEmailId,
@@ -92,13 +164,45 @@ export class RemoteBodyCapabilityStore implements RemoteBodySource {
   }
 
   private assertCurrent(capability: ActiveBodyCapability): void {
-    if (
-      this.disposed ||
-      this.active.get(capability.accountKey) !== capability ||
-      this.generation(capability.accountKey) !== capability.generation ||
-      this.statusAuthority?.(capability.accountKey) !== true
-    ) {
+    if (!this.isCurrent(capability)) {
       throw new RemoteBodySourceError('cancelled')
     }
+  }
+
+  private isCurrent(capability: ActiveBodyCapability): boolean {
+    return (
+      !this.disposed &&
+      this.active.get(capability.accountKey) === capability &&
+      this.generation(capability.accountKey) === capability.generation &&
+      this.statusAuthority?.(capability.accountKey) === true
+    )
+  }
+
+  private mutationCapability(accountKey: AccountKey): ActiveBodyCapability {
+    const capability = this.active.get(accountKey)
+    if (capability === undefined || !this.isCurrent(capability)) {
+      throw new RemoteMutationSourceError({ kind: 'notConnected' })
+    }
+    return capability
+  }
+
+  private assertMutationCurrent(capability: ActiveBodyCapability): void {
+    if (!this.isCurrent(capability)) {
+      throw new RemoteMutationSourceError({ kind: 'cancelled' })
+    }
+  }
+
+  private handleMutationFailure(
+    capability: ActiveBodyCapability,
+    error: unknown,
+  ): never {
+    if (!this.isCurrent(capability)) {
+      throw new RemoteMutationSourceError({ kind: 'cancelled' })
+    }
+    if (error instanceof RemoteError) {
+      if (error.session === 'expire') this.invalidate(capability.accountKey)
+      throw new RemoteMutationSourceError({ kind: 'remote', error })
+    }
+    throw new RemoteMutationSourceError({ kind: 'unexpected' })
   }
 }

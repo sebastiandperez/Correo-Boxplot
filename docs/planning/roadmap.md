@@ -42,7 +42,7 @@ La secuencia obligatoria del core es:
 19. REMOTE-APPLICATION-01 — implementación, reparación reentrante, reverify independiente y freeze completos; `RF01`–`RF70` PASS, sin P0/P1.
 20. BODY-MATERIALIZATION-E2EE-01 — implementación completa y self-gates B01–B40; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody. Freeze independiente pendiente del verifier combinado.
 21. SEND-SECURITY-MODE-CONTRACT-01 — contrato durable completo; `SendIntent.securityMode` exige `plain` o `boxplotE2eeV1`, persiste por reinicio y bloquea downgrade plaintext.
-22. MUTATION-EXECUTION-RECONCILIATION-01 — siguiente bloque; Outbox execution, E2EE send, mutations y reconciliación.
+22. MUTATION-EXECUTION-RECONCILIATION-01 — implementación parcial segura: runner, plain/E2EE, keyword/membership, CAS y retry completos; revisión contractual requerida para confirmar SMTP `remoteEmailId=null` y MOVE ambiguo sin heurísticas.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -222,7 +222,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
 | Remote Boundary + adapter JMAP | **REMOTE-BOUNDARY-01 COMPLETE** | Adapter IMAP/SMTP y aceptación remota |
 | Coordinador de sincronización | **Protocol-neutral core COMPLETE** | Body materialization y aceptación receive/sync |
-| Procesador de Pending Mutations | **Send core sobre Submission COMPLETE** | Executors keyword/membership y reconciliación |
+| Procesador de Pending Mutations | **RUNNER IMPLEMENTED · CONTRACT REVIEW REQUIRED** | Falta evidencia protocol-neutral determinista para SMTP/MOVE ambiguos; no hay replay ni confirmación heurística |
 
 ## 11. Registro de decisiones vigente
 
@@ -243,7 +243,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | C-11 | **MOVED TO FUTURE WEB ITERATION** | Runtime JMAP `SharedWorker` futuro conservado. |
 | C-12 | **MOVED TO 3-B** | Prioridades, batching, backoff, queryChanges y rebase scoped. |
 | C-13 | **RESOLVED · D-08** | Ciclo durable conserva outcome incierto; cleanup exacto queda para reconciliación Outbox. |
-| C-14 | **OPEN · 3-B** | Algoritmo de idempotencia/reconciliación de Send pertenece a Outbox. |
+| C-14 | **CONTRACT REVIEW REQUIRED · 3-B** | `receiptId` no es `RemoteEmailId`; se requiere evidencia protocol-neutral determinista para confirmar SMTP sin reenvío. |
 | C-15 | **RESOLVED · 0-C** | Token JMAP solo en memoria del Worker. |
 
 ### De `docs/architecture/domain.md`
