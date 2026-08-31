@@ -134,7 +134,10 @@ un `inFlight` nunca se reproduce a ciegas tras crash o reinicio.
 
 Plain y E2EE se seleccionan exclusivamente por `SendIntent.securityMode`; E2EE
 usa `encryptSendIntent`, no hace auto-trust/auto-key y nunca degrada a
-plaintext. Keyword puede reconciliarse tras refresh autoritativo cuando el
+plaintext. `unavailable` programa retry determinista; `keyUnavailable`,
+`peerKeyUnavailable` y los fallos criptográficos/metadata restantes terminan
+la mutación para evitar loops que no pueden reparar trust o provisioning.
+Keyword puede reconciliarse tras refresh autoritativo cuando el
 Email estable demuestra el delta. En cambio, los contratos congelados no
 ofrecen evidencia determinista `receiptId → RemoteEmailId` para SMTP aceptado
 sin ID, ni prueban que la desaparición del UID antiguo causó un MOVE concreto.

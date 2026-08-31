@@ -234,6 +234,54 @@ describe('DefaultMutationRunner', () => {
     expect(crypto.trustPeerPublicKey).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['unavailable', 'retrying'],
+    ['keyUnavailable', 'failedTerminal'],
+    ['peerKeyUnavailable', 'failedTerminal'],
+  ] as const)(
+    'settles E2EE %s with the documented %s policy and no submit',
+    async (errorKind, expectedOutcome) => {
+      const { engine, fixtures } = await createSeededMemoryApplication()
+      const intent = sendIntent({
+        securityMode: 'boxplotE2eeV1',
+        identity: fixtures.identityA,
+        to: [emailAddress(null, 'recipient-e2ee@example.test')],
+        cc: [],
+        bcc: [],
+        subject: '',
+        body: { text: '', html: null },
+      })
+      const mutation = sendMutation({
+        mutationId: mutationIdFromString(`e2ee-${errorKind}`),
+        accountKey: fixtures.accountA.key,
+        createdAt: NOW,
+        intent,
+      })
+      unwrapOk(await engine.syncPort.stageSendMutation(mutation))
+      const remote = new FakeMutationSource()
+      const crypto = e2eePort(
+        vi.fn().mockResolvedValue({
+          ok: false,
+          error: { kind: errorKind },
+        }),
+      )
+      const runner = new DefaultMutationRunner({
+        readRepository: engine.readRepository,
+        syncPort: engine.syncPort,
+        remoteMutationSource: remote,
+        e2eePort: crypto,
+        now: () => NOW,
+      })
+
+      expect(
+        await runner.runMutation(fixtures.accountA.key, mutation.mutationId),
+      ).toEqual({ kind: expectedOutcome })
+      expect(remote.submissions).toHaveLength(0)
+      expect(crypto.ensureLocalIdentity).not.toHaveBeenCalled()
+      expect(crypto.trustPeerPublicKey).not.toHaveBeenCalled()
+    },
+  )
+
   it('schedules deterministic retry only for known-not-applied retryable failures', async () => {
     const { engine, fixtures } = await createSeededMemoryApplication()
     const mutation = createTestSendMutation(
