@@ -125,7 +125,8 @@ una intención E2EE antes de implementar su executor dedicado.
 
 ## MUTATION-EXECUTION-RECONCILIATION-01
 
-**Estado: PARTIAL / CONTRACT REVIEW REQUIRED.** El `MutationRunner` productivo
+**Estado: PARTIAL / CONTRACT REVIEW COMPLETE; REPAIR REQUIRED.** El
+`MutationRunner` productivo
 lee la cola durable única, reclama `pending`/`retrying` mediante CAS antes del
 efecto remoto y ejecuta Send plain/E2EE, Keyword y Membership usando la misma
 capacidad de sesión account-scoped que `BodyMaterializer`. Retry es
@@ -137,14 +138,20 @@ usa `encryptSendIntent`, no hace auto-trust/auto-key y nunca degrada a
 plaintext. `unavailable` programa retry determinista; `keyUnavailable`,
 `peerKeyUnavailable` y los fallos criptográficos/metadata restantes terminan
 la mutación para evitar loops que no pueden reparar trust o provisioning.
-Keyword puede reconciliarse tras refresh autoritativo cuando el
-Email estable demuestra el delta. En cambio, los contratos congelados no
-ofrecen evidencia determinista `receiptId → RemoteEmailId` para SMTP aceptado
-sin ID, ni prueban que la desaparición del UID antiguo causó un MOVE concreto.
-Esos casos quedan `inFlight/needsReconciliation`; no se usan subject,
-timestamp, contenido, posición, ausencia ni IDs fabricados. La mínima revisión
-futura debe aportar una capacidad protocol-neutral de reconciliación que
-vincule evidencia estable de idempotencia con cero o un `RemoteEmailId`.
+Keyword puede reconciliarse tras refresh autoritativo cuando el Email estable
+demuestra el delta. ADR-012 acepta ahora `RemoteMutationReconciler` con evidencia
+`applied + RemoteEmailId` o `inconclusive`, sin `notApplied` especulativo. Send
+usa `MutationId` para rederivar el `Message-ID` SMTP exacto; 0 o múltiples
+coincidencias quedan inconclusas y una sola confirma. MOVE ambiguo puede
+permanecer `inFlight` indefinidamente cuando no existe identidad causal exacta;
+no se reproduce ni se confirma por ausencia o heurística.
+
+La superficie nativa vigente de nueve comandos no expone búsqueda exacta por
+Message-ID. ADR-012 aprueba explícitamente una única extensión
+`native_imap_find_message_id` (inventario futuro 10), con 0/1/many y bounds
+fail-closed. La siguiente tarea es
+`MUTATION-EXECUTION-RECONCILIATION-REPAIR-01`; este review no implementa todavía
+el comando ni el settlement.
 
 ## SPRINT 2 
 
