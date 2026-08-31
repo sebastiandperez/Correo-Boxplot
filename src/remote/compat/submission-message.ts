@@ -7,6 +7,12 @@ export function submissionMessageFromSendIntent(
   remoteAccountId: RemoteAccountId,
   intent: SendIntent,
 ): SubmissionMessage {
+  if (intent.securityMode !== 'plain') {
+    throw new TypeError(
+      'Encrypted SendIntent cannot use the plaintext submission converter',
+    )
+  }
+
   return {
     remoteAccountId,
     remoteIdentityId: remoteIdentityId(intent.identityId),

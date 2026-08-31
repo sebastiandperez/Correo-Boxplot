@@ -57,6 +57,7 @@
     "accountKey": "account-a",
     "createdAt": "2026-08-20T12:00:00Z",
     "intent": {
+      "securityMode": "plain",
       "identityId": {
         "accountKey": "account-a",
         "jmapIdentityId": "identity-a"

@@ -135,8 +135,10 @@ export type IpcCursorPrecondition =
   | Readonly<{ kind: 'matches'; cursor: IpcCollectionSyncCursor }>
 
 export type IpcSendBody = Readonly<{ text: string; html: string | null }>
+export type IpcSendSecurityMode = 'plain' | 'boxplotE2eeV1'
 export type IpcSendConfirmation = Readonly<{ emailId: IpcScopedEmailId }>
 export type IpcSendIntent = Readonly<{
+  securityMode: IpcSendSecurityMode
   identityId: IpcScopedIdentityId
   from: IpcEmailAddress
   replyTo: readonly IpcEmailAddress[]

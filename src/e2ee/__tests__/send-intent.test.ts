@@ -53,6 +53,7 @@ describe('encryptSendIntent', () => {
       },
     })
     const intent = sendIntent({
+      securityMode: 'boxplotE2eeV1',
       identity: from,
       to: [recipient],
       cc: [],
@@ -73,6 +74,7 @@ describe('encryptSendIntent', () => {
   it('rejects multiple effective recipients before native crypto', async () => {
     const encryptFor: E2eePort['encryptFor'] = vi.fn()
     const unsupported = sendIntent({
+      securityMode: 'boxplotE2eeV1',
       identity: from,
       to: [recipient],
       cc: [emailAddress(null, 'cc@boxplot.test')],

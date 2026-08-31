@@ -136,6 +136,7 @@ fn pending_send(a: &str, id: &str) -> PendingMutation {
         mutation_id: id.into(),
         created_at: "2026-08-20T12:00:00Z".into(),
         payload: MutationPayload::Send(SendIntent {
+            security_mode: SendSecurityMode::Plain,
             identity_jmap_id: "identity-1".into(),
             from: Address {
                 name: Some("Sender".into()),

@@ -41,7 +41,8 @@ La secuencia obligatoria del core es:
 18. NATIVE-MAIL-PROTOCOLS + hardening/parser reverify — completos y congelados.
 19. REMOTE-APPLICATION-01 — implementación, reparación reentrante, reverify independiente y freeze completos; `RF01`–`RF70` PASS, sin P0/P1.
 20. BODY-MATERIALIZATION-E2EE-01 — implementación completa y self-gates B01–B40; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody. Freeze independiente pendiente del verifier combinado.
-21. MUTATION-EXECUTION-RECONCILIATION-01 — siguiente bloque; Outbox execution, E2EE send, mutations y reconciliación.
+21. SEND-SECURITY-MODE-CONTRACT-01 — contrato durable completo; `SendIntent.securityMode` exige `plain` o `boxplotE2eeV1`, persiste por reinicio y bloquea downgrade plaintext.
+22. MUTATION-EXECUTION-RECONCILIATION-01 — siguiente bloque; Outbox execution, E2EE send, mutations y reconciliación.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -252,7 +253,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | D-01 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `AccountKey`, `ServiceKey`, `RemoteAccountRef`, scoped IDs y separación de row IDs. |
 | D-02 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Email remoto confirmado con metadata mínima completa; partial DTO no es Email. |
 | D-03 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `EmailAddress`, listas nullable con ausencia conocida y Message-ID family fuera del core. |
-| D-04 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Identity autorizada y flow Composer → SendIntent → SendMutation. |
+| D-04 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Identity autorizada y flow Composer → SendIntent → SendMutation; ADR-011 fija el `securityMode` durable por envío. |
 | D-05 | **CLOSED / IMPLEMENTED / DOCUMENTED** | Mailbox scoped, parent canónico, counts remotos y seis rights MVP. |
 | D-06 | **CLOSED / IMPLEMENTED / DOCUMENTED** | ViewSpec semántica, queryState por vista y coverage parcial válida. |
 | D-07 | **CLOSED / IMPLEMENTED / DOCUMENTED** | `CollectionSyncCursor = AccountKey + DataType + opaque state`; diagnóstico separado. |

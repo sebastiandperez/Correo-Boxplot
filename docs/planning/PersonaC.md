@@ -109,6 +109,20 @@ para operaciones futuras; no altera el estado privado del `RemoteApplication`
 congelado, que conserva ownership del cierre físico en su lifecycle público.
 
 
+## SEND-SECURITY-MODE-CONTRACT-01
+
+**Estado: COMPLETE / READY FOR EXECUTION.** ADR-011 añade a cada `SendIntent`
+un `securityMode` obligatorio con exactamente `plain` o `boxplotE2eeV1`. La
+decisión viaja dentro de `SendMutation`, sobrevive IPC, SQLCipher y reinicio, y
+forma parte del payload immutable que compara CAS. Ninguna clave, recipient,
+dominio, trust o estado de red puede reinferirla.
+
+El flujo de Composer actual declara `plain` explícitamente. Las filas
+históricas sin campo migran a `plain` únicamente al decodificar persistencia;
+valores desconocidos fallan como estado corrupto. El convertidor plaintext
+rechaza `boxplotE2eeV1`, de modo que la ejecución posterior no puede degradar
+una intención E2EE antes de implementar su executor dedicado.
+
 ## SPRINT 2 
 
 | ID                                       | Archivos principales                                                                                                | Tarea exacta                                                                                                                                                                                                                                            | Impacto / DONE                                                                                                              |

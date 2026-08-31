@@ -4,7 +4,7 @@ use crate::{
     ipc::ManagedLocalEngine,
     persistence::{
         Account, Address, MutationLifecycle, MutationPayload, OwnedOptional, PendingMutation,
-        SendBody, SendIntent,
+        SendBody, SendIntent, SendSecurityMode,
     },
     security::{Dek, DekLookup, DekStore, DekStoreError},
 };
@@ -137,6 +137,7 @@ fn pending_send() -> PendingMutation {
         mutation_id: "mutation-a".into(),
         created_at: "2026-08-20T12:00:00Z".into(),
         payload: MutationPayload::Send(SendIntent {
+            security_mode: SendSecurityMode::Plain,
             identity_jmap_id: "identity-a".into(),
             from: Address {
                 name: None,

@@ -127,6 +127,7 @@ export function cloneCursor(value: CollectionSyncCursor): CollectionSyncCursor {
 
 function cloneSendIntent(value: SendIntent): SendIntent {
   return {
+    securityMode: value.securityMode,
     identityId: value.identityId,
     from: { name: value.from.name, email: value.from.email },
     replyTo: value.replyTo.map((entry) => ({ ...entry })),
