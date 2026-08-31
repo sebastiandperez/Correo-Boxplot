@@ -42,7 +42,7 @@ La secuencia obligatoria del core es:
 19. REMOTE-APPLICATION-01 — implementación, reparación reentrante, reverify independiente y freeze completos; `RF01`–`RF70` PASS, sin P0/P1.
 20. BODY-MATERIALIZATION-E2EE-01 — implementación completa y self-gates B01–B40; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody. Freeze independiente pendiente del verifier combinado.
 21. SEND-SECURITY-MODE-CONTRACT-01 — contrato durable completo; `SendIntent.securityMode` exige `plain` o `boxplotE2eeV1`, persiste por reinicio y bloquea downgrade plaintext.
-22. MUTATION-EXECUTION-RECONCILIATION-01 — implementación parcial segura: runner, plain/E2EE, keyword/membership, CAS y retry completos; revisión contractual requerida para confirmar SMTP `remoteEmailId=null` y MOVE ambiguo sin heurísticas.
+22. MUTATION-EXECUTION-RECONCILIATION-01 — implementación parcial segura y revisión contractual completa por ADR-012; falta `MUTATION-EXECUTION-RECONCILIATION-REPAIR-01` para materializar evidencia SMTP exacta, la extensión nativa aprobada y settlement.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -222,7 +222,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
 | Remote Boundary + adapter JMAP | **REMOTE-BOUNDARY-01 COMPLETE** | Adapter IMAP/SMTP y aceptación remota |
 | Coordinador de sincronización | **Protocol-neutral core COMPLETE** | Body materialization y aceptación receive/sync |
-| Procesador de Pending Mutations | **RUNNER IMPLEMENTED · CONTRACT REVIEW REQUIRED** | Falta evidencia protocol-neutral determinista para SMTP/MOVE ambiguos; no hay replay ni confirmación heurística |
+| Procesador de Pending Mutations | **RUNNER IMPLEMENTED · CONTRACT REVIEW COMPLETE · REPAIR REQUIRED** | ADR-012 fija evidencia `applied`/`inconclusive`; falta implementar lookup SMTP exacto y settlement sin replay |
 
 ## 11. Registro de decisiones vigente
 
@@ -243,7 +243,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | C-11 | **MOVED TO FUTURE WEB ITERATION** | Runtime JMAP `SharedWorker` futuro conservado. |
 | C-12 | **MOVED TO 3-B** | Prioridades, batching, backoff, queryChanges y rebase scoped. |
 | C-13 | **RESOLVED · D-08** | Ciclo durable conserva outcome incierto; cleanup exacto queda para reconciliación Outbox. |
-| C-14 | **CONTRACT REVIEW REQUIRED · 3-B** | `receiptId` no es `RemoteEmailId`; se requiere evidencia protocol-neutral determinista para confirmar SMTP sin reenvío. |
+| C-14 | **CONTRACT ACCEPTED · ADR-012 · IMPLEMENTATION PENDING** | `MutationId` rederiva el Message-ID; exactamente un match autoritativo produce `RemoteEmailId`. Receipt y heurísticas no confirman. |
 | C-15 | **RESOLVED · 0-C** | Token JMAP solo en memoria del Worker. |
 
 ### De `docs/architecture/domain.md`
@@ -276,7 +276,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | PORTS-01 | **CLOSED FOR CURRENT MVP SCOPE · TEST-00→TEST-06 + MEM-01 FINAL PASS** | Reutilizar 179 escenarios para certificar el futuro Local Engine Tauri. |
 | PERSISTENCE-01 | **PERSIST-00/PERSIST-01 COMPLETE** | Motor nativo validado; SQLCipher 4.17/SQLite 3.53.3 exactos verificados en Linux. |
 | ATTACHMENT-CACHE-01 | **RESOLVED BY P-01 + PERSIST-00** | `notCached` y `cached []` son estados distintos sin añadir flags a `AttachmentRef`. |
-| OUTBOX-01 | **Fase 3-B** | Idempotencia/reconciliación de Send con outcome ambiguo y conflictos concurrentes. |
+| OUTBOX-01 | **Fase 3-B · REPAIR NEXT** | Implementar ADR-012: reconciler protocol-neutral, extensión nativa exacta 9→10 y settlement; MOVE inconcluso permanece durable sin replay. |
 | COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
 | AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |
 | STACK-01 | **LINUX + WINDOWS x86_64 MSVC COMPLETE · macOS OUT OF CURRENT SCOPE** | Source/provider deterministas y paquetes DEB/NSIS verificados; Windows incluye ejecución instalada e inspección PE. |
