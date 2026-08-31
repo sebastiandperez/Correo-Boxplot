@@ -53,9 +53,10 @@ P0/P1 — consumers e integración remota
 ├── NATIVE-MAIL-PROTOCOLS + hardening/parser reverify · COMPLETE / FROZEN
 ├── REMOTE-APPLICATION-01 · COMPLETE / FROZEN
 ├── BODY-MATERIALIZATION-E2EE-01 · COMPLETE / READY FOR COMBINED VERIFY
+├── SEND-SECURITY-MODE-CONTRACT-01 · COMPLETE / READY FOR EXECUTION
 ├── Coordinator → RemoteMail; collection state separado de queryState
 ├── Outbox → RemoteMail + Submission; PendingMutation discriminada
-└── MUTATION-EXECUTION-RECONCILIATION-01 · NEXT
+└── MUTATION-EXECUTION-RECONCILIATION-01 · PARTIAL / CONTRACT REVIEW REQUIRED
 
 P0 — aceptación final Tauri
 │

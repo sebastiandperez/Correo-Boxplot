@@ -297,6 +297,7 @@ PendingMutation<Send>
 
 `SendIntent` conserva el snapshot exacto e inmutable que el usuario autorizó:
 
+* `securityMode: SendSecurityMode`, requerido y exactamente `plain` o `boxplotE2eeV1`.
 * `identityId: ScopedIdentityId`; su `AccountKey` se obtiene del ID scoped y no se duplica.
 * `from: EmailAddress`, derivado exclusivamente de la `Identity` seleccionada.
 * `replyTo`, `to`, `cc` y `bcc` como listas readonly ya resueltas.
@@ -304,6 +305,13 @@ PendingMutation<Send>
 * `body: SendBody`, con `text: string` y `html: string | null`.
 
 Reply-To y Bcc defaults se resuelven antes de crear `SendIntent`; Bcc conserva el orden y deduplica únicamente por email exacto durante el merge de user/default. Debe quedar al menos un recipient efectivo. Una Identity wildcard es representable pero no crea un `SendIntent` en el MVP. Outbox no relee la Identity actual para reinterpretar el mensaje. Si la Identity desapareció o ya no autoriza el envío, no se sustituye silenciosamente por otra; la intención falla o requiere una nueva decisión del usuario.
+
+El modo de seguridad es una decisión immutable por envío y forma parte del
+payload durable de `SendMutation`. Las nuevas intenciones lo declaran siempre
+de forma explícita; no se infiere por recipient, dominio, claves, trust ni
+conectividad. Solo el decoder de persistencia interpreta una fila histórica
+sin el campo como `plain`; un valor desconocido es estado corrupto. El
+convertidor plaintext falla cerrado ante `boxplotE2eeV1`.
 
 `SendIntent` no contiene `MutationId`, Email ID, EmailSubmission ID, token, SMTP envelope ni attachments outbound. Su validación outbound mínima exige email no vacío, sin CR/LF/NUL y con contenido a ambos lados de `@`; un display name no puede contener CR/LF/NUL. La autoridad de validación final sigue siendo el servidor.
 

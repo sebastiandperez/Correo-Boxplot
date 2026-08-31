@@ -42,3 +42,18 @@ export function parseBoxplotE2eeEnvelope(payload: string): BoxplotE2eeEnvelope {
     ciphertext: requiredString(parsed, 'ciphertext'),
   }
 }
+
+export function serializeBoxplotE2eeEnvelope(
+  envelope: BoxplotE2eeEnvelope,
+): string {
+  return JSON.stringify({
+    version: envelope.version,
+    algorithm: envelope.algorithm,
+    sender: envelope.sender,
+    recipient: envelope.recipient,
+    senderPublicKey: envelope.senderPublicKey,
+    recipientPublicKey: envelope.recipientPublicKey,
+    nonce: envelope.nonce,
+    ciphertext: envelope.ciphertext,
+  })
+}

@@ -85,6 +85,7 @@ export async function executeSend(
   let intent
   try {
     intent = sendIntent({
+      securityMode: 'plain',
       identity: selectedIdentity,
       to,
       cc: [],

@@ -305,6 +305,7 @@ export function createTestSendIntent(
   token: string,
 ): SendIntent {
   return sendIntent({
+    securityMode: 'plain',
     identity: selectedIdentity,
     to: [emailAddress(`Recipient ${token}`, `recipient-${token}@example.test`)],
     cc: [],

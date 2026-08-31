@@ -109,6 +109,43 @@ para operaciones futuras; no altera el estado privado del `RemoteApplication`
 congelado, que conserva ownership del cierre físico en su lifecycle público.
 
 
+## SEND-SECURITY-MODE-CONTRACT-01
+
+**Estado: COMPLETE / READY FOR EXECUTION.** ADR-011 añade a cada `SendIntent`
+un `securityMode` obligatorio con exactamente `plain` o `boxplotE2eeV1`. La
+decisión viaja dentro de `SendMutation`, sobrevive IPC, SQLCipher y reinicio, y
+forma parte del payload immutable que compara CAS. Ninguna clave, recipient,
+dominio, trust o estado de red puede reinferirla.
+
+El flujo de Composer actual declara `plain` explícitamente. Las filas
+históricas sin campo migran a `plain` únicamente al decodificar persistencia;
+valores desconocidos fallan como estado corrupto. El convertidor plaintext
+rechaza `boxplotE2eeV1`, de modo que la ejecución posterior no puede degradar
+una intención E2EE antes de implementar su executor dedicado.
+
+## MUTATION-EXECUTION-RECONCILIATION-01
+
+**Estado: PARTIAL / CONTRACT REVIEW REQUIRED.** El `MutationRunner` productivo
+lee la cola durable única, reclama `pending`/`retrying` mediante CAS antes del
+efecto remoto y ejecuta Send plain/E2EE, Keyword y Membership usando la misma
+capacidad de sesión account-scoped que `BodyMaterializer`. Retry es
+determinista (5s, 15s, 60s, 5m), `MutationId` permanece como idempotency key y
+un `inFlight` nunca se reproduce a ciegas tras crash o reinicio.
+
+Plain y E2EE se seleccionan exclusivamente por `SendIntent.securityMode`; E2EE
+usa `encryptSendIntent`, no hace auto-trust/auto-key y nunca degrada a
+plaintext. `unavailable` programa retry determinista; `keyUnavailable`,
+`peerKeyUnavailable` y los fallos criptográficos/metadata restantes terminan
+la mutación para evitar loops que no pueden reparar trust o provisioning.
+Keyword puede reconciliarse tras refresh autoritativo cuando el
+Email estable demuestra el delta. En cambio, los contratos congelados no
+ofrecen evidencia determinista `receiptId → RemoteEmailId` para SMTP aceptado
+sin ID, ni prueban que la desaparición del UID antiguo causó un MOVE concreto.
+Esos casos quedan `inFlight/needsReconciliation`; no se usan subject,
+timestamp, contenido, posición, ausencia ni IDs fabricados. La mínima revisión
+futura debe aportar una capacidad protocol-neutral de reconciliación que
+vincule evidencia estable de idempotencia con cero o un `RemoteEmailId`.
+
 ## SPRINT 2 
 
 | ID                                       | Archivos principales                                                                                                | Tarea exacta                                                                                                                                                                                                                                            | Impacto / DONE                                                                                                              |

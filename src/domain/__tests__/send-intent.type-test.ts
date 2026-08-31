@@ -10,7 +10,12 @@ import {
   scopedEmailId,
   scopedIdentityId,
 } from '../ids'
-import { sendIntent, type SendBody, type SendIntent } from '../send-intent'
+import {
+  sendIntent,
+  type SendBody,
+  type SendIntent,
+  type SendSecurityMode,
+} from '../send-intent'
 
 type OptionalKeys<Value> = {
   [Key in keyof Value]-?: Record<never, never> extends Pick<Value, Key>
@@ -36,6 +41,7 @@ const selectedIdentity = identity({
 })
 const recipient = emailAddress(null, 'recipient@example.test')
 const validFactoryInput = {
+  securityMode: 'plain',
   identity: selectedIdentity,
   to: [recipient],
   cc: [],
@@ -50,12 +56,16 @@ describe('D-04 SendIntent compile-time invariants', () => {
     expectNever<OptionalKeys<SendIntent>>()
 
     const { identityId: omittedIdentityId, ...withoutIdentityId } = validIntent
+    const { securityMode: omittedSecurityMode, ...withoutSecurityMode } =
+      validIntent
     const { from: omittedFrom, ...withoutFrom } = validIntent
     const { to: omittedTo, ...withoutTo } = validIntent
     const { body: omittedBody, ...withoutBody } = validIntent
 
     // @ts-expect-error SendIntent requires identityId.
     const missingIdentityId: SendIntent = withoutIdentityId
+    // @ts-expect-error SendIntent requires an explicit security mode.
+    const missingSecurityMode: SendIntent = withoutSecurityMode
     // @ts-expect-error SendIntent requires effective From.
     const missingFrom: SendIntent = withoutFrom
     // @ts-expect-error SendIntent requires To, even when the list is empty.
@@ -65,14 +75,16 @@ describe('D-04 SendIntent compile-time invariants', () => {
 
     expect([
       omittedIdentityId,
+      omittedSecurityMode,
       omittedFrom,
       omittedTo,
       omittedBody,
       missingIdentityId,
+      missingSecurityMode,
       missingFrom,
       missingTo,
       missingBody,
-    ]).toHaveLength(8)
+    ]).toHaveLength(10)
   })
 
   it('keeps SendBody complete and nullable only through null', () => {
@@ -107,6 +119,8 @@ describe('D-04 SendIntent compile-time invariants', () => {
     if (false) {
       // @ts-expect-error SendIntent.identityId is readonly.
       validIntent.identityId = selectedIdentity.id
+      // @ts-expect-error SendIntent.securityMode is readonly.
+      validIntent.securityMode = 'boxplotE2eeV1'
       // @ts-expect-error SendIntent.from is readonly.
       validIntent.from = recipient
       // @ts-expect-error SendIntent.subject is readonly.
@@ -129,6 +143,10 @@ describe('D-04 SendIntent compile-time invariants', () => {
   })
 
   it('does not accept caller-supplied effective identity fields', () => {
+    const { securityMode: omittedFactorySecurityMode, ...withoutSecurityMode } =
+      validFactoryInput
+    // @ts-expect-error SendIntent factory requires an explicit security mode.
+    sendIntent(withoutSecurityMode)
     // @ts-expect-error SendIntent factory derives From exclusively from Identity.
     sendIntent({ ...validFactoryInput, from: recipient })
     // @ts-expect-error SendIntent factory derives identityId from Identity.
@@ -136,7 +154,16 @@ describe('D-04 SendIntent compile-time invariants', () => {
     // @ts-expect-error SendIntent factory resolves Reply-To from Identity.
     sendIntent({ ...validFactoryInput, replyTo: [] })
 
-    expect(true).toBe(true)
+    expect(omittedFactorySecurityMode).toBe('plain')
+  })
+
+  it('allows exactly the two frozen security modes', () => {
+    const plain: SendSecurityMode = 'plain'
+    const encrypted: SendSecurityMode = 'boxplotE2eeV1'
+    // @ts-expect-error SendSecurityMode is a closed two-value union.
+    const invalid: SendSecurityMode = 'quantumMagic'
+
+    expect([plain, encrypted, invalid]).toHaveLength(3)
   })
 
   it('rejects concepts that do not belong inside SendIntent', () => {

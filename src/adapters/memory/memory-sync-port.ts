@@ -94,6 +94,7 @@ function addressListsEqual(
 
 function sendIntentsEqual(left: SendIntent, right: SendIntent): boolean {
   return (
+    left.securityMode === right.securityMode &&
     sameScopedIdentityId(left.identityId, right.identityId) &&
     addressEqual(left.from, right.from) &&
     addressListsEqual(left.replyTo, right.replyTo) &&

@@ -46,6 +46,7 @@ function intentFor(accountKey: AccountKey) {
   })
 
   return sendIntent({
+    securityMode: 'plain',
     identity: selectedIdentity,
     to: [emailAddress(null, 'recipient@example.test')],
     cc: [],

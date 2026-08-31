@@ -11,6 +11,7 @@ import { imapAccountId, imapEmailId } from '../../../remote/imap/ids'
 import type { RemoteMail } from '../../../remote/mail'
 import type { NativeMailIpcPort } from '../../../remote/native/ipc'
 import type { RemoteSession } from '../../../remote/session'
+import type { Submission } from '../../../remote/submission'
 import { FakeRemoteMail, FakeSubmission } from '../../../remote/testing'
 import { remoteAccountId } from '../../../remote/compat/domain-ids'
 import {
@@ -19,7 +20,10 @@ import {
   createTestEmail,
   createTestEmailMailbox,
   createTestMailbox,
+  createTestIdentity,
+  createTestSendMutation,
 } from '../../../tests/contracts/fixtures'
+import { remoteEmailIdFromString } from '../../../remote/types'
 import { createRemoteProductRuntime } from '../remote-runtime-composition'
 import { createTauriRemoteRuntime } from '../tauri-remote-composition'
 
@@ -71,15 +75,16 @@ async function seedLocal(
 function session(
   accountId: ReturnType<typeof remoteAccountId>,
   mail: RemoteMail,
+  submission: Submission = new FakeSubmission(async () => ({
+    kind: 'accepted',
+    remoteEmailId: null,
+    receiptId: null,
+  })),
 ): RemoteSession {
   return {
     accounts: [{ id: accountId, capabilities: ['mail'] }],
     mail,
-    submission: new FakeSubmission(async () => ({
-      kind: 'accepted',
-      remoteEmailId: null,
-      receiptId: null,
-    })),
+    submission,
     close: vi.fn(async () => undefined),
   }
 }
@@ -110,6 +115,51 @@ async function expectMaterializationKind(
 }
 
 describe('account-scoped remote body capability', () => {
+  it('shares one connected session across body materialization and mutation execution', async () => {
+    const setup = await seedLocal(1)
+    const fetchBody = vi.fn(async () => ({
+      kind: 'plain' as const,
+      text: 'body',
+      html: null,
+    }))
+    const submission = new FakeSubmission(async () => ({
+      kind: 'accepted' as const,
+      remoteEmailId: remoteEmailIdFromString('sent-through-shared-session'),
+      receiptId: 'receipt',
+    }))
+    const open = vi.fn(async () =>
+      session(
+        remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+        new FakeRemoteMail({ fetchBody }),
+        submission,
+      ),
+    )
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({ open }),
+    })
+    const mutation = createTestSendMutation(
+      setup.owner,
+      createTestIdentity(setup.owner, 'shared'),
+      'shared-session',
+    )
+    await setup.engine.syncPort.stageSendMutation(mutation)
+
+    await runtime.remoteApplication.connect(request(setup))
+    await expect(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+    ).resolves.toBe('materialized')
+    await expect(
+      runtime.mutationRunner.runMutation(setup.owner.key, mutation.mutationId),
+    ).resolves.toEqual({ kind: 'confirmed' })
+
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(fetchBody).toHaveBeenCalledTimes(1)
+    expect(submission.calls).toHaveLength(1)
+  })
+
   it('B26-B27 starts no fetch before connect and removes access on disconnect', async () => {
     const setup = await seedLocal()
     const fetchBody = vi.fn(async () => ({
@@ -284,6 +334,45 @@ describe('account-scoped remote body capability', () => {
     expect(fetchBody).toHaveBeenCalledTimes(2)
   })
 
+  it('shares session-expiry authority between mutation execution and body access', async () => {
+    const setup = await seedLocal(1)
+    const failure = new RemoteError('expired submit', {
+      kind: 'auth',
+      retry: 'never',
+      session: 'expire',
+      outcome: 'knownNotApplied',
+    })
+    const submission = new FakeSubmission(async () => Promise.reject(failure))
+    const runtime = createRemoteProductRuntime({
+      readRepository: setup.engine.readRepository,
+      syncPort: setup.engine.syncPort,
+      e2eePort: crypto(),
+      connectionFactory: () => ({
+        open: async () =>
+          session(
+            remoteAccountId(setup.owner.remoteRef.jmapAccountId),
+            new FakeRemoteMail(),
+            submission,
+          ),
+      }),
+    })
+    const mutation = createTestSendMutation(
+      setup.owner,
+      createTestIdentity(setup.owner, 'expire'),
+      'expire',
+    )
+    await setup.engine.syncPort.stageSendMutation(mutation)
+    await runtime.remoteApplication.connect(request(setup))
+
+    await expect(
+      runtime.mutationRunner.runMutation(setup.owner.key, mutation.mutationId),
+    ).resolves.toEqual({ kind: 'failedTerminal' })
+    await expectMaterializationKind(
+      runtime.bodyMaterializer.materialize(setup.emails[0].id),
+      'notConnected',
+    )
+  })
+
   it('B31 keeps body authority and cancellation scoped to each account', async () => {
     const engine = createMemoryLocalEngine()
     const setupA = await seedLocal(1, engine, 'capability-account-a')
@@ -438,8 +527,10 @@ describe('productive Tauri remote body composition', () => {
       localChangeSource: engine.localChangeSource,
       remoteApplication: runtime.remoteApplication,
       bodyMaterializer: runtime.bodyMaterializer,
+      mutationRunner: runtime.mutationRunner,
     })
     expect(context.bodyMaterializer).toBe(runtime.bodyMaterializer)
+    expect(context.mutationRunner).toBe(runtime.mutationRunner)
     expect(context.remoteApplication).toBe(runtime.remoteApplication)
     expect(context.readRepository).toBe(engine.readRepository)
     expect(context.syncPort).toBe(engine.syncPort)

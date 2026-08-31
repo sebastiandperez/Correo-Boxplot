@@ -162,9 +162,21 @@ pub struct SendBody {
     pub text: String,
     pub html: Option<String>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SendSecurityMode {
+    #[serde(rename = "plain")]
+    Plain,
+    #[serde(rename = "boxplotE2eeV1")]
+    BoxplotE2eeV1,
+}
+fn legacy_plain_security_mode() -> SendSecurityMode {
+    SendSecurityMode::Plain
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SendIntent {
+    #[serde(rename = "securityMode", default = "legacy_plain_security_mode")]
+    pub security_mode: SendSecurityMode,
     pub identity_jmap_id: String,
     pub from: Address,
     pub reply_to: Vec<Address>,

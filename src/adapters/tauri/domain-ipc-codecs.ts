@@ -353,6 +353,7 @@ export const decodeCursor = (
   })
 
 const encodeSendIntent = (value: SendIntent): IpcSendIntent => ({
+  securityMode: value.securityMode,
   identityId: encodeScopedIdentityId(value.identityId),
   from: encodeAddress(value.from),
   replyTo: value.replyTo.map(encodeAddress),
@@ -368,6 +369,7 @@ function decodeSendIntent(value: IpcSendIntent): SendIntent {
     throw new TypeError('Persisted SendIntent From must contain Identity name')
   }
   return sendIntent({
+    securityMode: value.securityMode,
     identity: identity({
       id: decodeScopedIdentityId(value.identityId),
       name: from.name,

@@ -14,6 +14,7 @@ Se registran solo elecciones con consecuencias arquitectónicas, no una ADR por 
 * [ADR-008 — Frontera remota protocol-neutral](architecture/ADR-008-remote-protocol-boundary.md)
 * [ADR-009 — Native IMAP/SMTP loopback MVP](architecture/ADR-009-native-imap-smtp-mvp.md)
 * [ADR-010 — Orquestación protocol-neutral de RemoteApplication](architecture/ADR-010-remote-application.md)
+* [ADR-011 — Modo de seguridad durable por SendIntent](architecture/ADR-011-send-security-mode.md)
 
 ## Desarrollo
 

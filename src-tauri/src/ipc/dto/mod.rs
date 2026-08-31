@@ -210,9 +210,17 @@ pub struct IpcSendBody {
     pub text: String,
     pub html: Option<String>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IpcSendSecurityMode {
+    #[serde(rename = "plain")]
+    Plain,
+    #[serde(rename = "boxplotE2eeV1")]
+    BoxplotE2eeV1,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct IpcSendIntent {
+    pub security_mode: IpcSendSecurityMode,
     pub identity_id: IpcScopedIdentityId,
     pub from: IpcEmailAddress,
     pub reply_to: Vec<IpcEmailAddress>,
@@ -1013,8 +1021,21 @@ fn address_from_semantic(v: semantic::Address) -> IpcEmailAddress {
         email: v.email,
     }
 }
+fn security_mode_to_semantic(v: IpcSendSecurityMode) -> semantic::SendSecurityMode {
+    match v {
+        IpcSendSecurityMode::Plain => semantic::SendSecurityMode::Plain,
+        IpcSendSecurityMode::BoxplotE2eeV1 => semantic::SendSecurityMode::BoxplotE2eeV1,
+    }
+}
+fn security_mode_from_semantic(v: semantic::SendSecurityMode) -> IpcSendSecurityMode {
+    match v {
+        semantic::SendSecurityMode::Plain => IpcSendSecurityMode::Plain,
+        semantic::SendSecurityMode::BoxplotE2eeV1 => IpcSendSecurityMode::BoxplotE2eeV1,
+    }
+}
 fn intent_to_semantic(v: IpcSendIntent) -> semantic::SendIntent {
     semantic::SendIntent {
+        security_mode: security_mode_to_semantic(v.security_mode),
         identity_jmap_id: v.identity_id.jmap_identity_id,
         from: address_to_semantic(v.from),
         reply_to: v.reply_to.into_iter().map(address_to_semantic).collect(),
@@ -1030,6 +1051,7 @@ fn intent_to_semantic(v: IpcSendIntent) -> semantic::SendIntent {
 }
 fn intent_from_semantic(a: &str, v: semantic::SendIntent) -> IpcSendIntent {
     IpcSendIntent {
+        security_mode: security_mode_from_semantic(v.security_mode),
         identity_id: IpcScopedIdentityId {
             account_key: a.into(),
             jmap_identity_id: v.identity_jmap_id,

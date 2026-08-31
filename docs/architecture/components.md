@@ -168,8 +168,9 @@ Un success que sea un no-op puro puede no emitir hint o emitir invalidación con
 * **Datos de entrada:** `PendingMutation` cifradas, identificadas por `AccountKey + MutationId`, conectividad y resultados remotos.
 * **Datos de salida:** Operaciones remotas protocol-neutral, transiciones durables y solicitud de reconciliación.
 * **Estado:** En vuelo y timers efímeros; el ciclo durable conserva `pending`, `inFlight`, `retrying`, `confirmed` y `failedTerminal`. `inFlight` puede significar que el request llegó al servidor pero el outcome remoto sigue sin resolverse.
-* **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. `confirmed` puede permanecer durable hasta reconciliar la autoridad relevante; la política exacta de cleanup queda para Outbox.
+* **Persistencia:** Solo mediante `SyncPort`. El encolado y cualquier cambio optimista son atómicos. El runner reclama por CAS antes del efecto remoto, elimina confirmadas y conserva `inFlight` ante ambigüedad.
 * **Networking:** Solo mediante Remote Boundary. Una aceptación sin `RemoteEmailId` o un outcome desconocido conserva `inFlight` y produce `needsReconciliation`; MutationId se usa como idempotency key y nunca como Email ID.
+* **Límite de reconciliación:** El contrato actual no demuestra `receiptId → RemoteEmailId` para SMTP ni causalidad de un MOVE cuando desaparece el UID anterior. Esos casos permanecen `inFlight`; subject, timestamp, body, posición o ausencia no se usan como evidencia.
 
 ---
 
@@ -199,7 +200,7 @@ Imagina que arrancas la aplicación sin conexión. Rust recupera la DEK del secu
 9. **Pinia vuelve a leer.** Después del commit, `LocalChangeSource` emite una invalidación; Pinia repite la lectura y Vue actualiza la bandeja desde SQLite, nunca desde la respuesta de red.
 10. **Al abrir un mensaje se repite la regla.** Si el cuerpo está `notCached`, Application puede solicitarlo al `BodyMaterializer`, que usa la sesión activa protocol-neutral y persiste mediante `SyncPort.cacheEmailBody`. El caller relee P-01: nunca recibe el body remoto directamente. Un `EmailBody` completo y normalizado conforme a D-09 se cifra en Rust y la invalidación post-commit provoca otra lectura; la ausencia previa del body nunca vuelve incompleto al Email de metadata y ambos `text`/`html` null siguen siendo un resultado completo válido. HTML permanece raw/untrusted hasta el boundary de render.
 11. **El HTML se trata como hostil.** Vue sanitiza el raw en cada render, elimina contenido activo y remoto y lo muestra dentro del sandbox bajo CSP; no persiste el resultado sanitizado.
-12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent`; `SyncPort.stageSendMutation` persiste la `SendMutation` antes de limpiar Composer. Si falla, conserva la edición. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación JMAP.
+12. **Si redactas, el contenido vive solo en memoria hasta Enviar.** Al pulsar Send, Application valida Composer, resuelve los defaults de Identity y congela un `SendIntent` con `securityMode` explícito; `SyncPort.stageSendMutation` persiste la `SendMutation` antes de limpiar Composer. Si falla, conserva la edición. El modo no se reinfiere después de un reinicio y el convertidor plaintext rechaza E2EE. Outbox no relee defaults ni fabrica un Email; el mensaje autoritativo aparece tras la reconciliación.
 
 ## 11. Extensiones futuras fuera de alcance
 

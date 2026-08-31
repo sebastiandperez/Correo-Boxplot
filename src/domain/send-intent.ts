@@ -7,7 +7,10 @@ export type SendBody = Readonly<{
   html: string | null
 }>
 
+export type SendSecurityMode = 'plain' | 'boxplotE2eeV1'
+
 export type SendIntent = Readonly<{
+  securityMode: SendSecurityMode
   identityId: ScopedIdentityId
   from: EmailAddress
   replyTo: readonly EmailAddress[]
@@ -19,6 +22,7 @@ export type SendIntent = Readonly<{
 }>
 
 type SendIntentInput = Readonly<{
+  securityMode: SendSecurityMode
   identity: Identity
   to: readonly EmailAddress[]
   cc: readonly EmailAddress[]
@@ -86,6 +90,7 @@ export function sendIntent(input: SendIntentInput): SendIntent {
   }
 
   return {
+    securityMode: input.securityMode,
     identityId: input.identity.id,
     from,
     replyTo,

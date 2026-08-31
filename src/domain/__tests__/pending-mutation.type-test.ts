@@ -84,6 +84,7 @@ const selectedIdentity = identity({
   bcc: null,
 })
 const intent = sendIntent({
+  securityMode: 'plain',
   identity: selectedIdentity,
   to: [emailAddress(null, 'recipient@example.test')],
   cc: [],

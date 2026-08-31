@@ -37,6 +37,7 @@ function createIntent(
   }> = {},
 ) {
   return sendIntent({
+    securityMode: 'plain',
     identity: selectedIdentity(),
     to: [validAddress()],
     cc: [],
@@ -56,6 +57,7 @@ describe('SendIntent resolution', () => {
     })
     const result = createIntent({ identity: selected })
 
+    expect(result.securityMode).toBe('plain')
     expect(result.identityId).toBe(selected.id)
     expect(result.from).toEqual(
       emailAddress('Authorized Sender', 'authorized@example.test'),
