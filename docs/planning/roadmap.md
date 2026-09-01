@@ -40,9 +40,10 @@ La secuencia obligatoria del core es:
 17. REMOTE-BOUNDARY-01 — completado; JMAP detrás de RemoteMail/Submission, Coordinator/Outbox protocol-neutral.
 18. NATIVE-MAIL-PROTOCOLS + hardening/parser reverify — completos y congelados.
 19. REMOTE-APPLICATION-01 — implementación, reparación reentrante, reverify independiente y freeze completos; `RF01`–`RF70` PASS, sin P0/P1.
-20. BODY-MATERIALIZATION-E2EE-01 — implementación completa y self-gates B01–B40; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody. Freeze independiente pendiente del verifier combinado.
-21. SEND-SECURITY-MODE-CONTRACT-01 — contrato durable completo; `SendIntent.securityMode` exige `plain` o `boxplotE2eeV1`, persiste por reinicio y bloquea downgrade plaintext.
-22. MUTATION-EXECUTION-RECONCILIATION-REPAIR-01 — implementación completa y lista para verificación independiente combinada; evidencia SMTP exacta, extensión nativa aprobada y settlement durable materializados sin blind replay.
+20. BODY-MATERIALIZATION-E2EE-01 — implementado, verificado y congelado; usa la misma sesión activa, descifra mediante E2eePort y escribe solo EmailBody.
+21. SEND-SECURITY-MODE-CONTRACT-01 — implementado, verificado y congelado; `SendIntent.securityMode` exige `plain` o `boxplotE2eeV1`, persiste por reinicio y bloquea downgrade plaintext.
+22. MUTATION-EXECUTION-RECONCILIATION-REPAIR-01 — implementado, verificado y congelado; evidencia SMTP exacta, extensión nativa aprobada y settlement durable sin blind replay.
+23. PERSONA-C-FINAL-CLOSE-01 — cierre independiente PASS sin P0/P1; Persona C queda `COMPLETE · VERIFIED · FROZEN` y Persona A puede consumir sus contratos estables. `ALICE-BOB-E2E-01` fue omitido de este cierre por decisión del proyecto y no es blocker.
 
 Domain no espera SQLite, Rust, JMAP, Pinia ni Ports. Ports sí esperan un Domain implementado y verificado. Adapters esperan Ports. La persistencia y los algoritmos remotos se integran después sin redefinir identidades ni entidades.
 
@@ -222,7 +223,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | Motor Web/OPFS | **MOVED TO FUTURE WEB ITERATION** | No participa en el MVP Tauri |
 | Remote Boundary + adapter JMAP | **REMOTE-BOUNDARY-01 COMPLETE** | Adapter IMAP/SMTP y aceptación remota |
 | Coordinador de sincronización | **Protocol-neutral core COMPLETE** | Body materialization y aceptación receive/sync |
-| Procesador de Pending Mutations | **IMPLEMENTED · AWAITING INDEPENDENT VERIFY** | ADR-012 materializado con lookup SMTP exacto, settlement durable y cero blind replay |
+| Procesador de Pending Mutations | **IMPLEMENTED · VERIFIED · FROZEN** | ADR-012 verificado con lookup SMTP exacto, settlement durable y cero blind replay |
 
 ## 11. Registro de decisiones vigente
 
@@ -243,7 +244,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | C-11 | **MOVED TO FUTURE WEB ITERATION** | Runtime JMAP `SharedWorker` futuro conservado. |
 | C-12 | **MOVED TO 3-B** | Prioridades, batching, backoff, queryChanges y rebase scoped. |
 | C-13 | **RESOLVED · D-08** | Ciclo durable conserva outcome incierto; cleanup exacto queda para reconciliación Outbox. |
-| C-14 | **IMPLEMENTED · ADR-012 · AWAITING INDEPENDENT VERIFY** | `MutationId` rederiva el Message-ID; exactamente un match autoritativo produce `RemoteEmailId`. Receipt y heurísticas no confirman. |
+| C-14 | **IMPLEMENTED · VERIFIED · FROZEN · ADR-012** | `MutationId` rederiva el Message-ID; exactamente un match autoritativo produce `RemoteEmailId`. Receipt y heurísticas no confirman. |
 | C-15 | **RESOLVED · 0-C** | Token JMAP solo en memoria del Worker. |
 
 ### De `docs/architecture/domain.md`
@@ -276,7 +277,7 @@ Validar recibir/abrir/sync, redactar/encolar/enviar, offline/restart/logout, cac
 | PORTS-01 | **CLOSED FOR CURRENT MVP SCOPE · TEST-00→TEST-06 + MEM-01 FINAL PASS** | Reutilizar 179 escenarios para certificar el futuro Local Engine Tauri. |
 | PERSISTENCE-01 | **PERSIST-00/PERSIST-01 COMPLETE** | Motor nativo validado; SQLCipher 4.17/SQLite 3.53.3 exactos verificados en Linux. |
 | ATTACHMENT-CACHE-01 | **RESOLVED BY P-01 + PERSIST-00** | `notCached` y `cached []` son estados distintos sin añadir flags a `AttachmentRef`. |
-| OUTBOX-01 | **Fase 3-B · REPAIR NEXT** | Implementar ADR-012: reconciler protocol-neutral, extensión nativa exacta 9→10 y settlement; MOVE inconcluso permanece durable sin replay. |
+| OUTBOX-01 | **CLOSED · VERIFIED · FROZEN** | ADR-012 implementado: reconciler protocol-neutral, extensión nativa exacta 9→10 y settlement; MOVE inconcluso permanece durable sin replay. |
 | COORD-01 | **Fase 3-B** | Aplicación de queryChanges, movimientos de posiciones y rebase scoped. |
 | AUTH-01 | **Antes de aceptación** | Callback exacto navegador del sistema→aplicación; frontera y custodia ya decididas. |
 | STACK-01 | **LINUX + WINDOWS x86_64 MSVC COMPLETE · macOS OUT OF CURRENT SCOPE** | Source/provider deterministas y paquetes DEB/NSIS verificados; Windows incluye ejecución instalada e inspección PE. |

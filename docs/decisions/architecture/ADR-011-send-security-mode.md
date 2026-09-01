@@ -1,6 +1,6 @@
 # ADR-011 — Modo de seguridad durable por SendIntent
 
-**Status:** ACCEPTED · READY FOR EXECUTION
+**Status:** ACCEPTED · IMPLEMENTED · VERIFIED · FROZEN
 
 ## Context
 
@@ -25,7 +25,8 @@ downgrade silencioso.
 - Ninguna heurística de dominio, recipient, keys, trust o conectividad puede
   elegir o reescribir el modo.
 - El convertidor plaintext heredado rechaza `boxplotE2eeV1` antes de producir
-  un `SubmissionMessage`; la ejecución E2EE corresponde al siguiente bloque.
+  un `SubmissionMessage`; `MutationRunner` selecciona el executor plain/E2EE
+  exclusivamente desde este campo y nunca degrada a plaintext.
 
 ## Compatibility
 
@@ -44,6 +45,3 @@ nueva serializa el campo de forma explícita; no se necesita una migración SQL.
 ## Deferred
 
 - Selector E2EE en Presentation.
-- Ejecución plaintext/E2EE, cifrado y reconciliación durable mediante
-  `MUTATION-EXECUTION-RECONCILIATION-01`.
-- Verificación independiente combinada de materialización y ejecución remota.

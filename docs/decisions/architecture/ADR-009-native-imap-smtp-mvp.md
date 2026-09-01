@@ -5,10 +5,11 @@
 ## Context
 
 ADR-008 froze the protocol-neutral `RemoteMail` and `Submission` boundary. The
-local Servidor-Boxplot acceptance server exposes a deliberately small IMAP and
-SMTP surface on loopback without TLS. The client needs a first non-JMAP backend
-without leaking native protocol vocabulary into Coordinator, Outbox, Domain,
-Ports or the Local Engine.
+local Servidor-Boxplot test harness exposes a deliberately small IMAP and SMTP
+surface on loopback without TLS. It is not a product backend, Persona C
+component or frozen contract. The client needs a first non-JMAP backend without
+leaking native protocol vocabulary into Coordinator, Outbox, Domain, Ports or
+the Local Engine.
 
 ## Decision
 

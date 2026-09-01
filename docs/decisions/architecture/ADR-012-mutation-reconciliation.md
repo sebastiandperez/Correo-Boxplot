@@ -1,6 +1,6 @@
 # ADR-012 — Evidencia autoritativa para reconciliar mutaciones remotas
 
-**Status:** ACCEPTED · IMPLEMENTED · AWAITING INDEPENDENT VERIFY
+**Status:** ACCEPTED · IMPLEMENTED · VERIFIED · FROZEN
 
 ## Context
 
@@ -164,6 +164,10 @@ y Servidor-Boxplot implementa el subconjunto estándar
 `UID SEARCH HEADER Message-ID` necesario para la prueba vertical, sin backdoor
 de base de datos ni endpoint de debug.
 
+Servidor-Boxplot es exclusivamente un harness mínimo de referencia para pruebas
+protocolarias y verticales. No es backend productivo, componente de Persona C ni
+contrato congelado; el cliente depende solo de los contratos estándar IMAP/SMTP.
+
 ## Restart and durable state
 
 No se añade `receiptId` ni `messageId` al Domain. Tras reinicio son suficientes:
@@ -195,6 +199,6 @@ factoría de confirmación existente.
   resend desde `MutationId` hasta exactamente un `RemoteEmailId`.
 - `MX-RC-02` queda resuelto aceptando `inconclusive` como estado seguro del MVP;
   la resolución automática de todo MOVE ambiguo no es requisito.
-- El reconciler, la ampliación nativa y el settlement del runner están
-  implementados; resta la verificación independiente combinada.
-- Esta decisión no congela todavía Mutation Execution/Reconciliation.
+- El reconciler, la ampliación nativa y el settlement del runner fueron
+  verificados conjuntamente por `PERSONA-C-FINAL-CLOSE-01` sin P0/P1.
+- Mutation Execution/Reconciliation queda congelado para consumo de Persona A.
