@@ -31,6 +31,7 @@ import type { useRuntimeStore } from './stores/runtime'
 import type { AccountSetupRequest } from './stores/account-setup'
 import { RemoteApplicationError, type RemoteApplication } from './remote'
 import type { BodyMaterializer } from '../sync/body-materializer'
+import { BodyMaterializationError } from '../sync/body-materialization-errors'
 import type { MutationRunner } from '../outbox'
 import type { RemoteConnectionConfig } from '../remote/runtime'
 
@@ -74,6 +75,41 @@ export type ConnectAccountOptions = Readonly<{
   onAuthenticated?: () => void
 }>
 
+export type RemoteRefreshErrorKind =
+  | 'notConnected'
+  | 'auth'
+  | 'network'
+  | 'remote'
+  | 'local'
+  | 'cancelled'
+  | 'connectionInProgress'
+  | 'unexpected'
+
+export type RemoteRefreshResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{
+      ok: false
+      error: Readonly<{ kind: RemoteRefreshErrorKind; message: string }>
+    }>
+
+export type BodyLoadErrorKind =
+  | 'emailAbsent'
+  | 'notConnected'
+  | 'remote'
+  | 'local'
+  | 'invalidEnvelope'
+  | 'metadataUnavailable'
+  | 'e2ee'
+  | 'cancelled'
+  | 'unexpected'
+
+export type BodyLoadResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{
+      ok: false
+      error: Readonly<{ kind: BodyLoadErrorKind; message: string }>
+    }>
+
 export function createApplicationContext(
   dependencies: ApplicationContext,
 ): ApplicationContext {
@@ -97,6 +133,10 @@ type ConnectionAttemptTarget =
 type ActiveConnectionAttempt = Readonly<{
   target: ConnectionAttemptTarget
   promise: Promise<AccountConnectionResult>
+}>
+type ActiveRefreshAttempt = Readonly<{
+  accountKey: AccountKey
+  promise: Promise<RemoteRefreshResult>
 }>
 
 function sameConnectionAttemptTarget(
@@ -163,6 +203,36 @@ function accountConnectionFailure(
   return { ok: false, error: { kind, message } }
 }
 
+function refreshFailure(kind: RemoteRefreshErrorKind): RemoteRefreshResult {
+  const message = {
+    notConnected: 'Conecta la cuenta para sincronizar.',
+    auth: 'La sesión ya no permite sincronizar.',
+    network: 'No se pudo contactar al servidor.',
+    remote: 'No se pudo completar la sincronización.',
+    local: 'No se pudieron guardar los cambios sincronizados.',
+    cancelled: 'La sincronización ya no está activa.',
+    connectionInProgress: 'Ya hay una sincronización en curso.',
+    unexpected: 'No se pudo actualizar el correo.',
+  }[kind]
+  return { ok: false, error: { kind, message } }
+}
+
+function bodyLoadFailure(kind: BodyLoadErrorKind): BodyLoadResult {
+  const message = {
+    emailAbsent: 'El mensaje ya no está disponible.',
+    notConnected: 'Conecta la cuenta para cargar este contenido.',
+    remote: 'No se pudo descargar el contenido del mensaje.',
+    local: 'No se pudo guardar o leer el contenido local.',
+    invalidEnvelope: 'No se pudo abrir el contenido cifrado de forma segura.',
+    metadataUnavailable:
+      'No hay información suficiente para abrir este contenido cifrado.',
+    e2ee: 'No se pudo descifrar el contenido del mensaje.',
+    cancelled: 'La carga del contenido ya no está activa.',
+    unexpected: 'No se pudo cargar el contenido.',
+  }[kind]
+  return { ok: false, error: { kind, message } }
+}
+
 function nextMutationId() {
   return mutationIdFromString(
     `application-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -185,6 +255,12 @@ export class MailApplicationController {
   private observedRemoteAccountKey: AccountKey | null = null
   private activeConnectionAttempt: ActiveConnectionAttempt | null = null
   private connectionGeneration = 0
+  private activeRefreshAttempt: ActiveRefreshAttempt | null = null
+  private refreshGeneration = 0
+  private readonly bodyMaterializationAttempts = new Map<
+    string,
+    Promise<BodyLoadResult>
+  >()
   private disposed = false
 
   constructor(
@@ -233,6 +309,10 @@ export class MailApplicationController {
     this.remoteStatusUnsubscribe?.()
     this.remoteStatusUnsubscribe = null
     this.observedRemoteAccountKey = null
+    this.refreshGeneration += 1
+    this.mailStore.clearRefreshActivity()
+    this.mailStore.setBodyMaterializing(false)
+    this.bodyMaterializationAttempts.clear()
   }
 
   async retry(): Promise<void> {
@@ -277,6 +357,7 @@ export class MailApplicationController {
       this.mailStore.selectEmail(emailId)
     }
     await this.refreshSelectedBody()
+    this.demandSelectedBody(emailId)
   }
 
   async refreshAccounts(): Promise<void> {
@@ -505,6 +586,93 @@ export class MailApplicationController {
     await this.refreshMailboxWindow()
   }
 
+  /** Requests an account-scoped remote sync; committed local state remains UI authority. */
+  refreshAccount(accountKey: AccountKey): Promise<RemoteRefreshResult> {
+    const active = this.activeRefreshAttempt
+    if (active !== null) {
+      if (active.accountKey === accountKey) return active.promise
+      const result = refreshFailure('connectionInProgress')
+      if (!result.ok) {
+        this.mailStore.setRefreshActivity(accountKey, {
+          phase: 'error',
+          error: result.error.message,
+        })
+      }
+      return Promise.resolve(result)
+    }
+
+    const generation = ++this.refreshGeneration
+    this.mailStore.setRefreshActivity(accountKey, {
+      phase: 'refreshing',
+      error: null,
+    })
+    const attempt = this.performRefresh(accountKey, generation)
+    this.activeRefreshAttempt = { accountKey, promise: attempt }
+    void attempt.finally(() => {
+      if (this.activeRefreshAttempt?.promise === attempt) {
+        this.activeRefreshAttempt = null
+      }
+    })
+    return attempt
+  }
+
+  private async performRefresh(
+    accountKey: AccountKey,
+    generation: number,
+  ): Promise<RemoteRefreshResult> {
+    const remoteApplication = this.context.remoteApplication
+    if (remoteApplication === undefined) {
+      return this.finishRefresh(
+        accountKey,
+        generation,
+        refreshFailure('unexpected'),
+      )
+    }
+
+    try {
+      await remoteApplication.refreshAccount(accountKey)
+      return this.finishRefresh(accountKey, generation, { ok: true })
+    } catch (error: unknown) {
+      if (!this.isCurrentRefresh(generation)) return refreshFailure('cancelled')
+      if (error instanceof RemoteApplicationError) {
+        const kind = error.kind
+        if (
+          kind === 'notConnected' ||
+          kind === 'auth' ||
+          kind === 'network' ||
+          kind === 'remote' ||
+          kind === 'local' ||
+          kind === 'cancelled'
+        ) {
+          return this.finishRefresh(
+            accountKey,
+            generation,
+            refreshFailure(kind),
+          )
+        }
+      }
+      return this.finishRefresh(
+        accountKey,
+        generation,
+        refreshFailure('unexpected'),
+      )
+    }
+  }
+
+  private finishRefresh(
+    accountKey: AccountKey,
+    generation: number,
+    result: RemoteRefreshResult,
+  ): RemoteRefreshResult {
+    if (!this.isCurrentRefresh(generation)) return refreshFailure('cancelled')
+    this.mailStore.setRefreshActivity(accountKey, {
+      phase: result.ok ? 'idle' : 'error',
+      error: result.ok ? null : result.error.message,
+    })
+    return result
+  }
+
+  /** Legacy JMAP worker path. New Refresh UI must call refreshAccount instead. */
   async syncSelectedAccount(): Promise<void> {
     const accountKey = this.mailStore.selectedAccountKey
     if (!accountKey) return
@@ -605,15 +773,18 @@ export class MailApplicationController {
       emails.some((value) => sameScopedEmailId(value.id, selectedEmail))
         ? selectedEmail
         : (emails[0]?.id ?? null)
-    if (
+    const selectedEmailChanged =
       selectedEmail === null ||
       nextEmail === null ||
       !sameScopedEmailId(selectedEmail, nextEmail)
-    ) {
+    if (selectedEmailChanged) {
       this.mailStore.selectEmail(nextEmail)
     }
     this.mailStore.setLoadState('ready')
     await this.refreshSelectedBody()
+    if (selectedEmailChanged && nextEmail !== null) {
+      this.demandSelectedBody(nextEmail)
+    }
   }
 
   async refreshSelectedBody(): Promise<void> {
@@ -643,6 +814,82 @@ export class MailApplicationController {
     } else {
       this.mailStore.setEmailBody(null, result.value.kind)
     }
+  }
+
+  /** Materializes one selected local body through C, then rereads P-01. */
+  materializeBody(emailId: ScopedEmailId): Promise<BodyLoadResult> {
+    const key = `${emailId.accountKey}\u0000${emailId.jmapId}`
+    const current = this.bodyMaterializationAttempts.get(key)
+    if (current !== undefined) return current
+
+    const attempt = this.performBodyMaterialization(emailId)
+    this.bodyMaterializationAttempts.set(key, attempt)
+    void attempt.finally(() => {
+      if (this.bodyMaterializationAttempts.get(key) === attempt) {
+        this.bodyMaterializationAttempts.delete(key)
+      }
+    })
+    return attempt
+  }
+
+  private demandSelectedBody(emailId: ScopedEmailId): void {
+    if (
+      !this.isSelectedEmail(emailId) ||
+      this.mailStore.bodyLoadState !== 'notCached'
+    ) {
+      return
+    }
+    void this.materializeBody(emailId)
+  }
+
+  private async performBodyMaterialization(
+    emailId: ScopedEmailId,
+  ): Promise<BodyLoadResult> {
+    const materializer = this.context.bodyMaterializer
+    if (materializer === undefined) {
+      return this.finishBodyMaterialization(
+        emailId,
+        bodyLoadFailure('unexpected'),
+      )
+    }
+
+    if (this.isSelectedEmail(emailId)) {
+      this.mailStore.setBodyError(null)
+      this.mailStore.setBodyMaterializing(true)
+    }
+    try {
+      await materializer.materialize(emailId)
+      if (this.disposed) return bodyLoadFailure('cancelled')
+      if (this.isSelectedEmail(emailId)) {
+        await this.refreshSelectedBody()
+      }
+      return this.finishBodyMaterialization(emailId, { ok: true })
+    } catch (error: unknown) {
+      if (this.disposed) return bodyLoadFailure('cancelled')
+      const result =
+        error instanceof BodyMaterializationError
+          ? bodyLoadFailure(error.kind)
+          : bodyLoadFailure('unexpected')
+      return this.finishBodyMaterialization(emailId, result)
+    }
+  }
+
+  private finishBodyMaterialization(
+    emailId: ScopedEmailId,
+    result: BodyLoadResult,
+  ): BodyLoadResult {
+    if (!this.isSelectedEmail(emailId) || this.disposed) return result
+
+    this.mailStore.setBodyMaterializing(false)
+    if (result.ok) return result
+    if (result.error.kind === 'cancelled') return result
+
+    this.mailStore.setEmailBody(
+      null,
+      result.error.kind === 'emailAbsent' ? 'ownerAbsent' : 'notCached',
+    )
+    this.mailStore.setBodyError(result.error.message)
+    return result
   }
 
   async toggleKeyword(email: Email, keyword: string): Promise<void> {
@@ -738,6 +985,17 @@ export class MailApplicationController {
 
   private isCurrentConnection(generation: number): boolean {
     return !this.disposed && this.connectionGeneration === generation
+  }
+
+  private isCurrentRefresh(generation: number): boolean {
+    return !this.disposed && this.refreshGeneration === generation
+  }
+
+  private isSelectedEmail(emailId: ScopedEmailId): boolean {
+    return (
+      this.mailStore.selectedEmailId !== null &&
+      sameScopedEmailId(this.mailStore.selectedEmailId, emailId)
+    )
   }
 
   private observeRemoteStatus(accountKey: AccountKey | null): void {

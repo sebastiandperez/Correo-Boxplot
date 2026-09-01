@@ -23,6 +23,10 @@ Integration	A-08	P0	Corte local-first A+B	Ejecutar UI real contra TauriReadRepos
 >
 > **A2-04 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El status visible se proyecta de `runtime.local`, `runtime.auth` y `runtime.connectivity`, scoped estrictamente a la cuenta seleccionada. Distingue Local, Conectando…, En línea, Sin conexión, Sesión vencida y Error local sin redefinir el lifecycle remoto.
 >
+> **A2-05 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** `MailApplicationController.refreshAccount()` solicita la sincronización mediante `RemoteApplication.refreshAccount(accountKey)`, mantiene la actividad efímera y permite que los commits de C lleguen a Vue exclusivamente por P-03 y relecturas P-01.
+>
+> **A2-06 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** La selección de un body `notCached` demanda `BodyMaterializer.materialize(emailId)` sin transportar contenido remoto a Presentation; el body visible procede siempre de la caché local releída.
+>
 > **A2-09 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El shell local permite reconectar una `Account` durable mediante credenciales memory-only. La acción exige el `AccountKey` explícito y confirma que el endpoint reconstruye exactamente su `ServiceKey` durable antes de invocar `RemoteApplication`.
 
 

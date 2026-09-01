@@ -11,12 +11,13 @@ function vueSources(directory: string): string[] {
 }
 
 describe('Presentation remote boundary', () => {
-  it('does not import RemoteSession, RemoteMail, Submission, or NativeMail IPC', () => {
+  it('does not import remote lifecycle, body-source, or native adapter types', () => {
     const sources = [
       resolve(process.cwd(), 'src/App.vue'),
       ...vueSources(resolve(process.cwd(), 'src/components')),
     ]
-    const forbidden = /RemoteSession|RemoteMail|Submission|NativeMailIpcPort/
+    const forbidden =
+      /RemoteApplication|RemoteSession|RemoteMail|RemoteBodySource|BodyMaterializer|Submission|E2eePort|ImapAdapter|SmtpSubmission|NativeMailIpcPort/
 
     for (const source of sources) {
       expect(readFileSync(source, 'utf8'), source).not.toMatch(forbidden)

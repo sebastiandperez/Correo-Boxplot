@@ -116,6 +116,12 @@ function handleDelete() {
   void controller.moveEmail(email.value.id, 'trash')
 }
 
+function retryBody() {
+  const emailId = mailStore.selectedEmailId
+  if (emailId === null || mailStore.bodyMaterializing) return
+  void controller.materializeBody(emailId)
+}
+
 const isFlagged = computed(() => email.value?.keywords.has('$flagged') ?? false)
 const isSeen = computed(() => email.value?.keywords.has('$seen') ?? false)
 
@@ -330,7 +336,8 @@ const iframeDocument = computed(() => {
           @load="attachIframeLinkHandler"
         />
         <div v-else class="empty-state">
-          <h2 v-if="mailStore.bodyLoadState === 'loading'">
+          <h2 v-if="mailStore.bodyMaterializing">Cargando contenido…</h2>
+          <h2 v-else-if="mailStore.bodyLoadState === 'loading'">
             Cargando contenido local…
           </h2>
           <h2 v-else-if="mailStore.bodyLoadState === 'notCached'">
@@ -343,6 +350,16 @@ const iframeDocument = computed(() => {
             No se pudo leer el contenido local
           </h2>
           <h2 v-else>Contenido local no seleccionado</h2>
+          <p v-if="mailStore.bodyError" role="alert">
+            {{ mailStore.bodyError }}
+          </p>
+          <button
+            v-if="mailStore.bodyLoadState === 'notCached'"
+            type="button"
+            @click="retryBody"
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     </div>

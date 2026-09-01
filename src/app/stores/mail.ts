@@ -16,6 +16,11 @@ export type MailLoadState = 'idle' | 'loading' | 'ready' | 'notCached' | 'error'
 export type BodyLoadState =
   'idle' | 'loading' | 'cached' | 'notCached' | 'ownerAbsent' | 'error'
 
+export type RefreshActivity = Readonly<{
+  phase: 'idle' | 'refreshing' | 'error'
+  error: string | null
+}>
+
 export interface MailState {
   accounts: Account[]
   selectedAccountKey: AccountKey | null
@@ -28,6 +33,9 @@ export interface MailState {
   emails: Email[]
   emailBody: EmailBody | null
   bodyLoadState: BodyLoadState
+  bodyMaterializing: boolean
+  bodyError: string | null
+  refreshActivity: Record<string, RefreshActivity>
   error: string | null
 }
 
@@ -44,6 +52,9 @@ export const useMailStore = defineStore('mail', {
     emails: [],
     emailBody: null,
     bodyLoadState: 'idle',
+    bodyMaterializing: false,
+    bodyError: null,
+    refreshActivity: {},
     error: null,
   }),
 
@@ -86,6 +97,8 @@ export const useMailStore = defineStore('mail', {
       this.emails = []
       this.emailBody = null
       this.bodyLoadState = 'idle'
+      this.bodyMaterializing = false
+      this.bodyError = null
       this.loadState = 'idle'
       this.error = null
     },
@@ -98,6 +111,8 @@ export const useMailStore = defineStore('mail', {
       this.emails = []
       this.emailBody = null
       this.bodyLoadState = 'idle'
+      this.bodyMaterializing = false
+      this.bodyError = null
       this.loadState = 'idle'
       this.error = null
     },
@@ -106,6 +121,8 @@ export const useMailStore = defineStore('mail', {
       this.selectedEmailId = emailId
       this.emailBody = null
       this.bodyLoadState = emailId === null ? 'idle' : 'loading'
+      this.bodyMaterializing = false
+      this.bodyError = null
       this.error = null
     },
 
@@ -128,6 +145,24 @@ export const useMailStore = defineStore('mail', {
     setEmailBody(body: EmailBody | null, state: BodyLoadState) {
       this.emailBody = body
       this.bodyLoadState = state
+      if (state === 'cached') this.bodyMaterializing = false
+      if (state !== 'error') this.bodyError = null
+    },
+
+    setBodyMaterializing(value: boolean) {
+      this.bodyMaterializing = value
+    },
+
+    setBodyError(message: string | null) {
+      this.bodyError = message
+    },
+
+    setRefreshActivity(accountKey: AccountKey, activity: RefreshActivity) {
+      this.refreshActivity[String(accountKey)] = activity
+    },
+
+    clearRefreshActivity() {
+      this.refreshActivity = {}
     },
 
     setLoadState(loadState: MailLoadState, error: string | null = null) {

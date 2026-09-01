@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useMailStore } from '../../app/stores/mail'
+import { useRuntimeStore } from '../../app/stores/runtime'
 import { useMailApplicationController } from '../../app/vue-application-context'
 import type { EmailAddressList } from '../../domain/address'
 import type { ScopedEmailId } from '../../domain/ids'
 import type { Email } from '../../domain/email'
 
 const mailStore = useMailStore()
+const runtimeStore = useRuntimeStore()
 const controller = useMailApplicationController()
 const searchQuery = ref('')
 
@@ -35,6 +37,34 @@ const messagesCount = computed(() => {
   if (count === 1) return '1 mensaje'
   return `${count} mensajes`
 })
+
+const refreshActivity = computed(() => {
+  const accountKey = mailStore.selectedAccountKey
+  return accountKey === null
+    ? { phase: 'idle' as const, error: null }
+    : (mailStore.refreshActivity[String(accountKey)] ?? {
+        phase: 'idle' as const,
+        error: null,
+      })
+})
+
+const canRefresh = computed(
+  () =>
+    mailStore.selectedAccountKey !== null &&
+    runtimeStore.auth === 'authenticated',
+)
+
+function handleRefresh() {
+  const accountKey = mailStore.selectedAccountKey
+  if (
+    accountKey === null ||
+    !canRefresh.value ||
+    refreshActivity.value.phase === 'refreshing'
+  ) {
+    return
+  }
+  void controller.refreshAccount(accountKey)
+}
 
 function isEmailSelected(emailId: ScopedEmailId): boolean {
   if (!mailStore.selectedEmailId) return false
@@ -115,8 +145,31 @@ function handleSelectEmail(emailId: ScopedEmailId) {
     <header class="message-list__header">
       <div class="message-list__header-row">
         <h1 id="message-list-title">{{ folderTitle }}</h1>
-        <span class="message-list__count-badge">{{ messagesCount }}</span>
+        <div class="message-list__header-actions">
+          <span class="message-list__count-badge">{{ messagesCount }}</span>
+          <button
+            class="message-list__refresh"
+            type="button"
+            :disabled="!canRefresh || refreshActivity.phase === 'refreshing'"
+            title="Actualizar correo"
+            aria-label="Actualizar correo"
+            @click="handleRefresh"
+          >
+            {{
+              refreshActivity.phase === 'refreshing'
+                ? 'Sincronizando…'
+                : 'Actualizar'
+            }}
+          </button>
+        </div>
       </div>
+      <p
+        v-if="refreshActivity.error"
+        class="message-list__refresh-error"
+        role="alert"
+      >
+        {{ refreshActivity.error }}
+      </p>
 
       <!-- Barra de búsqueda rápida -->
       <div class="message-list__search">
