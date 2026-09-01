@@ -119,9 +119,11 @@ function handleSubmit() {
         <button
           class="account-setup__submit"
           type="submit"
-          :disabled="store.phase === 'validating'"
+          :disabled="
+            store.phase === 'validating' || store.phase === 'connecting'
+          "
         >
-          Conectar
+          {{ store.phase === 'connecting' ? 'Conectando…' : 'Conectar' }}
         </button>
       </form>
     </section>

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 export type AccountSetupProfile = 'boxplotLocalImap'
-export type AccountSetupPhase = 'idle' | 'validating'
+export type AccountSetupPhase = 'idle' | 'validating' | 'connecting'
 
 export type AccountSetupRequest = Readonly<{
   profile: 'boxplotLocalImap'
@@ -132,6 +132,20 @@ export const useAccountSetupStore = defineStore('accountSetup', {
 
     clearSensitive() {
       this.password = ''
+    },
+
+    beginConnection() {
+      this.phase = 'connecting'
+      this.error = null
+    },
+
+    setConnectionError(message: string) {
+      this.phase = 'idle'
+      this.error = message
+    },
+
+    finishConnection() {
+      this.phase = 'idle'
     },
 
     reset() {

@@ -1,9 +1,11 @@
 ﻿import type { Email } from '../domain/email'
 import type { AccountKey, ScopedEmailId, ScopedMailboxId } from '../domain/ids'
 import {
+  accountKeyFromString,
   mutationIdFromString,
   sameScopedEmailId,
   sameScopedMailboxId,
+  serviceKeyFromString,
 } from '../domain/ids'
 import {
   keywordMutation,
@@ -26,9 +28,11 @@ import type { ReadRepository } from '../ports/read-repository'
 import type { SyncPort } from '../ports/sync-port'
 import type { useMailStore } from './stores/mail'
 import type { useRuntimeStore } from './stores/runtime'
-import type { RemoteApplication } from './remote'
+import type { AccountSetupRequest } from './stores/account-setup'
+import { RemoteApplicationError, type RemoteApplication } from './remote'
 import type { BodyMaterializer } from '../sync/body-materializer'
 import type { MutationRunner } from '../outbox'
+import type { RemoteConnectionConfig } from '../remote/runtime'
 
 import { JmapWorkerClient } from './worker-client'
 
@@ -37,10 +41,35 @@ export interface ApplicationContext {
   readonly remoteApplication?: RemoteApplication
   readonly bodyMaterializer?: BodyMaterializer
   readonly mutationRunner?: MutationRunner
+  /** Creates a non-secret, prospective key only for a new local Account. */
+  readonly accountKeyGenerator?: AccountKeyGenerator
   readonly readRepository: ReadRepository
   readonly syncPort: SyncPort
   readonly localChangeSource: LocalChangeSource
 }
+
+export type AccountKeyGenerator = () => AccountKey
+
+export type AccountConnectionErrorKind =
+  | 'auth'
+  | 'network'
+  | 'accountMismatch'
+  | 'accountSelectionRequired'
+  | 'local'
+  | 'unexpected'
+  | 'cancelled'
+
+export type AccountConnectionResult =
+  | Readonly<{ ok: true; accountKey: AccountKey }>
+  | Readonly<{
+      ok: false
+      error: Readonly<{ kind: AccountConnectionErrorKind; message: string }>
+    }>
+
+export type ConnectAccountOptions = Readonly<{
+  /** Clears presentation-owned memory after credentials are no longer needed. */
+  onAuthenticated?: () => void
+}>
 
 export function createApplicationContext(
   dependencies: ApplicationContext,
@@ -53,11 +82,61 @@ export function createApplicationContext(
     remoteApplication: dependencies.remoteApplication,
     bodyMaterializer: dependencies.bodyMaterializer,
     mutationRunner: dependencies.mutationRunner,
+    accountKeyGenerator: dependencies.accountKeyGenerator,
   }
 }
 
 type MailStore = ReturnType<typeof useMailStore>
 type RuntimeStore = ReturnType<typeof useRuntimeStore>
+
+/**
+ * Application-owned identity for a not-yet-durable account. It is never
+ * persisted unless RemoteApplication successfully registers the Account.
+ */
+export function createProspectiveAccountKey(): AccountKey {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  const entropy = uuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return accountKeyFromString(`account-${entropy}`)
+}
+
+/**
+ * A service is the non-secret IMAP/SMTP endpoint, never a user or credential.
+ */
+export function serviceKeyForSetup(request: AccountSetupRequest) {
+  const host = request.host.trim().toLowerCase().replace(/\.+$/, '')
+  return serviceKeyFromString(
+    `imap-smtp:${host}:${request.imapPort}:${request.smtpPort}`,
+  )
+}
+
+function connectionConfigForSetup(
+  request: AccountSetupRequest,
+): Extract<RemoteConnectionConfig, { provider: 'imapSmtp' }> {
+  return {
+    provider: 'imapSmtp',
+    host: request.host,
+    username: request.username,
+    password: request.password,
+    imapPort: request.imapPort,
+    smtpPort: request.smtpPort,
+  }
+}
+
+function accountConnectionFailure(
+  kind: AccountConnectionErrorKind,
+): AccountConnectionResult {
+  const message = {
+    auth: 'No se pudo autenticar la cuenta.',
+    network: 'No se pudo contactar al servidor.',
+    accountMismatch: 'La cuenta remota no coincide con la configuración local.',
+    accountSelectionRequired:
+      'El servidor requiere seleccionar una cuenta remota.',
+    local: 'No se pudo confirmar la cuenta en el almacenamiento local.',
+    unexpected: 'No se pudo completar la conexión.',
+    cancelled: 'La conexión ya no está activa.',
+  }[kind]
+  return { ok: false, error: { kind, message } }
+}
 
 function nextMutationId() {
   return mutationIdFromString(
@@ -77,6 +156,11 @@ export class MailApplicationController {
   private bodyGeneration = 0
   private pendingHints: LocalChangeBatch['hints'][number][] = []
   private invalidationScheduled = false
+  private remoteStatusUnsubscribe: (() => void) | null = null
+  private observedRemoteAccountKey: AccountKey | null = null
+  private connectAttempt: Promise<AccountConnectionResult> | null = null
+  private connectionGeneration = 0
+  private disposed = false
 
   constructor(
     private readonly context: ApplicationContext,
@@ -117,8 +201,13 @@ export class MailApplicationController {
   }
 
   dispose(): void {
+    this.disposed = true
+    this.connectionGeneration += 1
     this.subscription?.unsubscribe()
     this.subscription = null
+    this.remoteStatusUnsubscribe?.()
+    this.remoteStatusUnsubscribe = null
+    this.observedRemoteAccountKey = null
   }
 
   async retry(): Promise<void> {
@@ -182,11 +271,115 @@ export class MailApplicationController {
     if (nextAccount === undefined) {
       this.mailStore.selectAccount(null)
       this.mailStore.setLoadState('ready')
+      this.observeRemoteStatus(null)
       return
     }
 
     if (selected !== nextAccount) this.mailStore.selectAccount(nextAccount)
+    this.observeRemoteStatus(nextAccount)
     await this.refreshMailboxes()
+  }
+
+  /**
+   * The only Application entry point for AccountSetup. Presentation supplies
+   * setup input, but never RemoteConnectionConfig, identifiers, or sessions.
+   */
+  connectAccount(
+    request: AccountSetupRequest,
+    options: ConnectAccountOptions = {},
+  ): Promise<AccountConnectionResult> {
+    if (this.connectAttempt !== null) return this.connectAttempt
+
+    const attempt = this.performAccountConnection(request, options)
+    this.connectAttempt = attempt
+    void attempt.finally(() => {
+      if (this.connectAttempt === attempt) this.connectAttempt = null
+    })
+    return attempt
+  }
+
+  private async performAccountConnection(
+    request: AccountSetupRequest,
+    options: ConnectAccountOptions,
+  ): Promise<AccountConnectionResult> {
+    const remoteApplication = this.context.remoteApplication
+    if (remoteApplication === undefined)
+      return accountConnectionFailure('unexpected')
+
+    const generation = ++this.connectionGeneration
+    let accounts: Awaited<
+      ReturnType<ApplicationContext['readRepository']['listAccounts']>
+    >
+    try {
+      accounts = await this.context.readRepository.listAccounts()
+    } catch {
+      return accountConnectionFailure('local')
+    }
+    if (!this.isCurrentConnection(generation)) {
+      return accountConnectionFailure('cancelled')
+    }
+    if (!accounts.ok) return accountConnectionFailure('local')
+
+    const selected = this.mailStore.selectedAccountKey
+    const existing =
+      accounts.value.find((value) => value.key === selected) ??
+      [...accounts.value].sort((left, right) =>
+        String(left.key).localeCompare(String(right.key)),
+      )[0]
+    const accountKey =
+      existing?.key ??
+      (this.context.accountKeyGenerator ?? createProspectiveAccountKey)()
+    const serviceKey =
+      existing?.remoteRef.serviceKey ?? serviceKeyForSetup(request)
+
+    this.observeRemoteStatus(accountKey)
+    try {
+      await remoteApplication.connect({
+        accountKey,
+        serviceKey,
+        config: connectionConfigForSetup(request),
+      })
+      if (!this.isCurrentConnection(generation)) {
+        return accountConnectionFailure('cancelled')
+      }
+
+      // Credentials are no longer needed once the remote lifecycle resolves.
+      options.onAuthenticated?.()
+
+      // P-03 will also invalidate this state; this conservative P-01 reread
+      // makes the post-connect root transition depend on committed authority.
+      try {
+        await this.refreshAccounts()
+      } catch {
+        return accountConnectionFailure('local')
+      }
+      if (!this.isCurrentConnection(generation)) {
+        return accountConnectionFailure('cancelled')
+      }
+      if (!this.mailStore.accounts.some((value) => value.key === accountKey)) {
+        return accountConnectionFailure('local')
+      }
+      return { ok: true, accountKey }
+    } catch (error: unknown) {
+      if (!this.isCurrentConnection(generation)) {
+        return accountConnectionFailure('cancelled')
+      }
+      this.projectRemoteStatus(accountKey)
+      if (error instanceof RemoteApplicationError) {
+        const kind = error.kind
+        if (
+          kind === 'auth' ||
+          kind === 'network' ||
+          kind === 'accountMismatch' ||
+          kind === 'accountSelectionRequired' ||
+          kind === 'local' ||
+          kind === 'cancelled'
+        ) {
+          return accountConnectionFailure(kind)
+        }
+      }
+      return accountConnectionFailure('unexpected')
+    }
   }
 
   async refreshMailboxes(): Promise<void> {
@@ -465,6 +658,48 @@ export class MailApplicationController {
     if (this.invalidationScheduled) return
     this.invalidationScheduled = true
     queueMicrotask(() => void this.flushInvalidations())
+  }
+
+  private isCurrentConnection(generation: number): boolean {
+    return !this.disposed && this.connectionGeneration === generation
+  }
+
+  private observeRemoteStatus(accountKey: AccountKey | null): void {
+    if (this.observedRemoteAccountKey === accountKey) return
+    this.remoteStatusUnsubscribe?.()
+    this.remoteStatusUnsubscribe = null
+    this.observedRemoteAccountKey = accountKey
+
+    const remoteApplication = this.context.remoteApplication
+    if (accountKey === null || remoteApplication === undefined) {
+      this.runtimeStore.setAuth('anonymous')
+      this.runtimeStore.setConnectivity('offline')
+      return
+    }
+
+    try {
+      this.remoteStatusUnsubscribe = remoteApplication.subscribe(
+        accountKey,
+        (status) => {
+          if (this.disposed || this.observedRemoteAccountKey !== accountKey)
+            return
+          this.runtimeStore.setAuth(status.auth)
+          this.runtimeStore.setConnectivity(status.connectivity)
+        },
+      )
+    } catch {
+      this.runtimeStore.setAuth('anonymous')
+      this.runtimeStore.setConnectivity('offline')
+    }
+  }
+
+  private projectRemoteStatus(accountKey: AccountKey): void {
+    if (this.observedRemoteAccountKey !== accountKey) return
+    const remoteApplication = this.context.remoteApplication
+    if (remoteApplication === undefined) return
+    const status = remoteApplication.getStatus(accountKey)
+    this.runtimeStore.setAuth(status.auth)
+    this.runtimeStore.setConnectivity(status.connectivity)
   }
 
   private async flushInvalidations(): Promise<void> {

@@ -119,13 +119,21 @@ describe('AccountSetup presentation (A2-01)', () => {
     expect(wrapper.emitted('submit')).toHaveLength(1)
   })
 
+  it('UI-03 disables repeated submit while Application connection is in flight', async () => {
+    const wrapper = mountSetup()
+    useAccountSetupStore().beginConnection()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBe('')
+    expect(wrapper.get('button[type="submit"]').text()).toBe('Conectando…')
+  })
+
   it('has no concrete remote, Tauri, E2EE, or persistence imports', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/components/account/AccountSetup.vue'),
       'utf8',
     )
     expect(source).not.toMatch(
-      /src\/jmap|src\/workers|ImapAdapter|SmtpSubmission|JmapClient|@tauri-apps|invoke\(|E2eePort|ReadRepository|SyncPort/,
+      /accountKeyFromString|crypto\.randomUUID|src\/jmap|src\/workers|ImapAdapter|SmtpSubmission|JmapClient|RemoteSession|RemoteMail|Submission|NativeMailIpcPort|@tauri-apps|invoke\(|E2eePort|ReadRepository|SyncPort/,
     )
   })
 })

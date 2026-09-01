@@ -16,6 +16,10 @@ Integration	A-08	P0	Corte local-first A+B	Ejecutar UI real contra TauriReadRepos
 > **A2-00 — COMPLETE.** Se restauró el contrato aceptado de seguridad del MessageViewer: sandbox exacto `allow-same-origin`, sanitización por render, recursos remotos bloqueados y navegación HTTP/HTTPS exclusivamente mediante el opener controlado. También se corrigió el mojibake introducido en rutas Persona A.
 >
 > **A2-01 — COMPLETE.** `AccountSetup` y su store Pinia efímero recopilan y validan la configuración **Boxplot Local / IMAP** (`127.0.0.1:1143`, SMTP derivado `1587`). La contraseña permanece solo en memoria. A2-01 no autentica: el bridge real sigue en **A2-02** y el first-run routing sigue en **A2-03**.
+>
+> **A2-02 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** `MailApplicationController.connectAccount()` traduce el request de setup a la frontera congelada `RemoteApplication`, proyecta su estado remoto en `runtime`, mantiene los secretos fuera del estado durable y confirma el resultado mediante una relectura P-01.
+>
+> **A2-03 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El root proyecta `opening`/error local/setup/shell desde la autoridad local: cero `Account` durable muestra setup; cualquier `Account` durable muestra el shell incluso con sesión anónima u offline.
 
 
 | ID                                     | Archivos principales                                                                                                                     | Tarea concreta                                                                                                                                                                                                                                                                 | Impacto                                                                                                                                              |
