@@ -57,6 +57,7 @@ export type AccountConnectionErrorKind =
   | 'accountSelectionRequired'
   | 'serviceMismatch'
   | 'accountUnavailable'
+  | 'connectionInProgress'
   | 'local'
   | 'unexpected'
   | 'cancelled'
@@ -90,6 +91,24 @@ export function createApplicationContext(
 
 type MailStore = ReturnType<typeof useMailStore>
 type RuntimeStore = ReturnType<typeof useRuntimeStore>
+type ConnectionAttemptTarget =
+  | Readonly<{ kind: 'firstRun' }>
+  | Readonly<{ kind: 'reconnect'; accountKey: AccountKey }>
+type ActiveConnectionAttempt = Readonly<{
+  target: ConnectionAttemptTarget
+  promise: Promise<AccountConnectionResult>
+}>
+
+function sameConnectionAttemptTarget(
+  left: ConnectionAttemptTarget,
+  right: ConnectionAttemptTarget,
+): boolean {
+  return (
+    left.kind === right.kind &&
+    (left.kind === 'firstRun' ||
+      (right.kind === 'reconnect' && left.accountKey === right.accountKey))
+  )
+}
 
 /**
  * Application-owned identity for a not-yet-durable account. It is never
@@ -136,6 +155,7 @@ function accountConnectionFailure(
     serviceMismatch:
       'La configuración del servidor no corresponde a esta cuenta.',
     accountUnavailable: 'La cuenta local ya no está disponible.',
+    connectionInProgress: 'Ya hay una conexión en curso.',
     local: 'No se pudo confirmar la cuenta en el almacenamiento local.',
     unexpected: 'No se pudo completar la conexión.',
     cancelled: 'La conexión ya no está activa.',
@@ -163,7 +183,7 @@ export class MailApplicationController {
   private invalidationScheduled = false
   private remoteStatusUnsubscribe: (() => void) | null = null
   private observedRemoteAccountKey: AccountKey | null = null
-  private connectAttempt: Promise<AccountConnectionResult> | null = null
+  private activeConnectionAttempt: ActiveConnectionAttempt | null = null
   private connectionGeneration = 0
   private disposed = false
 
@@ -294,14 +314,7 @@ export class MailApplicationController {
     request: AccountSetupRequest,
     options: ConnectAccountOptions = {},
   ): Promise<AccountConnectionResult> {
-    if (this.connectAttempt !== null) return this.connectAttempt
-
-    const attempt = this.performAccountConnection(request, options, null)
-    this.connectAttempt = attempt
-    void attempt.finally(() => {
-      if (this.connectAttempt === attempt) this.connectAttempt = null
-    })
-    return attempt
+    return this.startAccountConnection({ kind: 'firstRun' }, request, options)
   }
 
   /** Reconnects one explicit durable Account without creating another one. */
@@ -310,12 +323,35 @@ export class MailApplicationController {
     request: AccountSetupRequest,
     options: ConnectAccountOptions = {},
   ): Promise<AccountConnectionResult> {
-    if (this.connectAttempt !== null) return this.connectAttempt
+    return this.startAccountConnection(
+      { kind: 'reconnect', accountKey },
+      request,
+      options,
+    )
+  }
 
-    const attempt = this.performAccountConnection(request, options, accountKey)
-    this.connectAttempt = attempt
+  private startAccountConnection(
+    target: ConnectionAttemptTarget,
+    request: AccountSetupRequest,
+    options: ConnectAccountOptions,
+  ): Promise<AccountConnectionResult> {
+    const active = this.activeConnectionAttempt
+    if (active !== null) {
+      return sameConnectionAttemptTarget(active.target, target)
+        ? active.promise
+        : Promise.resolve(accountConnectionFailure('connectionInProgress'))
+    }
+
+    const attempt = this.performAccountConnection(
+      request,
+      options,
+      target.kind === 'reconnect' ? target.accountKey : null,
+    )
+    this.activeConnectionAttempt = { target, promise: attempt }
     void attempt.finally(() => {
-      if (this.connectAttempt === attempt) this.connectAttempt = null
+      if (this.activeConnectionAttempt?.promise === attempt) {
+        this.activeConnectionAttempt = null
+      }
     })
     return attempt
   }
