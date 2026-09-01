@@ -186,6 +186,24 @@
   color: #64748b;
 }
 
+.mailbox-sidebar__reconnect {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mailbox-sidebar__reconnect:hover {
+  border-color: #64748b;
+  background: #f8fafc;
+}
+
 .mailbox-sidebar__status-dot {
   width: 7px;
   height: 7px;

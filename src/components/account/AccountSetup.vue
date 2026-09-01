@@ -6,8 +6,15 @@ import type {
 } from '../../app/stores/account-setup'
 
 const store = useAccountSetupStore()
+withDefaults(
+  defineProps<{
+    mode?: 'firstRun' | 'reconnect'
+  }>(),
+  { mode: 'firstRun' },
+)
 const emit = defineEmits<{
   submit: [request: AccountSetupRequest]
+  cancel: []
 }>()
 
 function readInputValue(event: Event): string {
@@ -31,10 +38,19 @@ function handleSubmit() {
     <section class="account-setup__panel">
       <header class="account-setup__header">
         <p class="account-setup__eyebrow">Correo Boxplot</p>
-        <h1 id="account-setup-title">Configurar cuenta</h1>
+        <h1 id="account-setup-title">
+          {{
+            mode === 'reconnect'
+              ? 'Reconectar para sincronizar'
+              : 'Configurar cuenta'
+          }}
+        </h1>
         <p>
-          Ingresa la configuración local que se usará para conectar más
-          adelante.
+          {{
+            mode === 'reconnect'
+              ? 'Ingresa de nuevo las credenciales para restaurar la sincronización.'
+              : 'Ingresa la configuración local que se usará para conectar más adelante.'
+          }}
         </p>
       </header>
 
@@ -124,6 +140,15 @@ function handleSubmit() {
           "
         >
           {{ store.phase === 'connecting' ? 'Conectando…' : 'Conectar' }}
+        </button>
+        <button
+          v-if="mode === 'reconnect'"
+          class="account-setup__cancel"
+          type="button"
+          :disabled="store.phase === 'connecting'"
+          @click="emit('cancel')"
+        >
+          Cancelar
         </button>
       </form>
     </section>
@@ -238,6 +263,22 @@ function handleSubmit() {
 }
 
 .account-setup__submit:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.account-setup__cancel {
+  min-height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.account-setup__cancel:disabled {
   cursor: wait;
   opacity: 0.65;
 }

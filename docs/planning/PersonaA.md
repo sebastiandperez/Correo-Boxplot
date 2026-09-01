@@ -20,6 +20,10 @@ Integration	A-08	P0	Corte local-first A+B	Ejecutar UI real contra TauriReadRepos
 > **A2-02 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** `MailApplicationController.connectAccount()` traduce el request de setup a la frontera congelada `RemoteApplication`, proyecta su estado remoto en `runtime`, mantiene los secretos fuera del estado durable y confirma el resultado mediante una relectura P-01.
 >
 > **A2-03 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El root proyecta `opening`/error local/setup/shell desde la autoridad local: cero `Account` durable muestra setup; cualquier `Account` durable muestra el shell incluso con sesión anónima u offline.
+>
+> **A2-04 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El status visible se proyecta de `runtime.local`, `runtime.auth` y `runtime.connectivity`, scoped estrictamente a la cuenta seleccionada. Distingue Local, Conectando…, En línea, Sin conexión, Sesión vencida y Error local sin redefinir el lifecycle remoto.
+>
+> **A2-09 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El shell local permite reconectar una `Account` durable mediante credenciales memory-only. La acción exige el `AccountKey` explícito y confirma que el endpoint reconstruye exactamente su `ServiceKey` durable antes de invocar `RemoteApplication`.
 
 
 | ID                                     | Archivos principales                                                                                                                     | Tarea concreta                                                                                                                                                                                                                                                                 | Impacto                                                                                                                                              |

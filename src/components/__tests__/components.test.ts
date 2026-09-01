@@ -1,21 +1,27 @@
 // @vitest-environment happy-dom
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  type AccountConnectionResult,
+  type ConnectAccountOptions,
   createApplicationContext,
   createMailApplicationController,
 } from '../../app/application'
 import { createSeededMemoryApplication } from '../../app/__tests__/application-fixture'
 import { useComposerStore } from '../../app/stores/composer'
+import { useAccountSetupStore } from '../../app/stores/account-setup'
 import { useMailStore } from '../../app/stores/mail'
 import { useRuntimeStore } from '../../app/stores/runtime'
+import type { AccountKey } from '../../domain/ids'
 import {
   applicationContextKey,
   mailApplicationControllerKey,
 } from '../../app/vue-application-context'
 import Composer from '../composer/Composer.vue'
+import AccountReconnectDialog from '../account/AccountReconnectDialog.vue'
+import AppShell from '../layout/AppShell.vue'
 import MailboxSidebar from '../mailbox/MailboxSidebar.vue'
 import MessageList from '../message-list/MessageList.vue'
 import MessageViewer from '../message-viewer/MessageViewer.vue'
@@ -31,8 +37,10 @@ let dependencies: TestDependencies
 
 function mountWithApplication(
   component: Parameters<typeof mount>[0],
+  options: { props?: Record<string, unknown> } = {},
 ): VueWrapper {
   return mount(component, {
+    props: options.props,
     global: {
       provide: {
         [applicationContextKey as symbol]: dependencies.context,
@@ -71,6 +79,118 @@ describe('Presentation and UI shell components', () => {
       const wrapper = mountWithApplication(MailboxSidebar)
       await wrapper.find('.mailbox-sidebar__compose').trigger('click')
       expect(useComposerStore().isOpen).toBe(true)
+    })
+
+    it('shows Local reconnect availability but never reconnects a retained offline session', async () => {
+      const wrapper = mountWithApplication(MailboxSidebar)
+      expect(wrapper.text()).toContain('Local')
+      expect(wrapper.get('.mailbox-sidebar__reconnect').text()).toContain(
+        'Conectar para sincronizar',
+      )
+      await wrapper.get('.mailbox-sidebar__reconnect').trigger('click')
+      expect(wrapper.emitted('reconnect')?.[0]).toEqual([
+        dependencies.fixtures.accountA.key,
+      ])
+
+      useRuntimeStore().setAuth('authenticated')
+      useRuntimeStore().setConnectivity('offline')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.text()).toContain('Sin conexión')
+      expect(wrapper.find('.mailbox-sidebar__reconnect').exists()).toBe(false)
+    })
+  })
+
+  describe('Account reconnect presentation', () => {
+    it('keeps the AppShell mounted behind the reconnect dialog', async () => {
+      const wrapper = mountWithApplication(AppShell)
+      await wrapper
+        .findComponent(MailboxSidebar)
+        .vm.$emit('reconnect', dependencies.fixtures.accountA.key)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.findComponent(AccountReconnectDialog).exists()).toBe(true)
+      expect(wrapper.findComponent(MessageList).exists()).toBe(true)
+    })
+
+    it('clears the reconnect password when the dialog is cancelled', async () => {
+      const wrapper = mountWithApplication(AccountReconnectDialog, {
+        props: { accountKey: dependencies.fixtures.accountA.key },
+      })
+      await wrapper
+        .find('#account-password')
+        .setValue('BOXPLOT_A_RECONNECT_SECRET_CANARY_01')
+      await wrapper.get('.account-setup__cancel').trigger('click')
+
+      expect(useAccountSetupStore().password).toBe('')
+      expect(wrapper.emitted('close')).toHaveLength(1)
+    })
+
+    it('clears the reconnect password after a successful Application result', async () => {
+      const reconnectAccount = vi.fn(
+        async (
+          _accountKey: AccountKey,
+          _request: unknown,
+          options?: ConnectAccountOptions,
+        ) => {
+          options?.onAuthenticated?.()
+          return {
+            ok: true as const,
+            accountKey: dependencies.fixtures.accountA.key,
+          }
+        },
+      )
+      const wrapper = mount(AccountReconnectDialog, {
+        props: { accountKey: dependencies.fixtures.accountA.key },
+        global: {
+          provide: {
+            [mailApplicationControllerKey as symbol]: {
+              reconnectAccount,
+            },
+          },
+        },
+      })
+      await wrapper.find('#account-username').setValue('alice@boxplot.test')
+      await wrapper
+        .find('#account-password')
+        .setValue('BOXPLOT_A_RECONNECT_SECRET_CANARY_01')
+      await wrapper.find('form').trigger('submit')
+
+      await vi.waitFor(() => expect(reconnectAccount).toHaveBeenCalledOnce())
+      expect(useAccountSetupStore().password).toBe('')
+      expect(wrapper.emitted('close')).toHaveLength(1)
+    })
+
+    it('does not render a stale error when closed during reconnect', async () => {
+      let finish!: (value: AccountConnectionResult) => void
+      const reconnectAccount = vi.fn(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+      )
+      const wrapper = mount(AccountReconnectDialog, {
+        props: { accountKey: dependencies.fixtures.accountA.key },
+        global: {
+          provide: {
+            [mailApplicationControllerKey as symbol]: {
+              reconnectAccount,
+            },
+          },
+        },
+      })
+      await wrapper.find('#account-username').setValue('alice@boxplot.test')
+      await wrapper
+        .find('#account-password')
+        .setValue('BOXPLOT_A_RECONNECT_SECRET_CANARY_01')
+      await wrapper.find('form').trigger('submit')
+      await vi.waitFor(() => expect(reconnectAccount).toHaveBeenCalledOnce())
+      await wrapper.get('.account-setup__cancel').trigger('click')
+      wrapper.unmount()
+      finish({ ok: true, accountKey: dependencies.fixtures.accountA.key })
+      await Promise.resolve()
+
+      expect(useAccountSetupStore().password).toBe('')
+      expect(useAccountSetupStore().error).toBeNull()
     })
   })
 

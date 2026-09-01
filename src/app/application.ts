@@ -55,6 +55,8 @@ export type AccountConnectionErrorKind =
   | 'network'
   | 'accountMismatch'
   | 'accountSelectionRequired'
+  | 'serviceMismatch'
+  | 'accountUnavailable'
   | 'local'
   | 'unexpected'
   | 'cancelled'
@@ -131,6 +133,9 @@ function accountConnectionFailure(
     accountMismatch: 'La cuenta remota no coincide con la configuración local.',
     accountSelectionRequired:
       'El servidor requiere seleccionar una cuenta remota.',
+    serviceMismatch:
+      'La configuración del servidor no corresponde a esta cuenta.',
+    accountUnavailable: 'La cuenta local ya no está disponible.',
     local: 'No se pudo confirmar la cuenta en el almacenamiento local.',
     unexpected: 'No se pudo completar la conexión.',
     cancelled: 'La conexión ya no está activa.',
@@ -230,6 +235,7 @@ export class MailApplicationController {
     if (this.mailStore.selectedAccountKey !== accountKey) {
       this.mailStore.selectAccount(accountKey)
     }
+    this.observeRemoteStatus(accountKey)
     await this.refreshMailboxes()
   }
 
@@ -290,7 +296,23 @@ export class MailApplicationController {
   ): Promise<AccountConnectionResult> {
     if (this.connectAttempt !== null) return this.connectAttempt
 
-    const attempt = this.performAccountConnection(request, options)
+    const attempt = this.performAccountConnection(request, options, null)
+    this.connectAttempt = attempt
+    void attempt.finally(() => {
+      if (this.connectAttempt === attempt) this.connectAttempt = null
+    })
+    return attempt
+  }
+
+  /** Reconnects one explicit durable Account without creating another one. */
+  reconnectAccount(
+    accountKey: AccountKey,
+    request: AccountSetupRequest,
+    options: ConnectAccountOptions = {},
+  ): Promise<AccountConnectionResult> {
+    if (this.connectAttempt !== null) return this.connectAttempt
+
+    const attempt = this.performAccountConnection(request, options, accountKey)
     this.connectAttempt = attempt
     void attempt.finally(() => {
       if (this.connectAttempt === attempt) this.connectAttempt = null
@@ -301,6 +323,7 @@ export class MailApplicationController {
   private async performAccountConnection(
     request: AccountSetupRequest,
     options: ConnectAccountOptions,
+    reconnectAccountKey: AccountKey | null,
   ): Promise<AccountConnectionResult> {
     const remoteApplication = this.context.remoteApplication
     if (remoteApplication === undefined)
@@ -322,17 +345,34 @@ export class MailApplicationController {
 
     const selected = this.mailStore.selectedAccountKey
     const existing =
-      accounts.value.find((value) => value.key === selected) ??
-      [...accounts.value].sort((left, right) =>
-        String(left.key).localeCompare(String(right.key)),
-      )[0]
+      reconnectAccountKey === null
+        ? (accounts.value.find((value) => value.key === selected) ??
+          [...accounts.value].sort((left, right) =>
+            String(left.key).localeCompare(String(right.key)),
+          )[0])
+        : accounts.value.find((value) => value.key === reconnectAccountKey)
+    if (reconnectAccountKey !== null && existing === undefined) {
+      return accountConnectionFailure('accountUnavailable')
+    }
     const accountKey =
       existing?.key ??
       (this.context.accountKeyGenerator ?? createProspectiveAccountKey)()
     const serviceKey =
       existing?.remoteRef.serviceKey ?? serviceKeyForSetup(request)
 
-    this.observeRemoteStatus(accountKey)
+    if (
+      reconnectAccountKey !== null &&
+      serviceKeyForSetup(request) !== existing?.remoteRef.serviceKey
+    ) {
+      return accountConnectionFailure('serviceMismatch')
+    }
+
+    if (
+      reconnectAccountKey === null ||
+      this.mailStore.selectedAccountKey === accountKey
+    ) {
+      this.observeRemoteStatus(accountKey)
+    }
     try {
       await remoteApplication.connect({
         accountKey,

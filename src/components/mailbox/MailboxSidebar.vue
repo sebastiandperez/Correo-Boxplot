@@ -4,12 +4,17 @@ import { useMailStore } from '../../app/stores/mail'
 import { useComposerStore } from '../../app/stores/composer'
 import { useRuntimeStore } from '../../app/stores/runtime'
 import { useMailApplicationController } from '../../app/vue-application-context'
+import { connectionStatusView } from '../../app/connection-status-view'
+import type { AccountKey } from '../../domain/ids'
 import type { Mailbox } from '../../domain/mailbox'
 
 const mailStore = useMailStore()
 const composerStore = useComposerStore()
 const runtimeStore = useRuntimeStore()
 const controller = useMailApplicationController()
+const emit = defineEmits<{
+  reconnect: [accountKey: AccountKey]
+}>()
 
 function mailboxIcon(mailbox: Mailbox): string {
   if (mailbox.role === 'inbox') return 'inbox'
@@ -37,17 +42,19 @@ const accountLabel = computed(() => {
     : 'Sin cuenta local'
 })
 
-const runtimeStatusText = computed(() => {
-  if (runtimeStore.local === 'error') return 'Error de almacenamiento'
-  if (runtimeStore.connectivity === 'online') return 'En línea'
-  return 'Local / Sin conexión'
-})
+const connectionStatus = computed(() => connectionStatusView(runtimeStore))
 
 const runtimeDotClass = computed(() => {
-  if (runtimeStore.local === 'error') return 'dot--error'
-  if (runtimeStore.connectivity === 'online') return 'dot--online'
+  if (connectionStatus.value.kind === 'localError') return 'dot--error'
+  if (connectionStatus.value.kind === 'online') return 'dot--online'
   return 'dot--offline'
 })
+
+function reconnect() {
+  const accountKey = mailStore.selectedAccountKey
+  if (!accountKey || !connectionStatus.value.canReconnect) return
+  emit('reconnect', accountKey)
+}
 </script>
 
 <template>
@@ -214,9 +221,17 @@ const runtimeDotClass = computed(() => {
           :class="runtimeDotClass"
         ></span>
         <span class="mailbox-sidebar__status-text">{{
-          runtimeStatusText
+          connectionStatus.label
         }}</span>
       </div>
+      <button
+        v-if="connectionStatus.canReconnect && mailStore.selectedAccountKey"
+        class="mailbox-sidebar__reconnect"
+        type="button"
+        @click="reconnect"
+      >
+        {{ connectionStatus.reconnectLabel }}
+      </button>
 
       <div class="mailbox-sidebar__account">
         <div class="mailbox-sidebar__account-avatar">
