@@ -138,6 +138,12 @@ type ActiveRefreshAttempt = Readonly<{
   accountKey: AccountKey
   promise: Promise<RemoteRefreshResult>
 }>
+type SelectedBodyRereadState =
+  | 'cached'
+  | 'notCached'
+  | 'ownerAbsent'
+  | 'failed'
+  | 'stale'
 
 function sameConnectionAttemptTarget(
   left: ConnectionAttemptTarget,
@@ -787,12 +793,17 @@ export class MailApplicationController {
     }
   }
 
-  async refreshSelectedBody(): Promise<void> {
+  /**
+   * Rereads the selected body from P-01. The return value is intentionally
+   * local-only: callers must never infer body availability from a remote
+   * materialization result without this authoritative reread.
+   */
+  async refreshSelectedBody(): Promise<SelectedBodyRereadState> {
     const emailId = this.mailStore.selectedEmailId
     const generation = ++this.bodyGeneration
     if (emailId === null) {
       this.mailStore.setEmailBody(null, 'idle')
-      return
+      return 'stale'
     }
 
     this.mailStore.setEmailBody(null, 'loading')
@@ -802,17 +813,19 @@ export class MailApplicationController {
       this.mailStore.selectedEmailId === null ||
       !sameScopedEmailId(this.mailStore.selectedEmailId, emailId)
     ) {
-      return
+      return 'stale'
     }
     if (!result.ok) {
       this.mailStore.setEmailBody(null, 'error')
-      return
+      return 'failed'
     }
 
     if (result.value.kind === 'cached') {
       this.mailStore.setEmailBody(result.value.value, 'cached')
+      return 'cached'
     } else {
       this.mailStore.setEmailBody(null, result.value.kind)
+      return result.value.kind
     }
   }
 
@@ -861,7 +874,19 @@ export class MailApplicationController {
       await materializer.materialize(emailId)
       if (this.disposed) return bodyLoadFailure('cancelled')
       if (this.isSelectedEmail(emailId)) {
-        await this.refreshSelectedBody()
+        const reread = await this.refreshSelectedBody()
+        if (reread === 'failed' || reread === 'notCached') {
+          return this.finishBodyMaterialization(
+            emailId,
+            bodyLoadFailure('local'),
+          )
+        }
+        if (reread === 'ownerAbsent') {
+          return this.finishBodyMaterialization(
+            emailId,
+            bodyLoadFailure('emailAbsent'),
+          )
+        }
       }
       return this.finishBodyMaterialization(emailId, { ok: true })
     } catch (error: unknown) {
