@@ -310,6 +310,33 @@ describe('A2-04/A2-09 account status and session recovery', () => {
     controller.dispose()
   })
 
+  it('MULTI-04 reconnects the explicit B identity without changing A status ownership', async () => {
+    const remote = new StatusRemoteApplication()
+    remote.publish(accountA, {
+      auth: 'authenticated',
+      connectivity: 'online',
+      lastError: null,
+    })
+    const { engine, controller } = controllerFor(remote)
+    await engine.syncPort.registerAccount(durable(accountA, remoteA))
+    await engine.syncPort.registerAccount(durable(accountB, remoteB))
+    await controller.initialize()
+
+    await expect(
+      controller.reconnectAccount(accountB, request),
+    ).resolves.toEqual({
+      ok: true,
+      accountKey: accountB,
+    })
+    expect(remote.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ accountKey: accountB, serviceKey: service }),
+    )
+    expect(useMailStore().selectedAccountKey).toBe(accountA)
+    expect(useRuntimeStore().auth).toBe('authenticated')
+    expect(useRuntimeStore().connectivity).toBe('online')
+    controller.dispose()
+  })
+
   it('REC-14 revalidates local existence before reconnecting', async () => {
     const engine = createMemoryLocalEngine()
     await engine.syncPort.registerAccount(durable(accountA, remoteA))
