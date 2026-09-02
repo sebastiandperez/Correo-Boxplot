@@ -23,9 +23,11 @@ Integration	A-08	P0	Corte local-first A+B	Ejecutar UI real contra TauriReadRepos
 >
 > **A2-04 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El status visible se proyecta de `runtime.local`, `runtime.auth` y `runtime.connectivity`, scoped estrictamente a la cuenta seleccionada. Distingue Local, Conectando…, En línea, Sin conexión, Sesión vencida y Error local sin redefinir el lifecycle remoto.
 >
-> **A2-05 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** `MailApplicationController.refreshAccount()` solicita la sincronización mediante `RemoteApplication.refreshAccount(accountKey)`, mantiene la actividad efímera y permite que los commits de C lleguen a Vue exclusivamente por P-03 y relecturas P-01.
+> **A2-05 — VERIFIED · FROZEN.** La revalidación independiente contra el repair `b7c771d85bb156a8ffe11d14d5e0cc9daa518bac` confirmó `Refresh → RemoteApplication → Coordinator → SyncPort → P-03 → P-01 → Pinia`, incluida la proyección local de Email nuevo y el aislamiento entre cuentas.
 >
-> **A2-06 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** La selección de un body `notCached` demanda `BodyMaterializer.materialize(emailId)` sin transportar contenido remoto a Presentation; el body visible procede siempre de la caché local releída.
+> **A2-06 — VERIFIED · FROZEN.** La revalidación independiente contra el repair `b7c771d85bb156a8ffe11d14d5e0cc9daa518bac` confirmó que un fallo P-01 posterior a materializar devuelve `local`, no éxito falso; el body visible procede siempre de la caché local releída y mantiene el aislamiento de selección y la frontera segura del viewer.
+>
+> **PERSONA_A_REMOTE_READ_PATH_FROZEN.** Este marcador congela únicamente A2-05 Manual Refresh y A2-06 Body-on-demand; Persona A permanece abierta para A2-07, A2-08, selector E2EE, A2-10 y A2-11.
 >
 > **A2-09 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El shell local permite reconectar una `Account` durable mediante credenciales memory-only. La acción exige el `AccountKey` explícito y confirma que el endpoint reconstruye exactamente su `ServiceKey` durable antes de invocar `RemoteApplication`.
 
