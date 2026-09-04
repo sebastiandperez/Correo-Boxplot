@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import type { AccountKey } from '../../domain/ids'
 import type { AccountSetupRequest } from '../../app/stores/account-setup'
 import { useAccountSetupStore } from '../../app/stores/account-setup'
@@ -16,6 +16,7 @@ const emit = defineEmits<{
 const store = useAccountSetupStore()
 const controller = useMailApplicationController()
 let generation = 0
+const googleReauthorization = ref(false)
 
 async function reconnect(request: AccountSetupRequest) {
   if (store.phase === 'connecting') return
@@ -26,6 +27,9 @@ async function reconnect(request: AccountSetupRequest) {
   })
   if (attempt !== generation) return
   if (!result.ok) {
+    if (request.profile === 'gmailOAuth' && result.error.kind === 'auth') {
+      googleReauthorization.value = true
+    }
     store.setConnectionError(result.error.message)
     return
   }
@@ -48,7 +52,12 @@ onBeforeUnmount(() => {
 <template>
   <div class="account-reconnect" role="dialog" aria-modal="true">
     <div class="account-reconnect__backdrop"></div>
-    <AccountSetup mode="reconnect" @submit="reconnect" @cancel="close" />
+    <AccountSetup
+      mode="reconnect"
+      :google-reauthorization="googleReauthorization"
+      @submit="reconnect"
+      @cancel="close"
+    />
   </div>
 </template>
 

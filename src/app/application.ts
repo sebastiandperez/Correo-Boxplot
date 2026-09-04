@@ -40,6 +40,7 @@ import type { BodyMaterializer } from '../sync/body-materializer'
 import { BodyMaterializationError } from '../sync/body-materialization-errors'
 import type { MutationExecutionOutcome, MutationRunner } from '../outbox'
 import type { RemoteConnectionConfig } from '../remote/runtime'
+import type { GoogleOAuthBroker } from './google-oauth-broker'
 import {
   useMutationStatusStore,
   type MutationStatusKind,
@@ -53,6 +54,8 @@ export interface ApplicationContext {
   readonly remoteApplication?: RemoteApplication
   readonly bodyMaterializer?: BodyMaterializer
   readonly mutationRunner?: MutationRunner
+  /** Native OAuth boundary; credential values never enter Application state. */
+  readonly googleOAuthBroker?: GoogleOAuthBroker
   /** Creates a non-secret, prospective key only for a new local Account. */
   readonly accountKeyGenerator?: AccountKeyGenerator
   readonly readRepository: ReadRepository
@@ -132,6 +135,7 @@ export function createApplicationContext(
     remoteApplication: dependencies.remoteApplication,
     bodyMaterializer: dependencies.bodyMaterializer,
     mutationRunner: dependencies.mutationRunner,
+    googleOAuthBroker: dependencies.googleOAuthBroker,
     accountKeyGenerator: dependencies.accountKeyGenerator,
   }
 }
@@ -198,15 +202,21 @@ export function createProspectiveAccountKey(): AccountKey {
  * A service is the non-secret IMAP/SMTP endpoint, never a user or credential.
  */
 export function serviceKeyForSetup(request: AccountSetupRequest) {
+  if (request.profile === 'gmailOAuth') {
+    return serviceKeyFromString('gmail:imap-smtp:v1')
+  }
   const host = request.host.trim().toLowerCase().replace(/\.+$/, '')
   return serviceKeyFromString(
     `imap-smtp:${host}:${request.imapPort}:${request.smtpPort}`,
   )
 }
 
-function connectionConfigForSetup(
+function localConnectionConfigForSetup(
   request: AccountSetupRequest,
 ): Extract<RemoteConnectionConfig, { provider: 'imapSmtp' }> {
+  if (request.profile !== 'boxplotLocalImap') {
+    throw new TypeError('Gmail setup has no local password configuration')
+  }
   return {
     provider: 'imapSmtp',
     host: request.host,
@@ -215,6 +225,10 @@ function connectionConfigForSetup(
     imapPort: request.imapPort,
     smtpPort: request.smtpPort,
   }
+}
+
+export function gmailCredentialRefForAccount(accountKey: AccountKey): string {
+  return `gmail-oauth-v1/${encodeURIComponent(String(accountKey))}`
 }
 
 function accountConnectionFailure(
@@ -532,13 +546,57 @@ export class MailApplicationController {
     ) {
       this.observeRemoteStatus(accountKey)
     }
+
+    let credentialRefToForget: string | null = null
+    let config: RemoteConnectionConfig
+    if (request.profile === 'gmailOAuth') {
+      if (existing !== undefined && request.reauthorize !== true) {
+        config = {
+          provider: 'gmail',
+          username: request.username,
+          credentialRef: gmailCredentialRefForAccount(accountKey),
+        }
+      } else {
+        const broker = this.context.googleOAuthBroker
+        if (broker === undefined) return accountConnectionFailure('unexpected')
+        try {
+          const authorized = await broker.authorize(
+            accountKey,
+            request.username,
+          )
+          if (!this.isCurrentConnection(generation)) {
+            void broker.forget(authorized.credentialRef).catch(() => undefined)
+            return accountConnectionFailure('cancelled')
+          }
+          credentialRefToForget = authorized.credentialRef
+          config = {
+            provider: 'gmail',
+            username: request.username,
+            credentialRef: authorized.credentialRef,
+          }
+        } catch {
+          return accountConnectionFailure('auth')
+        }
+      }
+    } else {
+      config = localConnectionConfigForSetup(request)
+    }
+
+    const forgetFirstRunCredential = () => {
+      if (credentialRefToForget === null) return
+      void this.context.googleOAuthBroker
+        ?.forget(credentialRefToForget)
+        .catch(() => undefined)
+      credentialRefToForget = null
+    }
     try {
       await remoteApplication.connect({
         accountKey,
         serviceKey,
-        config: connectionConfigForSetup(request),
+        config,
       })
       if (!this.isCurrentConnection(generation)) {
+        forgetFirstRunCredential()
         return accountConnectionFailure('cancelled')
       }
 
@@ -550,19 +608,25 @@ export class MailApplicationController {
       try {
         await this.refreshAccounts()
       } catch {
+        forgetFirstRunCredential()
         return accountConnectionFailure('local')
       }
       if (!this.isCurrentConnection(generation)) {
+        forgetFirstRunCredential()
         return accountConnectionFailure('cancelled')
       }
       if (!this.mailStore.accounts.some((value) => value.key === accountKey)) {
+        forgetFirstRunCredential()
         return accountConnectionFailure('local')
       }
+      credentialRefToForget = null
       return { ok: true, accountKey }
     } catch (error: unknown) {
       if (!this.isCurrentConnection(generation)) {
+        forgetFirstRunCredential()
         return accountConnectionFailure('cancelled')
       }
+      forgetFirstRunCredential()
       this.projectRemoteStatus(accountKey)
       if (error instanceof RemoteApplicationError) {
         const kind = error.kind

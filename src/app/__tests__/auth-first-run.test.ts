@@ -15,8 +15,10 @@ import { remoteAccountIdFromString } from '../../remote/types'
 import {
   createApplicationContext,
   createMailApplicationController,
+  gmailCredentialRefForAccount,
   serviceKeyForSetup,
 } from '../application'
+import type { GoogleOAuthBroker } from '../google-oauth-broker'
 import { DefaultRemoteApplication } from '../remote/remote-application'
 import { rootViewMode } from '../root-view-state'
 import { useMailStore } from '../stores/mail'
@@ -47,7 +49,12 @@ function session(): RemoteSession {
   }
 }
 
-function setup(options: { open?: () => Promise<RemoteSession> } = {}) {
+function setup(
+  options: {
+    open?: () => Promise<RemoteSession>
+    googleOAuthBroker?: GoogleOAuthBroker
+  } = {},
+) {
   const engine = createMemoryLocalEngine()
   const remoteApplication = new DefaultRemoteApplication({
     readRepository: engine.readRepository,
@@ -61,6 +68,7 @@ function setup(options: { open?: () => Promise<RemoteSession> } = {}) {
       ...engine,
       remoteApplication,
       accountKeyGenerator: () => prospectiveKey,
+      googleOAuthBroker: options.googleOAuthBroker,
     }),
     useMailStore(),
     useRuntimeStore(),
@@ -255,6 +263,51 @@ describe('A2-02/A2-03 Application auth bridge and local-first routing', () => {
     expect(serviceKeyForSetup(request)).toBe(
       serviceKeyForSetup({ ...request, password: 'different-password' }),
     )
+    controller.dispose()
+  })
+
+  it('GMAIL-01 keeps OAuth values out of Application state and registers through RemoteApplication', async () => {
+    const credentialRef = gmailCredentialRefForAccount(prospectiveKey)
+    const broker: GoogleOAuthBroker = {
+      authorize: vi.fn(async () => ({ credentialRef })),
+      forget: vi.fn(async () => undefined),
+    }
+    const { remoteApplication, controller } = setup({
+      googleOAuthBroker: broker,
+    })
+    const connect = vi.spyOn(remoteApplication, 'connect')
+    await controller.initialize()
+
+    await expect(
+      controller.connectAccount({
+        profile: 'gmailOAuth',
+        username: 'alice@gmail.com',
+      }),
+    ).resolves.toEqual({ ok: true, accountKey: prospectiveKey })
+
+    expect(broker.authorize).toHaveBeenCalledWith(
+      prospectiveKey,
+      'alice@gmail.com',
+    )
+    expect(connect).toHaveBeenCalledWith({
+      accountKey: prospectiveKey,
+      serviceKey: 'gmail:imap-smtp:v1',
+      config: {
+        provider: 'gmail',
+        username: 'alice@gmail.com',
+        credentialRef,
+      },
+    })
+    expect(JSON.stringify(useMailStore().$state)).not.toContain(credentialRef)
+    expect(JSON.stringify(useRuntimeStore().$state)).not.toContain(
+      credentialRef,
+    )
+    expect(
+      serviceKeyForSetup({
+        profile: 'gmailOAuth',
+        username: 'another@gmail.com',
+      }),
+    ).toBe('gmail:imap-smtp:v1')
     controller.dispose()
   })
 

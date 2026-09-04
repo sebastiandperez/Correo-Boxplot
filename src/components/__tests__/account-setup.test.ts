@@ -40,7 +40,7 @@ describe('AccountSetup presentation (A2-01)', () => {
 
   it('AS-C01 renders the complete accessible setup form', () => {
     const wrapper = mountSetup()
-    expect(wrapper.text()).toContain('Configurar cuenta')
+    expect(wrapper.text()).toContain('Agregar cuenta')
     expect(wrapper.text()).toContain('Perfil / protocolo')
     expect(wrapper.text()).toContain('Usuario')
     expect(wrapper.text()).toContain('Contraseña')
@@ -91,6 +91,27 @@ describe('AccountSetup presentation (A2-01)', () => {
       imapPort: 1143,
       smtpPort: 1587,
     })
+  })
+
+  it('GMAIL-UI-01 selects OAuth without rendering or retaining a password field', async () => {
+    const wrapper = mountSetup()
+    await wrapper.get('select').setValue('gmailOAuth')
+    await wrapper.get('#account-username').setValue('alice@gmail.com')
+
+    expect(wrapper.text()).toContain('Cuenta de Google')
+    expect(wrapper.find('#account-password').exists()).toBe(false)
+    expect(wrapper.find('#account-host').exists()).toBe(false)
+    expect(wrapper.get('button[type="submit"]').text()).toBe(
+      'Continuar con Google',
+    )
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toEqual({
+      profile: 'gmailOAuth',
+      username: 'alice@gmail.com',
+    })
+    expect(JSON.stringify(useAccountSetupStore().$state)).not.toContain(
+      'manual-secret',
+    )
   })
 
   it('AS-C08/C09 invalid form does not emit and shows an understandable error', async () => {

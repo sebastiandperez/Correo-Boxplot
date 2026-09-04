@@ -1,16 +1,23 @@
 import { defineStore } from 'pinia'
 
-export type AccountSetupProfile = 'boxplotLocalImap'
+export type AccountSetupProfile = 'boxplotLocalImap' | 'gmailOAuth'
 export type AccountSetupPhase = 'idle' | 'validating' | 'connecting'
 
-export type AccountSetupRequest = Readonly<{
-  profile: 'boxplotLocalImap'
-  username: string
-  password: string
-  host: string
-  imapPort: number
-  smtpPort: number
-}>
+export type AccountSetupRequest =
+  | Readonly<{
+      profile: 'boxplotLocalImap'
+      username: string
+      password: string
+      host: string
+      imapPort: number
+      smtpPort: number
+    }>
+  | Readonly<{
+      profile: 'gmailOAuth'
+      username: string
+      /** Explicit user intent after a revoked or missing refresh credential. */
+      reauthorize?: true
+    }>
 
 export type AccountSetupBuildResult =
   | Readonly<{ ok: true; value: AccountSetupRequest }>
@@ -64,6 +71,7 @@ export const useAccountSetupStore = defineStore('accountSetup', {
       this.profile = profile
       this.host = BOXPLOT_LOCAL_IMAP_HOST
       this.port = BOXPLOT_LOCAL_IMAP_PORT
+      this.password = ''
       this.error = null
     },
 
@@ -93,6 +101,14 @@ export const useAccountSetupStore = defineStore('accountSetup', {
 
       if (this.username.length === 0) {
         this.error = 'El usuario es obligatorio.'
+      } else if (
+        this.profile === 'gmailOAuth' &&
+        !this.username.includes('@')
+      ) {
+        this.error = 'Ingresa una cuenta de Google válida.'
+      } else if (this.profile === 'gmailOAuth') {
+        this.phase = 'idle'
+        return true
       } else if (this.password.length === 0) {
         this.error = 'La contraseña es obligatoria.'
       } else if (this.host.length === 0) {
@@ -110,6 +126,13 @@ export const useAccountSetupStore = defineStore('accountSetup', {
     buildRequest(): AccountSetupBuildResult {
       if (!this.validate()) {
         return { ok: false, error: this.error ?? 'Configuración inválida.' }
+      }
+
+      if (this.profile === 'gmailOAuth') {
+        return {
+          ok: true,
+          value: { profile: 'gmailOAuth', username: this.username.trim() },
+        }
       }
 
       const imapPort = parseImapPort(this.port)

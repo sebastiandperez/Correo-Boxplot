@@ -4,6 +4,7 @@ import { TauriE2eeAdapter } from '../../e2ee/tauri-e2ee-adapter'
 import type { E2eePort } from '../../e2ee/port'
 import { RemoteError } from '../../remote/errors'
 import { ImapSmtpRemoteConnection } from '../../remote/native/imap-smtp-connection'
+import { GmailRemoteConnection } from '../../remote/native/gmail-remote-connection'
 import type { NativeMailIpcPort } from '../../remote/native/ipc'
 import { TauriNativeMailIpc } from '../../remote/native/tauri-native-mail-ipc'
 import { createRemoteConnection } from '../../remote/runtime'
@@ -42,6 +43,8 @@ function createTauriConnectionFactory(nativeMailIpc: NativeMailIpcPort) {
       },
       imapSmtp: (nativeConfig) =>
         new ImapSmtpRemoteConnection(nativeConfig, nativeMailIpc),
+      gmail: (nativeConfig) =>
+        new GmailRemoteConnection(nativeConfig, nativeMailIpc),
     })
 }
 

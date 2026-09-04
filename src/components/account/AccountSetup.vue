@@ -6,11 +6,12 @@ import type {
 } from '../../app/stores/account-setup'
 
 const store = useAccountSetupStore()
-withDefaults(
+const props = withDefaults(
   defineProps<{
     mode?: 'firstRun' | 'reconnect'
+    googleReauthorization?: boolean
   }>(),
-  { mode: 'firstRun' },
+  { mode: 'firstRun', googleReauthorization: false },
 )
 const emit = defineEmits<{
   submit: [request: AccountSetupRequest]
@@ -29,7 +30,12 @@ function handleProfileChange(event: Event) {
 
 function handleSubmit() {
   const result = store.buildRequest()
-  if (result.ok) emit('submit', result.value)
+  if (!result.ok) return
+  if (result.value.profile === 'gmailOAuth' && props.googleReauthorization) {
+    emit('submit', { ...result.value, reauthorize: true })
+    return
+  }
+  emit('submit', result.value)
 }
 </script>
 
@@ -42,14 +48,14 @@ function handleSubmit() {
           {{
             mode === 'reconnect'
               ? 'Reconectar para sincronizar'
-              : 'Configurar cuenta'
+              : 'Agregar cuenta'
           }}
         </h1>
         <p>
           {{
             mode === 'reconnect'
-              ? 'Ingresa de nuevo las credenciales para restaurar la sincronización.'
-              : 'Ingresa la configuración local que se usará para conectar más adelante.'
+              ? 'Restaura la sincronización con Google o tu servidor local.'
+              : 'Elige Google o la configuración local que deseas conectar.'
           }}
         </p>
       </header>
@@ -67,12 +73,17 @@ function handleSubmit() {
             :value="store.profile"
             @change="handleProfileChange"
           >
+            <option value="gmailOAuth">Google / Gmail</option>
             <option value="boxplotLocalImap">Boxplot Local / IMAP</option>
           </select>
         </label>
 
         <label class="account-setup__field" for="account-username">
-          <span>Usuario</span>
+          <span>
+            {{
+              store.profile === 'gmailOAuth' ? 'Cuenta de Google' : 'Usuario'
+            }}
+          </span>
           <input
             id="account-username"
             name="username"
@@ -83,7 +94,11 @@ function handleSubmit() {
           />
         </label>
 
-        <label class="account-setup__field" for="account-password">
+        <label
+          v-if="store.profile === 'boxplotLocalImap'"
+          class="account-setup__field"
+          for="account-password"
+        >
           <span>Contraseña</span>
           <input
             id="account-password"
@@ -95,7 +110,11 @@ function handleSubmit() {
           />
         </label>
 
-        <label class="account-setup__field" for="account-host">
+        <label
+          v-if="store.profile === 'boxplotLocalImap'"
+          class="account-setup__field"
+          for="account-host"
+        >
           <span>Servidor</span>
           <input
             id="account-host"
@@ -107,7 +126,11 @@ function handleSubmit() {
           />
         </label>
 
-        <label class="account-setup__field" for="account-imap-port">
+        <label
+          v-if="store.profile === 'boxplotLocalImap'"
+          class="account-setup__field"
+          for="account-imap-port"
+        >
           <span>Puerto IMAP</span>
           <input
             id="account-imap-port"
@@ -119,7 +142,11 @@ function handleSubmit() {
           />
         </label>
 
-        <p class="account-setup__smtp" aria-live="polite">
+        <p
+          v-if="store.profile === 'boxplotLocalImap'"
+          class="account-setup__smtp"
+          aria-live="polite"
+        >
           SMTP: <strong>{{ store.smtpEndpoint }}</strong>
         </p>
 
@@ -139,7 +166,15 @@ function handleSubmit() {
             store.phase === 'validating' || store.phase === 'connecting'
           "
         >
-          {{ store.phase === 'connecting' ? 'Conectando…' : 'Conectar' }}
+          {{
+            store.phase === 'connecting'
+              ? 'Conectando…'
+              : store.profile === 'gmailOAuth'
+                ? googleReauthorization
+                  ? 'Volver a autorizar con Google'
+                  : 'Continuar con Google'
+                : 'Conectar'
+          }}
         </button>
         <button
           v-if="mode === 'reconnect'"

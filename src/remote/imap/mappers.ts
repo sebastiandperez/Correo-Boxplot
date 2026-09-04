@@ -22,7 +22,7 @@ export function mapNativeMailbox(
   value: NativeMailboxDto,
   index: number,
 ): RemoteMailbox {
-  const role = roleFor(value.name)
+  const role = roleFor(value.specialUse, value.name)
   return {
     id: imapMailboxId(value.name),
     name: value.name,
@@ -103,7 +103,18 @@ function addresses(
   )
 }
 
-function roleFor(name: string): string | null {
+export function roleFor(
+  specialUse: string | null | undefined,
+  name: string,
+): string | null {
+  switch (specialUse?.toLowerCase()) {
+    case '\\inbox':
+      return 'inbox'
+    case '\\sent':
+      return 'sent'
+    case '\\trash':
+      return 'trash'
+  }
   switch (name.toLowerCase()) {
     case 'inbox':
       return 'inbox'

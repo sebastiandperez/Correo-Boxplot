@@ -33,6 +33,7 @@ import {
   mapNativeAttachment,
   mapNativeEmail,
   mapNativeMailbox,
+  roleFor,
 } from './mappers'
 
 export class ImapRemoteMail implements RemoteMail {
@@ -42,6 +43,7 @@ export class ImapRemoteMail implements RemoteMail {
     private readonly ipc: NativeMailIpcPort,
     private readonly sessionId: string,
     private readonly authenticatedUser: string,
+    private readonly syncPolicy: 'genericImap' | 'gmailDogfood' = 'genericImap',
   ) {
     this.accountId = imapAccountId(authenticatedUser)
   }
@@ -73,7 +75,9 @@ export class ImapRemoteMail implements RemoteMail {
     void previousState
     this.assertAccount(accountId)
     try {
-      const values = sortMailboxes(await this.ipc.listMailboxes(this.sessionId))
+      const values = this.syncMailboxesForPolicy(
+        sortMailboxes(await this.ipc.listMailboxes(this.sessionId)),
+      )
       const snapshot = values.map(mapNativeMailbox)
       return validateRemoteCollectionSync(
         {
@@ -124,8 +128,8 @@ export class ImapRemoteMail implements RemoteMail {
   private async syncEmailsAttempt(): Promise<
     RemoteCollectionSync<RemoteEmail, RemoteEmailId>
   > {
-    const initialMailboxes = sortMailboxes(
-      await this.ipc.listMailboxes(this.sessionId),
+    const initialMailboxes = this.syncMailboxesForPolicy(
+      sortMailboxes(await this.ipc.listMailboxes(this.sessionId)),
     )
     const snapshots = []
     for (const mailbox of initialMailboxes) {
@@ -133,8 +137,8 @@ export class ImapRemoteMail implements RemoteMail {
         await this.ipc.snapshotMailbox(this.sessionId, mailbox.name),
       )
     }
-    const finalMailboxes = sortMailboxes(
-      await this.ipc.listMailboxes(this.sessionId),
+    const finalMailboxes = this.syncMailboxesForPolicy(
+      sortMailboxes(await this.ipc.listMailboxes(this.sessionId)),
     )
     const snapshotMailboxes = sortMailboxes(
       snapshots.map((snapshot) => snapshot.mailbox),
@@ -299,6 +303,16 @@ export class ImapRemoteMail implements RemoteMail {
 
   private target(emailId: RemoteEmailId) {
     return { sessionId: this.sessionId, ...decodeImapEmailId(emailId) }
+  }
+
+  private syncMailboxesForPolicy<
+    T extends { name: string; specialUse?: string | null },
+  >(values: readonly T[]): T[] {
+    if (this.syncPolicy !== 'gmailDogfood') return [...values]
+    return values.filter((value) => {
+      const role = roleFor(value.specialUse, value.name)
+      return role === 'inbox' || role === 'sent' || role === 'trash'
+    })
   }
 
   private assertAccount(accountId: RemoteAccountId): void {
