@@ -762,5 +762,3 @@ fn pdb_txn_membership_conflict_rolls_back_projection_and_mutation() {
         OwnedOptional::Absent
     );
 }
-
-

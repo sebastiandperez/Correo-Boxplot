@@ -51,7 +51,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="account-reconnect" role="dialog" aria-modal="true">
-    <div class="account-reconnect__backdrop"></div>
+    <div class="account-reconnect__backdrop" />
     <AccountSetup
       mode="reconnect"
       :google-reauthorization="googleReauthorization"
