@@ -6,6 +6,7 @@ import MailboxSidebar from '../mailbox/MailboxSidebar.vue'
 import MessageList from '../message-list/MessageList.vue'
 import MessageViewer from '../message-viewer/MessageViewer.vue'
 import Composer from '../composer/Composer.vue'
+import SendStatus from './SendStatus.vue'
 
 const reconnectAccountKey = ref<AccountKey | null>(null)
 
@@ -24,6 +25,7 @@ function closeReconnect() {
     <MessageList />
     <MessageViewer />
     <Composer />
+    <SendStatus />
     <AccountReconnectDialog
       v-if="reconnectAccountKey"
       :account-key="reconnectAccountKey"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useMailStore } from '../../app/stores/mail'
+import { useMutationStatusStore } from '../../app/stores/mutation-status'
 import { useRuntimeStore } from '../../app/stores/runtime'
 import { useMailApplicationController } from '../../app/vue-application-context'
 import type { EmailAddressList } from '../../domain/address'
@@ -8,6 +9,7 @@ import type { ScopedEmailId } from '../../domain/ids'
 import type { Email } from '../../domain/email'
 
 const mailStore = useMailStore()
+const mutationStatusStore = useMutationStatusStore()
 const runtimeStore = useRuntimeStore()
 const controller = useMailApplicationController()
 const searchQuery = ref('')
@@ -80,6 +82,56 @@ function isUnread(email: Email): boolean {
 
 function isFlagged(email: Email): boolean {
   return email.keywords.has('$flagged')
+}
+
+function mutationForEmail(emailId: ScopedEmailId) {
+  const statuses = mutationStatusStore
+    .statusesForAccount(emailId.accountKey)
+    .filter(
+      (value) =>
+        value.emailId?.accountKey === emailId.accountKey &&
+        value.emailId?.jmapId === emailId.jmapId,
+    )
+  return statuses.sort((left, right) => {
+    const rank = (status: typeof left) =>
+      status.lifecycle === 'failedTerminal'
+        ? 4
+        : status.needsReconciliation || status.lifecycle === 'inFlight'
+          ? 3
+          : status.lifecycle === 'retrying'
+            ? 2
+            : 1
+    return rank(right) - rank(left)
+  })[0]
+}
+
+function mutationLabel(emailId: ScopedEmailId): string | null {
+  const value = mutationForEmail(emailId)
+  if (value === undefined) {
+    return mutationStatusStore.recentConfirmationForEmail(emailId) === null
+      ? null
+      : 'Sincronizado'
+  }
+  if (value.needsReconciliation || value.lifecycle === 'confirmed') {
+    return 'Verificando estado remoto…'
+  }
+  if (value.lifecycle === 'failedTerminal') return 'Error de sincronización'
+  if (value.lifecycle === 'inFlight') return 'Sincronizando…'
+  if (value.lifecycle === 'retrying') return 'Pendiente de reintento'
+  return 'Pendiente'
+}
+
+function retryMutation(e: Event, emailId: ScopedEmailId) {
+  e.stopPropagation()
+  const value = mutationForEmail(emailId)
+  if (
+    value === undefined ||
+    value.lifecycle === 'failedTerminal' ||
+    value.lifecycle === 'confirmed'
+  ) {
+    return
+  }
+  void controller.runMutation(value.accountKey, value.mutationId)
 }
 
 function getFromLabel(from: EmailAddressList): string {
@@ -250,6 +302,28 @@ function handleSelectEmail(emailId: ScopedEmailId) {
 
           <div class="message-item__bottom">
             <span class="message-item__preview">{{ msg.preview }}</span>
+            <span
+              v-if="mutationLabel(msg.id)"
+              class="message-item__mutation-status"
+            >
+              {{ mutationLabel(msg.id) }}
+            </span>
+            <button
+              v-if="
+                mutationForEmail(msg.id) !== undefined &&
+                mutationForEmail(msg.id)?.lifecycle !== 'failedTerminal' &&
+                mutationForEmail(msg.id)?.lifecycle !== 'confirmed'
+              "
+              class="message-item__mutation-retry"
+              type="button"
+              @click="retryMutation($event, msg.id)"
+            >
+              {{
+                mutationForEmail(msg.id)?.needsReconciliation
+                  ? 'Verificar'
+                  : 'Reintentar'
+              }}
+            </button>
 
             <!-- Botones de acción rápida al pasar el mouse -->
             <div class="message-item__quick-actions">

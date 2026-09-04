@@ -29,6 +29,12 @@ Integration	A-08	P0	Corte local-first A+B	Ejecutar UI real contra TauriReadRepos
 >
 > **PERSONA_A_REMOTE_READ_PATH_FROZEN.** Este marcador congela únicamente A2-05 Manual Refresh y A2-06 Body-on-demand; Persona A permanece abierta para A2-07, A2-08, selector E2EE, A2-10 y A2-11.
 >
+> **A2-07 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** Las mutaciones locales se proyectan por cuenta desde `listPendingMutations()` tras hints P-03 y se ejecutan por `MutationId` exacto mediante el `MutationRunner` congelado. La UX distingue cola local, reintento, verificación remota y error terminal sin confundir commit local con confirmación.
+>
+> **A2-08 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El Composer conserva su edición hasta que `stageSendMutation()` confirma el commit local; después se cierra y el estado remoto del envío se muestra fuera del Composer mediante la proyección durable de mutaciones.
+>
+> **E2EE SEND SELECTOR — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** Cada Composer nuevo inicia en Estándar y ofrece una elección explícita por envío entre Estándar y Boxplot E2EE. El modo se copia sin inferencia a `SendIntent.securityMode`, no se persiste como preferencia y nunca se degrada en la capa A.
+>
 > **A2-09 — IMPLEMENTED · AWAITING INDEPENDENT VERIFY.** El shell local permite reconectar una `Account` durable mediante credenciales memory-only. La acción exige el `AccountKey` explícito y confirma que el endpoint reconstruye exactamente su `ServiceKey` durable antes de invocar `RemoteApplication`.
 
 

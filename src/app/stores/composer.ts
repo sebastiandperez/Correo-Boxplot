@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { SendSecurityMode } from '../../domain/send-intent'
 
 export type ComposerPhase = 'idle' | 'editing' | 'queueing' | 'error'
 
@@ -9,6 +10,8 @@ export interface ComposerState {
   bcc: string
   subject: string
   body: string
+  /** Ephemeral choice for the current SendIntent; never a persisted preference. */
+  securityMode: SendSecurityMode
   phase: ComposerPhase
   error: string | null
 }
@@ -21,6 +24,7 @@ export const useComposerStore = defineStore('composer', {
     bcc: '',
     subject: '',
     body: '',
+    securityMode: 'plain',
     phase: 'idle',
     error: null,
   }),
@@ -41,6 +45,7 @@ export const useComposerStore = defineStore('composer', {
       this.bcc = ''
       this.subject = initial?.subject ?? ''
       this.body = initial?.body ?? ''
+      this.securityMode = 'plain'
     },
 
     close() {
@@ -54,6 +59,7 @@ export const useComposerStore = defineStore('composer', {
       this.bcc = ''
       this.subject = ''
       this.body = ''
+      this.securityMode = 'plain'
       this.phase = 'idle'
       this.error = null
     },

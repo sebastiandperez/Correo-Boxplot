@@ -17,7 +17,7 @@ describe('Presentation remote boundary', () => {
       ...vueSources(resolve(process.cwd(), 'src/components')),
     ]
     const forbidden =
-      /RemoteApplication|RemoteSession|RemoteMail|RemoteBodySource|BodyMaterializer|Submission|E2eePort|ImapAdapter|SmtpSubmission|NativeMailIpcPort/
+      /RemoteApplication|RemoteSession|RemoteMail|RemoteBodySource|BodyMaterializer|MutationRunner|DefaultMutationRunner|RemoteMutationSource|Submission|E2eePort|ImapAdapter|SmtpSubmission|NativeMailIpcPort/
 
     for (const source of sources) {
       expect(readFileSync(source, 'utf8'), source).not.toMatch(forbidden)

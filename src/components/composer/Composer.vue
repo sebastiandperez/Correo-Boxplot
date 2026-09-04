@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { useComposerStore } from '../../app/stores/composer'
 import { executeSend } from '../../app/services/send-service'
-import { useApplicationContext } from '../../app/vue-application-context'
+import {
+  useApplicationContext,
+  useMailApplicationController,
+} from '../../app/vue-application-context'
 
 defineOptions({ name: 'MailComposer' })
 
 const composerStore = useComposerStore()
 const applicationContext = useApplicationContext()
+const controller = useMailApplicationController()
 
 function handleClose() {
   composerStore.close()
@@ -15,7 +19,9 @@ function handleClose() {
 async function handleSend() {
   if (!composerStore.canSend) return
 
-  await executeSend(applicationContext)
+  const result = await executeSend(applicationContext)
+  if (result.ok)
+    void controller.runMutation(result.accountKey, result.mutationId)
 }
 </script>
 
@@ -101,6 +107,29 @@ async function handleSend() {
             :disabled="composerStore.phase === 'queueing'"
           />
         </div>
+
+        <fieldset
+          class="composer__field"
+          :disabled="composerStore.phase === 'queueing'"
+        >
+          <legend>Seguridad del envío</legend>
+          <label>
+            <input
+              v-model="composerStore.securityMode"
+              type="radio"
+              value="plain"
+            />
+            Estándar
+          </label>
+          <label>
+            <input
+              v-model="composerStore.securityMode"
+              type="radio"
+              value="boxplotE2eeV1"
+            />
+            Boxplot E2EE
+          </label>
+        </fieldset>
       </div>
 
       <footer class="composer__footer">
