@@ -25,6 +25,18 @@ export type NativeMailOpenResponse = Readonly<{
   sessionId: string
   authenticatedUser: string
 }>
+export type NativeGoogleOAuthAuthorizeRequest = Readonly<{
+  accountKey: string
+  username: string
+}>
+export type NativeGoogleOAuthAuthorizeResponse = Readonly<{
+  credentialRef: string
+}>
+export type NativeGoogleOAuthForgetRequest = Readonly<{ credentialRef: string }>
+export type NativeGoogleMailOpenRequest = Readonly<{
+  username: string
+  credentialRef: string
+}>
 
 export type NativeAddressDto = Readonly<{ name: string | null; email: string }>
 export type NativeMailboxDto = Readonly<{
@@ -33,6 +45,8 @@ export type NativeMailboxDto = Readonly<{
   unseen: number
   uidValidity: number
   uidNext: number
+  /** Optional IMAP LIST SPECIAL-USE attribute; absent keeps local wire stable. */
+  specialUse?: string | null
 }>
 export type NativeMessageMetadataDto = Readonly<{
   mailbox: string
@@ -120,6 +134,13 @@ export type NativeSmtpSubmitResponse = Readonly<{
 
 export interface NativeMailIpcPort {
   open(request: NativeMailOpenRequest): Promise<NativeMailOpenResponse>
+  authorizeGoogle?(
+    request: NativeGoogleOAuthAuthorizeRequest,
+  ): Promise<NativeGoogleOAuthAuthorizeResponse>
+  forgetGoogle?(request: NativeGoogleOAuthForgetRequest): Promise<void>
+  openGoogle?(
+    request: NativeGoogleMailOpenRequest,
+  ): Promise<NativeMailOpenResponse>
   close(sessionId: string): Promise<void>
   listMailboxes(sessionId: string): Promise<readonly NativeMailboxDto[]>
   snapshotMailbox(

@@ -1,4 +1,6 @@
 export * from './imap-smtp-connection'
+export * from './gmail-remote-connection'
+export * from './gmail-oauth-broker'
 export * from './ipc'
 export * from './native-mail-ipc-client'
 export * from './tauri-native-mail-ipc'

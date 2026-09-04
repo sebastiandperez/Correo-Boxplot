@@ -1,7 +1,7 @@
 import { RemoteError } from './errors'
 import type { RemoteConnection } from './connection'
 
-export type RemoteProvider = 'jmap' | 'imapSmtp'
+export type RemoteProvider = 'jmap' | 'imapSmtp' | 'gmail'
 
 export type RemoteConnectionConfig =
   | Readonly<{ provider: 'jmap'; sessionUrl: string }>
@@ -13,6 +13,12 @@ export type RemoteConnectionConfig =
       imapPort: number
       smtpPort: number
     }>
+  | Readonly<{
+      /** Gmail endpoints and OAuth secrets are native provider policy. */
+      provider: 'gmail'
+      username: string
+      credentialRef: string
+    }>
 
 export type RemoteConnectionFactories = Readonly<{
   jmap: (
@@ -20,6 +26,9 @@ export type RemoteConnectionFactories = Readonly<{
   ) => RemoteConnection
   imapSmtp?: (
     config: Extract<RemoteConnectionConfig, { provider: 'imapSmtp' }>,
+  ) => RemoteConnection
+  gmail?: (
+    config: Extract<RemoteConnectionConfig, { provider: 'gmail' }>,
   ) => RemoteConnection
 }>
 
@@ -43,5 +52,15 @@ export function createRemoteConnection(
         )
       }
       return factories.imapSmtp(config)
+    case 'gmail':
+      if (factories.gmail === undefined) {
+        throw new RemoteError('Gmail connection factory is not configured', {
+          kind: 'unsupported',
+          retry: 'never',
+          session: 'keep',
+          outcome: 'notApplicable',
+        })
+      }
+      return factories.gmail(config)
   }
 }

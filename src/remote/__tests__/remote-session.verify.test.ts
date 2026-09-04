@@ -119,4 +119,20 @@ describe('V11 — Remote Connection & Session Verification', () => {
     const session = await conn.open()
     await expect(session.close()).resolves.toBeUndefined()
   })
+
+  it('GMAIL-01: Gmail config reaches only the configured native factory and carries no token', () => {
+    const gmail = vi.fn(() => ({ open: vi.fn() }))
+    const config = {
+      provider: 'gmail' as const,
+      username: 'alice@gmail.com',
+      credentialRef: 'gmail-oauth-v1/account-1',
+    }
+
+    expect(createRemoteConnection(config, { jmap: vi.fn(), gmail })).toEqual({
+      open: expect.any(Function),
+    })
+    expect(gmail).toHaveBeenCalledWith(config)
+    expect(JSON.stringify(config)).not.toContain('access_token')
+    expect(JSON.stringify(config)).not.toContain('refresh_token')
+  })
 })

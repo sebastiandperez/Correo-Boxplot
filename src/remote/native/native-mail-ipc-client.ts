@@ -6,6 +6,10 @@ import type {
   NativeMailIpcPort,
   NativeMailOpenRequest,
   NativeMailOpenResponse,
+  NativeGoogleMailOpenRequest,
+  NativeGoogleOAuthAuthorizeRequest,
+  NativeGoogleOAuthAuthorizeResponse,
+  NativeGoogleOAuthForgetRequest,
   NativeMailboxDto,
   NativeMailboxSnapshotDto,
   NativeMessageRequest,
@@ -34,13 +38,35 @@ const commands = {
   smtpSubmit: 'native_smtp_submit',
 } as const
 
+const googleCommands = {
+  authorizeGoogle: 'native_google_oauth_authorize',
+  forgetGoogle: 'native_google_oauth_forget',
+  openGoogle: 'native_mail_open_google',
+} as const
+
 export const NATIVE_MAIL_COMMANDS = Object.freeze(Object.values(commands))
+export const NATIVE_GOOGLE_COMMANDS = Object.freeze(
+  Object.values(googleCommands),
+)
 
 export class NativeMailIpcClient implements NativeMailIpcPort {
   constructor(private readonly invoke: NativeMailInvoke) {}
 
   open(request: NativeMailOpenRequest): Promise<NativeMailOpenResponse> {
     return this.call(commands.open, request)
+  }
+  authorizeGoogle(
+    request: NativeGoogleOAuthAuthorizeRequest,
+  ): Promise<NativeGoogleOAuthAuthorizeResponse> {
+    return this.call(googleCommands.authorizeGoogle, request)
+  }
+  forgetGoogle(request: NativeGoogleOAuthForgetRequest): Promise<void> {
+    return this.call(googleCommands.forgetGoogle, request)
+  }
+  openGoogle(
+    request: NativeGoogleMailOpenRequest,
+  ): Promise<NativeMailOpenResponse> {
+    return this.call(googleCommands.openGoogle, request)
   }
   close(sessionId: string): Promise<void> {
     return this.call(commands.close, { sessionId })

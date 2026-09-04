@@ -21,6 +21,7 @@ import { ImapRemoteMail } from '../../imap/imap-remote-mail'
 import { SmtpSubmission } from '../../smtp/smtp-submission'
 import { ImapSmtpRemoteConnection } from '../imap-smtp-connection'
 import {
+  NATIVE_GOOGLE_COMMANDS,
   NATIVE_MAIL_COMMANDS,
   NativeMailIpcClient,
   type NativeMailInvoke,
@@ -542,6 +543,18 @@ describe('typed native IPC', () => {
       'native_imap_move',
       'native_smtp_submit',
     ])
+  })
+
+  it('exposes exactly the three additive Google commands separately from the frozen local set', () => {
+    expect(NATIVE_GOOGLE_COMMANDS).toEqual([
+      'native_google_oauth_authorize',
+      'native_google_oauth_forget',
+      'native_mail_open_google',
+    ])
+    const frozenLocalCommands = new Set<string>(NATIVE_MAIL_COMMANDS)
+    expect(
+      NATIVE_GOOGLE_COMMANDS.every((name) => !frozenLocalCommands.has(name)),
+    ).toBe(true)
   })
 
   it('routes each capability through its dedicated command', async () => {
