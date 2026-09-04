@@ -193,13 +193,7 @@ impl ImapConnection {
         if status.uid_validity != selected.uid_validity {
             return Err(NativeMailErrorDto::conflict("imap_snapshot_changed"));
         }
-        let mut uids = self.search_uids()?;
-        uids.sort_unstable();
-        let uids = uids
-            .into_iter()
-            .rev()
-            .take(GMAIL_DOGFOOD_MAX_MESSAGES_PER_MAILBOX)
-            .collect::<Vec<_>>();
+        let uids = gmail_metadata_uids(self.search_uids()?);
         let mut messages = Vec::with_capacity(uids.len());
         for uid in uids {
             let fetched = self.fetch_metadata(uid).map_err(snapshot_fetch_error)?;
@@ -367,9 +361,7 @@ impl ImapConnection {
     }
 
     fn fetch_metadata(&mut self, uid: u32) -> Result<FetchedMessage, NativeMailErrorDto> {
-        let lines = self.command(&format!(
-            "UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID CONTENT-TYPE)])"
-        ))?;
+        let lines = self.command(&gmail_metadata_fetch_command(uid))?;
         self.fetched_from_lines(uid, lines)
     }
 
@@ -798,6 +790,20 @@ fn xoauth2_command(username: &str, access_token: &str) -> Zeroizing<String> {
     Zeroizing::new(format!("AUTHENTICATE XOAUTH2 {}", encoded.as_str()))
 }
 
+fn gmail_metadata_uids(mut uids: Vec<u32>) -> Vec<u32> {
+    uids.sort_unstable();
+    uids.into_iter()
+        .rev()
+        .take(GMAIL_DOGFOOD_MAX_MESSAGES_PER_MAILBOX)
+        .collect()
+}
+
+fn gmail_metadata_fetch_command(uid: u32) -> String {
+    format!(
+        "UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID CONTENT-TYPE)])"
+    )
+}
+
 fn special_use_from_list(line: &str) -> Option<String> {
     [
         "\\Sent",
@@ -931,9 +937,10 @@ fn imap_date_to_rfc3339(value: &str) -> Option<String> {
 mod tests {
     use super::{
         MAX_IMAP_LINE_BYTES, MAX_IMAP_LITERAL_BYTES, account_response_text, canonical_flags,
-        ensure_snapshot_stable, exact_message_id_header, fetch_uid, imap_date_to_rfc3339,
-        login_command, message_id_candidate_limit_exceeded, mutation_outcome, parse_literal_length,
-        quote, read_bounded_text_line, special_use_from_list, write_imap_command, xoauth2_command,
+        ensure_snapshot_stable, exact_message_id_header, fetch_uid, gmail_metadata_fetch_command,
+        gmail_metadata_uids, imap_date_to_rfc3339, login_command,
+        message_id_candidate_limit_exceeded, mutation_outcome, parse_literal_length, quote,
+        read_bounded_text_line, special_use_from_list, write_imap_command, xoauth2_command,
     };
     use crate::net::dto::NativeMailboxDto;
     use crate::net::errors::{
@@ -963,6 +970,17 @@ mod tests {
             special_use_from_list("* LIST (\\HasNoChildren \\Sent) \"/\" \"[Gmail]/Sent Mail\""),
             Some("\\Sent".to_owned())
         );
+    }
+
+    #[test]
+    fn gmail_metadata_sync_is_bounded_and_never_requests_a_full_body() {
+        let uids = gmail_metadata_uids((1..=101).collect());
+        assert_eq!(uids.len(), 100);
+        assert_eq!(uids.first(), Some(&101));
+        assert_eq!(uids.last(), Some(&2));
+        let command = gmail_metadata_fetch_command(101);
+        assert!(command.contains("BODY.PEEK[HEADER.FIELDS"));
+        assert!(!command.contains("BODY.PEEK[]"));
     }
 
     #[test]
