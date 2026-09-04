@@ -12,6 +12,7 @@ import { RemoteError } from '../../remote/errors'
 import type { RemoteSession } from '../../remote/session'
 import { FakeRemoteMail, FakeSubmission } from '../../remote/testing'
 import { remoteAccountIdFromString } from '../../remote/types'
+import { imapAccountId } from '../../remote/imap/ids'
 import {
   createApplicationContext,
   createMailApplicationController,
@@ -36,9 +37,9 @@ const request = {
 const prospectiveKey = accountKeyFromString('application-prospective-key')
 const remoteId = remoteAccountIdFromString('opaque/boxplot-alice')
 
-function session(): RemoteSession {
+function session(accountId = remoteId): RemoteSession {
   return {
-    accounts: [{ id: remoteId, capabilities: [] }],
+    accounts: [{ id: accountId, capabilities: [] }],
     mail: new FakeRemoteMail(),
     submission: new FakeSubmission(async () => ({
       kind: 'accepted',
@@ -308,6 +309,85 @@ describe('A2-02/A2-03 Application auth bridge and local-first routing', () => {
         username: 'another@gmail.com',
       }),
     ).toBe('gmail:imap-smtp:v1')
+    controller.dispose()
+  })
+
+  it('GMAIL-02 reconnects a durable Gmail account without reopening the browser', async () => {
+    const accountKey = accountKeyFromString('gmail-restart-account')
+    const username = 'alice@gmail.com'
+    const remoteAccount = imapAccountId(username)
+    const broker: GoogleOAuthBroker = {
+      authorize: vi.fn(),
+      forget: vi.fn(),
+    }
+    const { engine, remoteApplication, controller } = setup({
+      googleOAuthBroker: broker,
+      open: async () => session(remoteAccount),
+    })
+    const existing = account(
+      accountKey,
+      remoteAccountRef(
+        serviceKeyFromString('gmail:imap-smtp:v1'),
+        jmapAccountIdFromString(String(remoteAccount)),
+      ),
+    )
+    await engine.syncPort.registerAccount(existing)
+    const connect = vi.spyOn(remoteApplication, 'connect')
+    await controller.initialize()
+
+    await expect(
+      controller.reconnectAccount(accountKey, {
+        profile: 'gmailOAuth',
+        username,
+      }),
+    ).resolves.toEqual({ ok: true, accountKey })
+
+    expect(broker.authorize).not.toHaveBeenCalled()
+    expect(connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountKey,
+        serviceKey: 'gmail:imap-smtp:v1',
+        config: {
+          provider: 'gmail',
+          username,
+          credentialRef: gmailCredentialRefForAccount(accountKey),
+        },
+      }),
+    )
+    controller.dispose()
+  })
+
+  it('GMAIL-03 rejects a mismatched Gmail session without rebinding the durable account', async () => {
+    const accountKey = accountKeyFromString('gmail-account-a')
+    const username = 'alice@gmail.com'
+    const expectedRemote = imapAccountId(username)
+    const { engine, controller } = setup({
+      open: async () => session(imapAccountId('bob@gmail.com')),
+    })
+    const existing = account(
+      accountKey,
+      remoteAccountRef(
+        serviceKeyFromString('gmail:imap-smtp:v1'),
+        jmapAccountIdFromString(String(expectedRemote)),
+      ),
+    )
+    await engine.syncPort.registerAccount(existing)
+    await controller.initialize()
+
+    await expect(
+      controller.reconnectAccount(accountKey, {
+        profile: 'gmailOAuth',
+        username,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        kind: 'accountMismatch',
+        message: 'La cuenta remota no coincide con la configuración local.',
+      },
+    })
+    expect(useMailStore().accounts).toEqual([existing])
+    expect(useRuntimeStore().local).toBe('ready')
     controller.dispose()
   })
 
