@@ -8,6 +8,7 @@ pub mod ipc;
 #[cfg(feature = "local-env-doctor")]
 mod local_env_doctor;
 pub mod net;
+mod oauth;
 pub mod persistence;
 mod security;
 
@@ -37,6 +38,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(ipc::ManagedLocalEngine::default())
         .manage(net::ManagedNativeMailRuntime::default())
+        .manage(oauth::ManagedGoogleOAuth::default())
         .manage(e2ee::ManagedE2eeService::default());
 
     #[cfg(not(feature = "conformance"))]
@@ -81,6 +83,9 @@ pub fn run() {
         e2ee::ipc::e2ee_encrypt,
         e2ee::ipc::e2ee_decrypt,
         net::commands::native_mail_open,
+        net::commands::native_mail_open_google,
+        oauth::commands::native_google_oauth_authorize,
+        oauth::commands::native_google_oauth_forget,
         net::commands::native_mail_close,
         net::commands::native_imap_list_mailboxes,
         net::commands::native_imap_snapshot_mailbox,
@@ -127,6 +132,9 @@ pub fn run() {
             e2ee::ipc::e2ee_encrypt,
             e2ee::ipc::e2ee_decrypt,
             net::commands::native_mail_open,
+            net::commands::native_mail_open_google,
+            oauth::commands::native_google_oauth_authorize,
+            oauth::commands::native_google_oauth_forget,
             net::commands::native_mail_close,
             net::commands::native_imap_list_mailboxes,
             net::commands::native_imap_snapshot_mailbox,

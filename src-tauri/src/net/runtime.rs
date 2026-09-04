@@ -9,10 +9,10 @@ use zeroize::Zeroizing;
 use super::{
     dto::{
         NativeAttachmentDto, NativeBodyDto, NativeFindMessageIdRequest,
-        NativeFindMessageIdResponse, NativeFlag, NativeMailOpenRequest, NativeMailOpenResponse,
-        NativeMailboxDto, NativeMailboxSnapshotDto, NativeMessageRequest, NativeMoveRequest,
-        NativeMoveResponse, NativeSmtpSubmitRequest, NativeSmtpSubmitResponse,
-        NativeStoreFlagsRequest,
+        NativeFindMessageIdResponse, NativeFlag, NativeGoogleMailOpenRequest,
+        NativeMailOpenRequest, NativeMailOpenResponse, NativeMailboxDto, NativeMailboxSnapshotDto,
+        NativeMessageRequest, NativeMoveRequest, NativeMoveResponse, NativeSmtpSubmitRequest,
+        NativeSmtpSubmitResponse, NativeStoreFlagsRequest,
     },
     errors::{NativeMailErrorDto, NativeMailSessionDisposition},
     imap::ImapConnection,
@@ -20,6 +20,7 @@ use super::{
     policy::resolve_verified_loopback,
     smtp,
 };
+use crate::oauth::{GoogleAccessToken, GoogleOAuthService};
 
 #[derive(Default)]
 pub struct ManagedNativeMailRuntime {
@@ -28,8 +29,10 @@ pub struct ManagedNativeMailRuntime {
 
 struct NativeMailSession {
     username: String,
-    password: Zeroizing<String>,
-    smtp_endpoint: std::net::SocketAddr,
+    password: Option<Zeroizing<String>>,
+    gmail_credential_ref: Option<String>,
+    gmail_access_token: Option<GoogleAccessToken>,
+    smtp_endpoint: Option<std::net::SocketAddr>,
     imap: ImapConnection,
 }
 
@@ -37,8 +40,10 @@ impl std::fmt::Debug for NativeMailSession {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         NativeMailSessionDebug {
             username: &self.username,
-            password: self.password.as_str(),
-            smtp_endpoint: self.smtp_endpoint,
+            password: self.password.as_deref().map_or("", |value| value),
+            smtp_endpoint: self
+                .smtp_endpoint
+                .unwrap_or_else(|| "127.0.0.1:0".parse().expect("socket")),
         }
         .fmt(formatter)
     }
@@ -89,8 +94,43 @@ impl ManagedNativeMailRuntime {
         };
         let session = NativeMailSession {
             username,
-            password,
-            smtp_endpoint,
+            password: Some(password),
+            gmail_credential_ref: None,
+            gmail_access_token: None,
+            smtp_endpoint: Some(smtp_endpoint),
+            imap,
+        };
+        self.sessions
+            .lock()
+            .map_err(|_| NativeMailErrorDto::unavailable("session_registry_poisoned"))?
+            .insert(session_id, Arc::new(Mutex::new(session)));
+        Ok(response)
+    }
+
+    pub fn open_google(
+        &self,
+        request: NativeGoogleMailOpenRequest,
+        oauth: &GoogleOAuthService,
+    ) -> Result<NativeMailOpenResponse, NativeMailErrorDto> {
+        if request.username.trim().is_empty() || !request.username.contains('@') {
+            return Err(NativeMailErrorDto::rejected("google_username_invalid"));
+        }
+        let token = oauth.refresh_access_token(&request.credential_ref)?;
+        let imap = ImapConnection::connect_gmail(&request.username, token.as_str())?;
+        let mut random = [0_u8; 16];
+        getrandom::fill(&mut random)
+            .map_err(|_| NativeMailErrorDto::unavailable("session_entropy_failed"))?;
+        let session_id = URL_SAFE_NO_PAD.encode(random);
+        let response = NativeMailOpenResponse {
+            session_id: session_id.clone(),
+            authenticated_user: request.username.clone(),
+        };
+        let session = NativeMailSession {
+            username: request.username,
+            password: None,
+            gmail_credential_ref: Some(request.credential_ref),
+            gmail_access_token: Some(token),
+            smtp_endpoint: None,
             imap,
         };
         self.sessions
@@ -125,7 +165,13 @@ impl ManagedNativeMailRuntime {
         session_id: &str,
         mailbox: &str,
     ) -> Result<NativeMailboxSnapshotDto, NativeMailErrorDto> {
-        self.with_session(session_id, |session| session.imap.snapshot(mailbox))
+        self.with_session(session_id, |session| {
+            if session.gmail_credential_ref.is_some() {
+                session.imap.snapshot_gmail_metadata(mailbox)
+            } else {
+                session.imap.snapshot(mailbox)
+            }
+        })
     }
 
     pub fn fetch_body(
@@ -208,10 +254,52 @@ impl ManagedNativeMailRuntime {
         request: &NativeSmtpSubmitRequest,
     ) -> Result<NativeSmtpSubmitResponse, NativeMailErrorDto> {
         self.with_session(&request.session_id, |session| {
-            smtp::submit(
-                session.smtp_endpoint,
+            if let (Some(endpoint), Some(password)) =
+                (session.smtp_endpoint, session.password.as_deref())
+            {
+                return smtp::submit(endpoint, &session.username, password, request);
+            }
+            Err(NativeMailErrorDto::state_invalid(
+                "native_session_google_oauth_required",
+            ))
+        })
+    }
+
+    pub fn is_google_session(&self, session_id: &str) -> Result<bool, NativeMailErrorDto> {
+        self.with_session(session_id, |session| {
+            Ok(session.gmail_credential_ref.is_some())
+        })
+    }
+
+    pub fn smtp_submit_google(
+        &self,
+        request: &NativeSmtpSubmitRequest,
+        oauth: &GoogleOAuthService,
+    ) -> Result<NativeSmtpSubmitResponse, NativeMailErrorDto> {
+        self.with_session(&request.session_id, |session| {
+            if let (Some(endpoint), Some(password)) =
+                (session.smtp_endpoint, session.password.as_deref())
+            {
+                return smtp::submit(endpoint, &session.username, password, request);
+            }
+            let credential_ref = session
+                .gmail_credential_ref
+                .as_deref()
+                .ok_or_else(|| NativeMailErrorDto::state_invalid("native_session_auth_missing"))?;
+            let needs_refresh = session
+                .gmail_access_token
+                .as_ref()
+                .is_none_or(|token| !token.is_usable());
+            if needs_refresh {
+                session.gmail_access_token = Some(oauth.refresh_access_token(credential_ref)?);
+            }
+            smtp::submit_gmail(
                 &session.username,
-                &session.password,
+                session
+                    .gmail_access_token
+                    .as_ref()
+                    .map(GoogleAccessToken::as_str)
+                    .ok_or_else(|| NativeMailErrorDto::unavailable("oauth_token_missing"))?,
                 request,
             )
         })

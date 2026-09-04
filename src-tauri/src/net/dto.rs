@@ -31,6 +31,13 @@ pub struct NativeMailOpenResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeGoogleMailOpenRequest {
+    pub username: String,
+    pub credential_ref: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeSessionRequest {
     pub session_id: String,
@@ -51,6 +58,8 @@ pub struct NativeMailboxDto {
     pub unseen: u64,
     pub uid_validity: u32,
     pub uid_next: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub special_use: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     io::{BufRead, BufReader, Write},
-    net::{SocketAddr, TcpStream},
+    net::SocketAddr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -15,6 +15,7 @@ use super::{
         NativeSubmissionBodyDto,
     },
     errors::NativeMailErrorDto,
+    transport::{MailStream, connect_plain, connect_tls},
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -46,20 +47,8 @@ pub fn submit(
         return Err(NativeMailErrorDto::rejected("smtp_recipient_required"));
     }
 
-    let stream = TcpStream::connect_timeout(&endpoint, CONNECT_TIMEOUT)
-        .map_err(|_| NativeMailErrorDto::unavailable("smtp_connect_failed"))?;
-    stream
-        .set_read_timeout(Some(COMMAND_TIMEOUT))
-        .map_err(|_| NativeMailErrorDto::unavailable("smtp_timeout_setup_failed"))?;
-    stream
-        .set_write_timeout(Some(COMMAND_TIMEOUT))
-        .map_err(|_| NativeMailErrorDto::unavailable("smtp_timeout_setup_failed"))?;
-    let reader_stream = stream
-        .try_clone()
-        .map_err(|_| NativeMailErrorDto::unavailable("smtp_stream_failed"))?;
     let mut client = SmtpClient {
-        writer: stream,
-        reader: BufReader::new(reader_stream),
+        reader: BufReader::new(connect_plain(endpoint, CONNECT_TIMEOUT, COMMAND_TIMEOUT)?),
     };
     client.expect_code(220, false)?;
     client.command("EHLO boxplot.invalid", 250, false)?;
@@ -75,11 +64,73 @@ pub fn submit(
     }
     client.command("DATA", 354, false)?;
     let wire_message = dot_stuff(&built.message);
+    {
+        let writer = client.reader.get_mut();
+        writer
+            .write_all(&wire_message)
+            .and_then(|_| writer.write_all(b"\r\n.\r\n"))
+            .and_then(|_| writer.flush())
+            .map_err(|_| NativeMailErrorDto::ambiguous("smtp_data_write_unknown"))?;
+    }
+    client.expect_code(250, true)?;
+    let _ = client.command("QUIT", 221, false);
+    Ok(NativeSmtpSubmitResponse {
+        accepted: true,
+        receipt_id: built.message_id,
+    })
+}
+
+pub fn submit_gmail(
+    authenticated_user: &str,
+    access_token: &str,
+    request: &NativeSmtpSubmitRequest,
+) -> Result<NativeSmtpSubmitResponse, NativeMailErrorDto> {
+    if request.from.email != authenticated_user {
+        return Err(NativeMailErrorDto::rejected("smtp_sender_mismatch"));
+    }
+    let built = build_message(request)?;
+    if built.message.len() > MAX_MESSAGE_BYTES {
+        return Err(NativeMailErrorDto::too_large());
+    }
+    let mut recipients = Vec::new();
+    let mut seen = HashSet::new();
+    for address in request.to.iter().chain(&request.cc).chain(&request.bcc) {
+        validate_address(address)?;
+        if seen.insert(address.email.as_str()) {
+            recipients.push(address.email.as_str());
+        }
+    }
+    if recipients.is_empty() {
+        return Err(NativeMailErrorDto::rejected("smtp_recipient_required"));
+    }
+    let mut client = SmtpClient {
+        reader: BufReader::new(connect_tls(
+            "smtp.gmail.com",
+            465,
+            CONNECT_TIMEOUT,
+            COMMAND_TIMEOUT,
+        )?),
+    };
+    client.expect_code(220, false)?;
+    client.command("EHLO boxplot.invalid", 250, false)?;
+    let auth = xoauth2_command(authenticated_user, access_token);
+    match client.authenticate_xoauth2(&auth) {
+        Ok(()) => {}
+        Err(error) if error.code == Some("smtp_rejected") => return Err(NativeMailErrorDto::auth()),
+        Err(error) => return Err(error),
+    }
+    client.command(&format!("MAIL FROM:<{}>", request.from.email), 250, false)?;
+    for recipient in recipients {
+        client.command(&format!("RCPT TO:<{recipient}>"), 250, false)?;
+    }
+    client.command("DATA", 354, false)?;
+    let wire_message = dot_stuff(&built.message);
     client
-        .writer
+        .reader
+        .get_mut()
         .write_all(&wire_message)
-        .and_then(|_| client.writer.write_all(b"\r\n.\r\n"))
-        .and_then(|_| client.writer.flush())
+        .and_then(|_| client.reader.get_mut().write_all(b"\r\n.\r\n"))
+        .and_then(|_| client.reader.get_mut().flush())
         .map_err(|_| NativeMailErrorDto::ambiguous("smtp_data_write_unknown"))?;
     client.expect_code(250, true)?;
     let _ = client.command("QUIT", 221, false);
@@ -191,18 +242,28 @@ pub fn build_message(
 }
 
 struct SmtpClient {
-    writer: TcpStream,
-    reader: BufReader<TcpStream>,
+    reader: BufReader<MailStream>,
 }
 
 impl SmtpClient {
+    fn authenticate_xoauth2(&mut self, command: &str) -> Result<(), NativeMailErrorDto> {
+        write_smtp_command(self.reader.get_mut(), command)
+            .map_err(|_| NativeMailErrorDto::unavailable("smtp_write_failed"))?;
+        if self.expect_code_or_challenge(235)? {
+            write_smtp_command(self.reader.get_mut(), "")
+                .map_err(|_| NativeMailErrorDto::unavailable("smtp_write_failed"))?;
+            self.expect_code(235, false)?;
+        }
+        Ok(())
+    }
+
     fn command(
         &mut self,
         command: &str,
         expected: u16,
         ambiguous: bool,
     ) -> Result<(), NativeMailErrorDto> {
-        write_smtp_command(&mut self.writer, command).map_err(|_| {
+        write_smtp_command(self.reader.get_mut(), command).map_err(|_| {
             if ambiguous {
                 NativeMailErrorDto::ambiguous("smtp_write_unknown")
             } else {
@@ -248,6 +309,41 @@ impl SmtpClient {
             }
         }
     }
+
+    fn expect_code_or_challenge(&mut self, expected: u16) -> Result<bool, NativeMailErrorDto> {
+        loop {
+            let mut line = String::new();
+            let read = self
+                .reader
+                .read_line(&mut line)
+                .map_err(|_| NativeMailErrorDto::unavailable("smtp_read_failed"))?;
+            if read == 0 {
+                return Err(NativeMailErrorDto::unavailable("smtp_connection_closed"));
+            }
+            let code = line
+                .get(..3)
+                .and_then(|value| value.parse::<u16>().ok())
+                .ok_or_else(|| NativeMailErrorDto::protocol("smtp_response_invalid"))?;
+            let continuation = line.as_bytes().get(3) == Some(&b'-');
+            if continuation {
+                continue;
+            }
+            return match code {
+                334 => Ok(true),
+                value if value == expected => Ok(false),
+                400..=499 => Err(NativeMailErrorDto::transient("smtp_transient_rejection")),
+                _ => Err(NativeMailErrorDto::rejected("smtp_rejected")),
+            };
+        }
+    }
+}
+
+fn xoauth2_command(username: &str, access_token: &str) -> Zeroizing<String> {
+    let payload = Zeroizing::new(format!(
+        "user={username}\x01auth=Bearer {access_token}\x01\x01"
+    ));
+    let encoded = Zeroizing::new(STANDARD.encode(payload.as_bytes()));
+    Zeroizing::new(format!("AUTH XOAUTH2 {}", encoded.as_str()))
 }
 
 fn write_smtp_command(writer: &mut impl Write, command: &str) -> std::io::Result<()> {
@@ -328,7 +424,7 @@ fn dot_stuff(value: &[u8]) -> Vec<u8> {
 mod tests {
     use super::{
         auth_plain_command, auth_plain_payload, build_message, encode_auth_plain,
-        write_smtp_command,
+        write_smtp_command, xoauth2_command,
     };
     use crate::net::dto::{NativeAddressDto, NativeSmtpSubmitRequest, NativeSubmissionBodyDto};
 
@@ -383,6 +479,13 @@ mod tests {
         );
         assert!(command.starts_with("AUTH PLAIN "));
         assert!(!command.contains("BOXPL0T_NATIVE_MAIL_SECRET_CANARY_8291"));
+    }
+
+    #[test]
+    fn gmail_xoauth2_command_does_not_expose_the_access_token_plaintext() {
+        let command = xoauth2_command("alice@gmail.com", "GMAIL_SMTP_ACCESS_CANARY_01");
+        assert!(command.starts_with("AUTH XOAUTH2 "));
+        assert!(!command.contains("GMAIL_SMTP_ACCESS_CANARY_01"));
     }
 
     #[test]

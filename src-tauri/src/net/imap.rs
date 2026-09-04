@@ -1,7 +1,8 @@
+use base64::Engine as _;
 use std::{
     collections::BTreeMap,
     io::{BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
+    net::SocketAddr,
     time::Duration,
 };
 use zeroize::Zeroizing;
@@ -13,6 +14,7 @@ use super::{
     },
     errors::{NativeMailErrorDto, NativeMailErrorKind, NativeMailOutcome, NativeMailRetry},
     mime::parse_message,
+    transport::{MailStream, connect_plain, connect_tls},
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -22,6 +24,7 @@ const MAX_IMAP_LITERAL_BYTES: usize = 2 * 1024 * 1024;
 const MAX_IMAP_RESPONSE_LINES: usize = 4096;
 const MAX_IMAP_RESPONSE_TEXT_BYTES: usize = 1024 * 1024;
 const MAX_MESSAGE_ID_CANDIDATES: usize = 256;
+pub const GMAIL_DOGFOOD_MAX_MESSAGES_PER_MAILBOX: usize = 100;
 
 struct ResponseLine {
     text: String,
@@ -29,8 +32,7 @@ struct ResponseLine {
 }
 
 pub struct ImapConnection {
-    writer: TcpStream,
-    reader: BufReader<TcpStream>,
+    reader: BufReader<MailStream>,
     next_tag: u32,
 }
 
@@ -48,22 +50,8 @@ impl ImapConnection {
         username: &str,
         password: &str,
     ) -> Result<Self, NativeMailErrorDto> {
-        let writer = TcpStream::connect_timeout(&endpoint, CONNECT_TIMEOUT)
-            .map_err(|_| NativeMailErrorDto::unavailable("imap_connect_failed"))?;
-        writer
-            .set_read_timeout(Some(COMMAND_TIMEOUT))
-            .map_err(|_| NativeMailErrorDto::unavailable("imap_timeout_setup_failed"))?;
-        writer
-            .set_write_timeout(Some(COMMAND_TIMEOUT))
-            .map_err(|_| NativeMailErrorDto::unavailable("imap_timeout_setup_failed"))?;
-        let reader_stream = writer
-            .try_clone()
-            .map_err(|_| NativeMailErrorDto::unavailable("imap_stream_failed"))?;
-        let mut connection = Self {
-            writer,
-            reader: BufReader::new(reader_stream),
-            next_tag: 1,
-        };
+        let mut connection =
+            Self::from_stream(connect_plain(endpoint, CONNECT_TIMEOUT, COMMAND_TIMEOUT)?);
         let greeting = connection.read_text_line()?;
         if !greeting.starts_with("* OK") {
             return Err(NativeMailErrorDto::protocol("imap_greeting_rejected"));
@@ -79,6 +67,35 @@ impl ImapConnection {
         }
     }
 
+    pub fn connect_gmail(username: &str, access_token: &str) -> Result<Self, NativeMailErrorDto> {
+        let mut connection = Self::from_stream(connect_tls(
+            "imap.gmail.com",
+            993,
+            CONNECT_TIMEOUT,
+            COMMAND_TIMEOUT,
+        )?);
+        let greeting = connection.read_text_line()?;
+        if !greeting.starts_with("* OK") {
+            return Err(NativeMailErrorDto::protocol("imap_greeting_rejected"));
+        }
+        validate_atom(username)?;
+        let command = xoauth2_command(username, access_token);
+        match connection.authenticate_xoauth2(&command) {
+            Ok(_) => Ok(connection),
+            Err(error) if error.kind == NativeMailErrorKind::Rejected => {
+                Err(NativeMailErrorDto::auth())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn from_stream(stream: MailStream) -> Self {
+        Self {
+            reader: BufReader::new(stream),
+            next_tag: 1,
+        }
+    }
+
     pub fn logout(&mut self) {
         let _ = self.command("LOGOUT");
     }
@@ -90,12 +107,14 @@ impl ImapConnection {
             if line.text.starts_with("* LIST ")
                 && let Some(name) = last_quoted(&line.text)
             {
-                names.push(name);
+                names.push((name, special_use_from_list(&line.text)));
             }
         }
         let mut mailboxes = Vec::with_capacity(names.len());
-        for name in names {
-            mailboxes.push(self.status(&name)?);
+        for (name, special_use) in names {
+            let mut mailbox = self.status(&name)?;
+            mailbox.special_use = special_use;
+            mailboxes.push(mailbox);
         }
         Ok(mailboxes)
     }
@@ -117,6 +136,7 @@ impl ImapConnection {
                 .map_err(|_| NativeMailErrorDto::protocol("imap_uidnext_invalid"))?,
             uid_validity: u32::try_from(number_after(&line.text, "UIDVALIDITY")?)
                 .map_err(|_| NativeMailErrorDto::protocol("imap_uidvalidity_invalid"))?,
+            special_use: None,
         })
     }
 
@@ -160,6 +180,40 @@ impl ImapConnection {
         )?;
         Ok(NativeMailboxSnapshotDto {
             mailbox: final_status,
+            messages,
+        })
+    }
+
+    pub fn snapshot_gmail_metadata(
+        &mut self,
+        mailbox: &str,
+    ) -> Result<NativeMailboxSnapshotDto, NativeMailErrorDto> {
+        let selected = self.select(mailbox)?;
+        let status = self.status(mailbox)?;
+        if status.uid_validity != selected.uid_validity {
+            return Err(NativeMailErrorDto::conflict("imap_snapshot_changed"));
+        }
+        let mut uids = self.search_uids()?;
+        uids.sort_unstable();
+        let uids = uids
+            .into_iter()
+            .rev()
+            .take(GMAIL_DOGFOOD_MAX_MESSAGES_PER_MAILBOX)
+            .collect::<Vec<_>>();
+        let mut messages = Vec::with_capacity(uids.len());
+        for uid in uids {
+            let fetched = self.fetch_metadata(uid).map_err(snapshot_fetch_error)?;
+            messages.push(parse_message(&fetched.raw)?.metadata(
+                mailbox.to_owned(),
+                selected.uid_validity,
+                uid,
+                fetched.flags,
+                fetched.internal_date,
+                fetched.size,
+            ));
+        }
+        Ok(NativeMailboxSnapshotDto {
+            mailbox: status,
             messages,
         })
     }
@@ -312,6 +366,47 @@ impl ImapConnection {
         })
     }
 
+    fn fetch_metadata(&mut self, uid: u32) -> Result<FetchedMessage, NativeMailErrorDto> {
+        let lines = self.command(&format!(
+            "UID FETCH {uid} (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID CONTENT-TYPE)])"
+        ))?;
+        self.fetched_from_lines(uid, lines)
+    }
+
+    fn fetched_from_lines(
+        &self,
+        uid: u32,
+        lines: Vec<ResponseLine>,
+    ) -> Result<FetchedMessage, NativeMailErrorDto> {
+        let mut fetched = lines.into_iter().filter(|line| {
+            line.literal.is_some() && line.text.starts_with("* ") && line.text.contains(" FETCH ")
+        });
+        let line = fetched
+            .next()
+            .ok_or_else(|| NativeMailErrorDto::state_invalid("imap_message_absent"))?;
+        if fetched.next().is_some() {
+            return Err(NativeMailErrorDto::protocol("imap_fetch_duplicate"));
+        }
+        if fetch_uid(&line.text)? != uid {
+            return Err(NativeMailErrorDto::state_invalid("imap_uid_mismatch"));
+        }
+        let flags = between(&line.text, "FLAGS (", ")")
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+        let internal_date = between(&line.text, "INTERNALDATE \"", "\"")
+            .and_then(imap_date_to_rfc3339)
+            .ok_or_else(|| NativeMailErrorDto::protocol("imap_internaldate_invalid"))?;
+        let size = number_after(&line.text, "RFC822.SIZE")?;
+        Ok(FetchedMessage {
+            flags,
+            internal_date,
+            size,
+            raw: line.literal.unwrap_or_default(),
+        })
+    }
+
     fn search_uids(&mut self) -> Result<Vec<u32>, NativeMailErrorDto> {
         let lines = self.command("UID SEARCH ALL")?;
         search_uids_from_response(&lines)
@@ -377,6 +472,44 @@ impl ImapConnection {
         self.command_with_outcome(command, false)
     }
 
+    fn authenticate_xoauth2(&mut self, command: &str) -> Result<(), NativeMailErrorDto> {
+        let tag = format!("B{:04}", self.next_tag);
+        self.next_tag = self.next_tag.saturating_add(1);
+        write_imap_command(self.reader.get_mut(), &tag, command)
+            .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))?;
+        let mut line_count = 0_usize;
+        let mut text_bytes = 0_usize;
+        let mut answered_challenge = false;
+        loop {
+            let text = self.read_text_line()?;
+            account_response_text(&mut line_count, &mut text_bytes, &text)?;
+            if text.starts_with('+') {
+                if answered_challenge {
+                    return Err(NativeMailErrorDto::protocol(
+                        "imap_xoauth2_challenge_invalid",
+                    ));
+                }
+                self.reader
+                    .get_mut()
+                    .write_all(b"\r\n")
+                    .and_then(|_| self.reader.get_mut().flush())
+                    .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))?;
+                answered_challenge = true;
+                continue;
+            }
+            if let Some(tagged) = text
+                .strip_prefix(&tag)
+                .and_then(|rest| rest.strip_prefix(' '))
+            {
+                return match tagged.split_whitespace().next() {
+                    Some("OK") => Ok(()),
+                    Some("NO" | "BAD") => Err(NativeMailErrorDto::auth()),
+                    _ => Err(NativeMailErrorDto::protocol("imap_tagged_response_invalid")),
+                };
+            }
+        }
+    }
+
     fn mutation_command(&mut self, command: &str) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
         self.command_with_outcome(command, true)
     }
@@ -388,7 +521,7 @@ impl ImapConnection {
     ) -> Result<Vec<ResponseLine>, NativeMailErrorDto> {
         let tag = format!("B{:04}", self.next_tag);
         self.next_tag = self.next_tag.saturating_add(1);
-        write_imap_command(&mut self.writer, &tag, command)
+        write_imap_command(self.reader.get_mut(), &tag, command)
             .map_err(|_| NativeMailErrorDto::unavailable("imap_write_failed"))
             .map_err(|error| mutation_outcome(error, mutation))?;
         let mut lines = Vec::new();
@@ -652,6 +785,34 @@ fn push_quoted(output: &mut String, value: &str) -> Result<(), NativeMailErrorDt
     Ok(())
 }
 
+fn xoauth2_payload(username: &str, access_token: &str) -> Zeroizing<String> {
+    Zeroizing::new(format!(
+        "user={username}\x01auth=Bearer {access_token}\x01\x01"
+    ))
+}
+
+fn xoauth2_command(username: &str, access_token: &str) -> Zeroizing<String> {
+    let payload = xoauth2_payload(username, access_token);
+    let encoded =
+        Zeroizing::new(base64::engine::general_purpose::STANDARD.encode(payload.as_bytes()));
+    Zeroizing::new(format!("AUTHENTICATE XOAUTH2 {}", encoded.as_str()))
+}
+
+fn special_use_from_list(line: &str) -> Option<String> {
+    [
+        "\\Sent",
+        "\\Trash",
+        "\\Drafts",
+        "\\Junk",
+        "\\All",
+        "\\Flagged",
+        "\\Important",
+    ]
+    .into_iter()
+    .find(|value| line.contains(value))
+    .map(str::to_owned)
+}
+
 fn validate_atom(value: &str) -> Result<(), NativeMailErrorDto> {
     if value.is_empty() || value.contains(['\r', '\n', '\0']) {
         Err(NativeMailErrorDto::protocol("imap_argument_invalid"))
@@ -772,7 +933,7 @@ mod tests {
         MAX_IMAP_LINE_BYTES, MAX_IMAP_LITERAL_BYTES, account_response_text, canonical_flags,
         ensure_snapshot_stable, exact_message_id_header, fetch_uid, imap_date_to_rfc3339,
         login_command, message_id_candidate_limit_exceeded, mutation_outcome, parse_literal_length,
-        quote, read_bounded_text_line, write_imap_command,
+        quote, read_bounded_text_line, special_use_from_list, write_imap_command, xoauth2_command,
     };
     use crate::net::dto::NativeMailboxDto;
     use crate::net::errors::{
@@ -786,6 +947,21 @@ mod tests {
         assert_eq!(
             imap_date_to_rfc3339("28-Aug-2026 12:01:02 +0000").as_deref(),
             Some("2026-08-28T12:01:02+00:00")
+        );
+    }
+
+    #[test]
+    fn gmail_xoauth2_command_is_encoded_and_does_not_contain_the_token_plaintext() {
+        let command = xoauth2_command("alice@gmail.com", "GMAIL_ACCESS_CANARY_01");
+        assert!(command.starts_with("AUTHENTICATE XOAUTH2 "));
+        assert!(!command.contains("GMAIL_ACCESS_CANARY_01"));
+    }
+
+    #[test]
+    fn list_special_use_is_preserved_for_gmail_role_mapping() {
+        assert_eq!(
+            special_use_from_list("* LIST (\\HasNoChildren \\Sent) \"/\" \"[Gmail]/Sent Mail\""),
+            Some("\\Sent".to_owned())
         );
     }
 
@@ -912,6 +1088,7 @@ mod tests {
             unseen: 3,
             uid_validity: 7,
             uid_next: 4,
+            special_use: None,
         };
         let flags = flag_snapshot(&[(1, &["\\Seen"]), (2, &[]), (3, &[])]);
         assert!(
@@ -1028,6 +1205,7 @@ mod tests {
             unseen: 1,
             uid_validity: 7,
             uid_next: 43,
+            special_use: None,
         };
         let uids = initial_flags.keys().copied().collect::<Vec<_>>();
         if uids == [42]
@@ -1062,6 +1240,7 @@ mod tests {
             unseen: 1,
             uid_validity: 7,
             uid_next: 43,
+            special_use: None,
         };
         assert!(
             ensure_snapshot_stable(

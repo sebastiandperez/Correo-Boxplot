@@ -4,13 +4,14 @@ use super::{
     ManagedNativeMailRuntime,
     dto::{
         NativeAttachmentDto, NativeBodyDto, NativeFindMessageIdRequest,
-        NativeFindMessageIdResponse, NativeMailOpenRequest, NativeMailOpenResponse,
-        NativeMailboxDto, NativeMailboxRequest, NativeMailboxSnapshotDto, NativeMessageRequest,
-        NativeMoveRequest, NativeMoveResponse, NativeSessionRequest, NativeSmtpSubmitRequest,
-        NativeSmtpSubmitResponse, NativeStoreFlagsRequest,
+        NativeFindMessageIdResponse, NativeGoogleMailOpenRequest, NativeMailOpenRequest,
+        NativeMailOpenResponse, NativeMailboxDto, NativeMailboxRequest, NativeMailboxSnapshotDto,
+        NativeMessageRequest, NativeMoveRequest, NativeMoveResponse, NativeSessionRequest,
+        NativeSmtpSubmitRequest, NativeSmtpSubmitResponse, NativeStoreFlagsRequest,
     },
     errors::NativeMailErrorDto,
 };
+use crate::oauth::ManagedGoogleOAuth;
 
 pub const NATIVE_MAIL_COMMAND_NAMES: [&str; 10] = [
     "native_mail_open",
@@ -25,12 +26,28 @@ pub const NATIVE_MAIL_COMMAND_NAMES: [&str; 10] = [
     "native_smtp_submit",
 ];
 
+/** Additive Google commands are deliberately separate from the frozen local set. */
+pub const NATIVE_GOOGLE_COMMAND_NAMES: [&str; 3] = [
+    "native_google_oauth_authorize",
+    "native_google_oauth_forget",
+    "native_mail_open_google",
+];
+
 #[tauri::command]
 pub fn native_mail_open(
     request: NativeMailOpenRequest,
     runtime: State<'_, ManagedNativeMailRuntime>,
 ) -> Result<NativeMailOpenResponse, NativeMailErrorDto> {
     runtime.open(request)
+}
+
+#[tauri::command]
+pub fn native_mail_open_google(
+    request: NativeGoogleMailOpenRequest,
+    runtime: State<'_, ManagedNativeMailRuntime>,
+    oauth: State<'_, ManagedGoogleOAuth>,
+) -> Result<NativeMailOpenResponse, NativeMailErrorDto> {
+    runtime.open_google(request, oauth.service()?.as_ref())
 }
 
 #[tauri::command]
@@ -101,13 +118,18 @@ pub fn native_imap_move(
 pub fn native_smtp_submit(
     request: NativeSmtpSubmitRequest,
     runtime: State<'_, ManagedNativeMailRuntime>,
+    oauth: State<'_, ManagedGoogleOAuth>,
 ) -> Result<NativeSmtpSubmitResponse, NativeMailErrorDto> {
-    runtime.smtp_submit(&request)
+    if runtime.is_google_session(&request.session_id)? {
+        runtime.smtp_submit_google(&request, oauth.service()?.as_ref())
+    } else {
+        runtime.smtp_submit(&request)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::NATIVE_MAIL_COMMAND_NAMES;
+    use super::{NATIVE_GOOGLE_COMMAND_NAMES, NATIVE_MAIL_COMMAND_NAMES};
 
     #[test]
     fn native_command_inventory_is_exact_unique_and_separate_from_local() {
@@ -118,5 +140,11 @@ mod tests {
         assert_eq!(unique.len(), 10);
         assert!(unique.iter().all(|name| name.starts_with("native_")));
         assert!(unique.iter().all(|name| !name.starts_with("local_")));
+        assert_eq!(NATIVE_GOOGLE_COMMAND_NAMES.len(), 3);
+        assert!(
+            NATIVE_GOOGLE_COMMAND_NAMES
+                .iter()
+                .all(|name| !NATIVE_MAIL_COMMAND_NAMES.contains(name))
+        );
     }
 }

@@ -6,5 +6,6 @@ mod mime;
 mod policy;
 mod runtime;
 mod smtp;
+mod transport;
 
 pub use runtime::ManagedNativeMailRuntime;
