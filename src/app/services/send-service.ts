@@ -1,6 +1,10 @@
 import { emailAddress } from '../../domain/address'
 import { isWildcardIdentity } from '../../domain/identity'
-import { mutationIdFromString } from '../../domain/ids'
+import {
+  mutationIdFromString,
+  type AccountKey,
+  type MutationId,
+} from '../../domain/ids'
 import {
   mutationInstantFromString,
   sendMutation,
@@ -11,7 +15,7 @@ import { useComposerStore } from '../stores/composer'
 import { useMailStore } from '../stores/mail'
 
 export type SendResult =
-  | { ok: true }
+  | Readonly<{ ok: true; accountKey: AccountKey; mutationId: MutationId }>
   | {
       ok: false
       error:
@@ -85,7 +89,7 @@ export async function executeSend(
   let intent
   try {
     intent = sendIntent({
-      securityMode: 'plain',
+      securityMode: composerStore.securityMode,
       identity: selectedIdentity,
       to,
       cc: [],
@@ -117,5 +121,9 @@ export async function executeSend(
   }
 
   composerStore.reset()
-  return { ok: true }
+  return {
+    ok: true,
+    accountKey,
+    mutationId: mutation.mutationId,
+  }
 }

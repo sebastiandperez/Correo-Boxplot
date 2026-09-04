@@ -26,7 +26,10 @@ describe('Send service queue semantics', () => {
       fixtures.emailA2.id,
     ])
 
-    expect(await executeSend(context)).toEqual({ ok: true })
+    expect(await executeSend(context)).toMatchObject({
+      ok: true,
+      accountKey: fixtures.accountA.key,
+    })
     expect(composer.isOpen).toBe(false)
     const mutations = await engine.readRepository.listPendingMutations(
       fixtures.accountA.key,
@@ -35,6 +38,9 @@ describe('Send service queue semantics', () => {
     if (mutations.ok && mutations.value.kind === 'present') {
       expect(mutations.value.value).toHaveLength(1)
       expect(mutations.value.value[0].kind).toBe('send')
+      if (mutations.value.value[0].kind === 'send') {
+        expect(mutations.value.value[0].intent.securityMode).toBe('plain')
+      }
     }
     expect(
       await engine.readRepository.readEmails([
@@ -69,6 +75,7 @@ describe('Send service queue semantics', () => {
       subject: 'Keep subject',
       body: 'Keep body',
     })
+    composer.securityMode = 'boxplotE2eeV1'
 
     expect(await executeSend(context)).toEqual({
       ok: false,
@@ -77,7 +84,36 @@ describe('Send service queue semantics', () => {
     expect(composer.isOpen).toBe(true)
     expect(composer.subject).toBe('Keep subject')
     expect(composer.body).toBe('Keep body')
+    expect(composer.securityMode).toBe('boxplotE2eeV1')
     expect(composer.phase).toBe('error')
+  })
+
+  it('copies the explicit E2EE selection into the durable SendMutation then resets only after commit', async () => {
+    const { engine, fixtures } = await createSeededMemoryApplication()
+    useMailStore().selectAccount(fixtures.accountA.key)
+    const composer = useComposerStore()
+    composer.open({
+      to: 'recipient@example.test',
+      subject: 'E2EE',
+      body: 'Body',
+    })
+    composer.securityMode = 'boxplotE2eeV1'
+
+    expect(await executeSend(createApplicationContext(engine))).toMatchObject({
+      ok: true,
+      accountKey: fixtures.accountA.key,
+    })
+    expect(composer.securityMode).toBe('plain')
+    const mutations = await engine.readRepository.listPendingMutations(
+      fixtures.accountA.key,
+    )
+    expect(mutations).toMatchObject({
+      ok: true,
+      value: {
+        kind: 'present',
+        value: [{ kind: 'send', intent: { securityMode: 'boxplotE2eeV1' } }],
+      },
+    })
   })
 
   it('rejects invalid or missing recipients without losing the draft', async () => {

@@ -187,12 +187,12 @@ describe('SEND-SECURITY-MODE-CONTRACT-01', () => {
     expect(submission.calls).toHaveLength(0)
   })
 
-  it('S10 keeps the current product send constructor explicitly plaintext', () => {
+  it('S10 copies the explicit ephemeral Composer choice without inference or fallback', () => {
     const source = readFileSync(
       new URL('../../app/services/send-service.ts', import.meta.url),
       'utf8',
     )
-    expect(source).toContain("securityMode: 'plain'")
+    expect(source).toContain('securityMode: composerStore.securityMode')
     expect(source).not.toContain('securityMode ??')
   })
 })

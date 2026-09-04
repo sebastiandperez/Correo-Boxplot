@@ -1,5 +1,10 @@
 ﻿import type { Email } from '../domain/email'
-import type { AccountKey, ScopedEmailId, ScopedMailboxId } from '../domain/ids'
+import type {
+  AccountKey,
+  MutationId,
+  ScopedEmailId,
+  ScopedMailboxId,
+} from '../domain/ids'
 import {
   accountKeyFromString,
   mutationIdFromString,
@@ -12,6 +17,7 @@ import {
   mailboxMembershipMutation,
   mutationInstantFromString,
   sendMutation,
+  type PendingMutation,
 } from '../domain/pending-mutation'
 import {
   mailboxViewFilterAll,
@@ -32,8 +38,13 @@ import type { AccountSetupRequest } from './stores/account-setup'
 import { RemoteApplicationError, type RemoteApplication } from './remote'
 import type { BodyMaterializer } from '../sync/body-materializer'
 import { BodyMaterializationError } from '../sync/body-materialization-errors'
-import type { MutationRunner } from '../outbox'
+import type { MutationExecutionOutcome, MutationRunner } from '../outbox'
 import type { RemoteConnectionConfig } from '../remote/runtime'
+import {
+  useMutationStatusStore,
+  type MutationStatusKind,
+  type MutationStatusView,
+} from './stores/mutation-status'
 
 import { JmapWorkerClient } from './worker-client'
 
@@ -127,6 +138,7 @@ export function createApplicationContext(
 
 type MailStore = ReturnType<typeof useMailStore>
 type RuntimeStore = ReturnType<typeof useRuntimeStore>
+type MutationStatusStore = ReturnType<typeof useMutationStatusStore>
 type ConnectionAttemptTarget =
   | Readonly<{ kind: 'firstRun' }>
   | Readonly<{ kind: 'reconnect'; accountKey: AccountKey }>
@@ -139,11 +151,27 @@ type ActiveRefreshAttempt = Readonly<{
   promise: Promise<RemoteRefreshResult>
 }>
 type SelectedBodyRereadState =
-  | 'cached'
-  | 'notCached'
-  | 'ownerAbsent'
-  | 'failed'
-  | 'stale'
+  'cached' | 'notCached' | 'ownerAbsent' | 'failed' | 'stale'
+
+function mutationStatusView(value: PendingMutation): MutationStatusView {
+  const emailId = value.kind === 'send' ? undefined : value.emailId
+  return {
+    accountKey: value.accountKey,
+    mutationId: value.mutationId,
+    kind: value.kind,
+    ...(emailId === undefined ? {} : { emailId }),
+    lifecycle: value.lifecycle.status,
+    attemptCount: value.lifecycle.attemptCount,
+    ...(value.kind === 'send'
+      ? { securityMode: value.intent.securityMode }
+      : {}),
+    needsReconciliation: false,
+  }
+}
+
+function mutationIdentity(accountKey: AccountKey, mutationId: string): string {
+  return `${accountKey}\u0000${mutationId}`
+}
 
 function sameConnectionAttemptTarget(
   left: ConnectionAttemptTarget,
@@ -263,6 +291,8 @@ export class MailApplicationController {
   private connectionGeneration = 0
   private activeRefreshAttempt: ActiveRefreshAttempt | null = null
   private refreshGeneration = 0
+  private readonly mutationStatusGenerations = new Map<string, number>()
+  private readonly activeMutationRuns = new Map<string, Promise<void>>()
   private readonly bodyMaterializationAttempts = new Map<
     string,
     Promise<BodyLoadResult>
@@ -273,6 +303,7 @@ export class MailApplicationController {
     private readonly context: ApplicationContext,
     private readonly mailStore: MailStore,
     private readonly runtimeStore: RuntimeStore,
+    private readonly mutationStatusStore: MutationStatusStore,
   ) {}
 
   async initialize(): Promise<void> {
@@ -317,6 +348,8 @@ export class MailApplicationController {
     this.observedRemoteAccountKey = null
     this.refreshGeneration += 1
     this.mailStore.clearRefreshActivity()
+    this.mutationStatusStore.reset()
+    this.activeMutationRuns.clear()
     this.mailStore.setBodyMaterializing(false)
     this.bodyMaterializationAttempts.clear()
   }
@@ -343,6 +376,7 @@ export class MailApplicationController {
     }
     this.observeRemoteStatus(accountKey)
     await this.refreshMailboxes()
+    await this.refreshMutationStatuses(accountKey)
   }
 
   async selectMailbox(mailboxId: ScopedMailboxId): Promise<void> {
@@ -383,6 +417,7 @@ export class MailApplicationController {
 
     if (nextAccount === undefined) {
       this.mailStore.selectAccount(null)
+      this.mutationStatusStore.reset()
       this.mailStore.setLoadState('ready')
       this.observeRemoteStatus(null)
       return
@@ -391,6 +426,7 @@ export class MailApplicationController {
     if (selected !== nextAccount) this.mailStore.selectAccount(nextAccount)
     this.observeRemoteStatus(nextAccount)
     await this.refreshMailboxes()
+    await this.refreshMutationStatuses(nextAccount)
   }
 
   /**
@@ -932,6 +968,7 @@ export class MailApplicationController {
       await this.context.syncPort.applyOptimisticKeywordMutation(mutation)
     if (!result.ok)
       throw new Error(`keyword write failed: ${result.error.kind}`)
+    this.trackStagedMutation(mutation)
   }
 
   async moveEmail(emailId: ScopedEmailId, targetRole: string): Promise<void> {
@@ -965,6 +1002,91 @@ export class MailApplicationController {
     if (!result.ok) {
       throw new Error(`membership write failed: ${result.error.kind}`)
     }
+    this.trackStagedMutation(mutation)
+  }
+
+  /** Runs exactly one durable mutation; never creates or infers another one. */
+  runMutation(accountKey: AccountKey, mutationId: MutationId): Promise<void> {
+    const key = mutationIdentity(accountKey, mutationId)
+    const active = this.activeMutationRuns.get(key)
+    if (active !== undefined) return active
+
+    const operation = this.performMutationRun(accountKey, mutationId)
+    this.activeMutationRuns.set(key, operation)
+    void operation.finally(() => {
+      if (this.activeMutationRuns.get(key) === operation) {
+        this.activeMutationRuns.delete(key)
+      }
+    })
+    return operation
+  }
+
+  private trackStagedMutation(mutation: PendingMutation): void {
+    void this.refreshMutationStatuses(mutation.accountKey)
+    void this.runMutation(mutation.accountKey, mutation.mutationId)
+  }
+
+  private async performMutationRun(
+    accountKey: AccountKey,
+    mutationId: MutationId,
+  ): Promise<void> {
+    const before = await this.refreshMutationStatuses(accountKey)
+    const known = before?.find((value) => value.mutationId === mutationId)
+    const runner = this.context.mutationRunner
+    if (runner === undefined || this.disposed) return
+
+    let outcome: MutationExecutionOutcome
+    try {
+      outcome = await runner.runMutation(accountKey, mutationId)
+    } catch {
+      await this.refreshMutationStatuses(accountKey)
+      return
+    }
+    if (this.disposed) return
+
+    if (outcome.kind === 'needsReconciliation') {
+      this.mutationStatusStore.markNeedsReconciliation(accountKey, mutationId)
+    }
+    const after = await this.refreshMutationStatuses(accountKey)
+    if (
+      outcome.kind === 'confirmed' &&
+      known !== undefined &&
+      after !== null &&
+      !after.some((value) => value.mutationId === mutationId)
+    ) {
+      this.mutationStatusStore.markConfirmed(
+        accountKey,
+        mutationId,
+        known.kind as MutationStatusKind,
+        known.kind === 'send' ? undefined : known.emailId,
+      )
+    }
+  }
+
+  private async refreshMutationStatuses(
+    accountKey: AccountKey,
+  ): Promise<readonly PendingMutation[] | null> {
+    const key = String(accountKey)
+    const generation = (this.mutationStatusGenerations.get(key) ?? 0) + 1
+    this.mutationStatusGenerations.set(key, generation)
+    const result =
+      await this.context.readRepository.listPendingMutations(accountKey)
+    if (
+      this.disposed ||
+      this.mutationStatusGenerations.get(key) !== generation
+    ) {
+      return null
+    }
+    if (!result.ok) return null
+    if (result.value.kind === 'ownerAbsent') {
+      this.mutationStatusStore.clearAccount(accountKey)
+      return []
+    }
+    this.mutationStatusStore.setStatuses(
+      accountKey,
+      result.value.value.map(mutationStatusView),
+    )
+    return result.value.value
   }
 
   async sendEmail(
@@ -1095,6 +1217,12 @@ export class MailApplicationController {
         selectedEmail !== null &&
         sameScopedEmailId(hint.emailId, selectedEmail),
     )
+    const mustRefreshMutations = hints.some(
+      (hint) =>
+        hint.kind === 'pendingMutations' &&
+        selectedAccount !== null &&
+        hint.accountKey === selectedAccount,
+    )
 
     try {
       if (mustRefreshAccounts) await this.refreshAccounts()
@@ -1108,6 +1236,9 @@ export class MailApplicationController {
       ) {
         await this.refreshSelectedBody()
       }
+      if (mustRefreshMutations && selectedAccount !== null) {
+        await this.refreshMutationStatuses(selectedAccount)
+      }
     } catch {
       this.runtimeStore.setLocal('error')
     }
@@ -1119,5 +1250,10 @@ export function createMailApplicationController(
   mailStore: MailStore,
   runtimeStore: RuntimeStore,
 ): MailApplicationController {
-  return new MailApplicationController(context, mailStore, runtimeStore)
+  return new MailApplicationController(
+    context,
+    mailStore,
+    runtimeStore,
+    useMutationStatusStore(),
+  )
 }
